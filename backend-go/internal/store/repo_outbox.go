@@ -11,12 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// OutboxEvent 出站事件记录。
+// OutboxEvent 出站事件记录。ID 由 DB 自增（BIGSERIAL）。
 type OutboxEvent struct {
-	ID         string
+	ID         int64
 	EventType  string
 	Payload    []byte // JSON
-	Status     string // pending | sent | failed
+	Status     string // pending | processing | done | failed
 	RetryCount int
 	LastError  string
 	CreatedAt  time.Time
@@ -25,10 +25,10 @@ type OutboxEvent struct {
 // OutboxRepository 用于跨库 saga。所有写入必须在 PG 事务内，
 // 读取由 dispatcher 周期轮询。
 type OutboxRepository interface {
-	EnqueueInTx(ctx context.Context, tx pgx.Tx, ev *OutboxEvent) error
+	EnqueueInTx(ctx context.Context, tx pgx.Tx, eventType string, payload []byte) error
 	Dequeue(ctx context.Context, limit int) ([]OutboxEvent, error)
-	MarkSent(ctx context.Context, id string) error
-	MarkFailed(ctx context.Context, id string, reason string) error
+	MarkDone(ctx context.Context, id int64) error
+	MarkFailed(ctx context.Context, id int64, reason string) error
 }
 
 type outboxRepoPG struct{ pool *pgxpool.Pool }
@@ -39,30 +39,25 @@ func NewOutboxRepository(pool *pgxpool.Pool) OutboxRepository {
 }
 
 const sqlEnqueueOutbox = `
-INSERT INTO outbox_events (id, event_type, payload, status, retry_count, created_at)
-VALUES ($1, $2, $3::jsonb, 'pending', 0, $4)
+INSERT INTO outbox_events (event_type, payload, status)
+VALUES ($1, $2::jsonb, 'pending')
 `
 
-// EnqueueInTx 在调用方事务内插入事件。
-func (r *outboxRepoPG) EnqueueInTx(ctx context.Context, tx pgx.Tx, ev *OutboxEvent) error {
-	if ev.CreatedAt.IsZero() {
-		ev.CreatedAt = time.Now().UTC()
-	}
-	_, err := tx.Exec(ctx, sqlEnqueueOutbox, ev.ID, ev.EventType, string(ev.Payload), ev.CreatedAt)
+func (r *outboxRepoPG) EnqueueInTx(ctx context.Context, tx pgx.Tx, eventType string, payload []byte) error {
+	_, err := tx.Exec(ctx, sqlEnqueueOutbox, eventType, string(payload))
 	if err != nil {
 		return fmt.Errorf("outbox enqueue: %w", err)
 	}
 	return nil
 }
 
-// 只捞 pending，且按 created_at 升序；
-// FOR UPDATE SKIP LOCKED 让多 dispatcher 并发安全。
+// 并发安全的 dequeue：原子置 processing。
 const sqlDequeue = `
 UPDATE outbox_events
-SET status = 'processing'
+SET status = 'processing', updated_at = NOW()
 WHERE id IN (
   SELECT id FROM outbox_events
-  WHERE status = 'pending'
+  WHERE status IN ('pending','failed')
   ORDER BY created_at ASC
   LIMIT $1
   FOR UPDATE SKIP LOCKED
@@ -93,14 +88,14 @@ func (r *outboxRepoPG) Dequeue(ctx context.Context, limit int) ([]OutboxEvent, e
 	return out, rows.Err()
 }
 
-const sqlMarkSent = `
-UPDATE outbox_events SET status = 'sent', sent_at = $2 WHERE id = $1
+const sqlMarkDone = `
+UPDATE outbox_events SET status = 'done', processed_at = NOW() WHERE id = $1
 `
 
-func (r *outboxRepoPG) MarkSent(ctx context.Context, id string) error {
-	tag, err := r.pool.Exec(ctx, sqlMarkSent, id, time.Now().UTC())
+func (r *outboxRepoPG) MarkDone(ctx context.Context, id int64) error {
+	tag, err := r.pool.Exec(ctx, sqlMarkDone, id)
 	if err != nil {
-		return fmt.Errorf("outbox mark sent: %w", err)
+		return fmt.Errorf("outbox mark done: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.ErrNotFound
@@ -110,11 +105,11 @@ func (r *outboxRepoPG) MarkSent(ctx context.Context, id string) error {
 
 const sqlMarkFailed = `
 UPDATE outbox_events
-SET status = 'failed', retry_count = retry_count + 1, last_error = $2
+SET status = 'failed', retry_count = retry_count + 1, last_error = $2, updated_at = NOW()
 WHERE id = $1
 `
 
-func (r *outboxRepoPG) MarkFailed(ctx context.Context, id, reason string) error {
+func (r *outboxRepoPG) MarkFailed(ctx context.Context, id int64, reason string) error {
 	_, err := r.pool.Exec(ctx, sqlMarkFailed, id, reason)
 	if err != nil {
 		return fmt.Errorf("outbox mark failed: %w", err)
@@ -122,5 +117,5 @@ func (r *outboxRepoPG) MarkFailed(ctx context.Context, id, reason string) error 
 	return nil
 }
 
-// ErrOutboxNotPending 内部错误指示处理时状态已不是 pending。
+// ErrOutboxNotPending 指示处理时状态已不是 pending。
 var ErrOutboxNotPending = errors.New("outbox event not pending")
