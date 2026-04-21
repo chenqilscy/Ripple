@@ -66,6 +66,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/nodes/{id}", nodeH.Get)
 			r.Post("/nodes/{id}/evaporate", nodeH.Evaporate)
 			r.Post("/nodes/{id}/restore", nodeH.Restore)
+			r.Post("/nodes/{id}/condense", nodeH.Condense)
 
 			if d.Clouds != nil {
 				r.Post("/clouds", cloudH.Create)

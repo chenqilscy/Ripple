@@ -133,6 +133,35 @@ func (s *NodeService) Evaporate(ctx context.Context, actor *domain.User, nodeID 
 	return n, nil
 }
 
+// Condense 把 MIST 节点凝露到 lake：MIST→DROP，落归属。
+// 权限：lake 的 EDITOR/OWNER（与 Create 一致——往湖里塞东西需要写权限）。
+// 若 input.LakeID == ""，沿用节点当前 LakeID（造云时 weaver 已写）。
+func (s *NodeService) Condense(ctx context.Context, actor *domain.User, nodeID string, targetLakeID string) (*domain.Node, error) {
+	n, err := s.nodes.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	target := targetLakeID
+	if target == "" {
+		target = n.LakeID
+	}
+	if target == "" {
+		return nil, domain.ErrInvalidInput
+	}
+	// 权限：目标 lake 的 EDITOR/OWNER
+	if err := s.requireWrite(ctx, actor, target); err != nil {
+		return nil, err
+	}
+	if err := n.Condense(time.Now().UTC(), target); err != nil {
+		return nil, err
+	}
+	if err := s.nodes.UpdateState(ctx, n); err != nil {
+		return nil, err
+	}
+	s.publish(ctx, n.LakeID, "node.condensed", n)
+	return n, nil
+}
+
 // Restore 还原 VAPOR 回 DROP。同样要求 owner 或 lake owner。
 func (s *NodeService) Restore(ctx context.Context, actor *domain.User, nodeID string) (*domain.Node, error) {
 	n, err := s.nodes.GetByID(ctx, nodeID)

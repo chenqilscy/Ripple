@@ -132,3 +132,21 @@ func (h *NodeHandlers) Restore(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, toNodeResp(n))
 }
+
+// Condense POST /api/v1/nodes/{id}/condense
+// Body 可选 {"lake_id":"..."}：未传则沿用节点当前 LakeID（造云时已写）。
+func (h *NodeHandlers) Condense(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	id := chi.URLParam(r, "id")
+	var body struct {
+		LakeID string `json:"lake_id"`
+	}
+	// Body 可选；解析失败也允许（沿用节点 LakeID）
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	n, err := h.Nodes.Condense(r.Context(), u, id, body.LakeID)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toNodeResp(n))
+}
