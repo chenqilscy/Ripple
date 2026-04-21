@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -18,6 +19,7 @@ type Deps struct {
 	Edges       *service.EdgeService
 	Invites     *service.InviteService
 	Clouds      *service.CloudService
+	Presence    *presence.Service
 	WS          *WSHandlers
 	CORSOrigins []string
 }
@@ -55,6 +57,10 @@ func NewRouter(d Deps) http.Handler {
 	var inviteH *InviteHandlers
 	if d.Invites != nil {
 		inviteH = &InviteHandlers{Invites: d.Invites}
+	}
+	var presenceH *PresenceHandlers
+	if d.Presence != nil {
+		presenceH = &PresenceHandlers{Presence: d.Presence, Lakes: d.Lakes}
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -100,6 +106,10 @@ func NewRouter(d Deps) http.Handler {
 				r.Delete("/lake-invites/{id}", inviteH.Revoke)
 				r.Get("/invites/preview", inviteH.Preview)
 				r.Post("/invites/accept", inviteH.Accept)
+			}
+
+			if presenceH != nil {
+				r.Get("/lakes/{id}/presence", presenceH.List)
 			}
 
 			if d.WS != nil {

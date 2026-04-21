@@ -26,6 +26,7 @@ import (
 	"github.com/chenqilscy/ripple/backend-go/internal/config"
 	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
+	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
@@ -88,6 +89,8 @@ func main() {
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
 
+	presenceSvc := presence.NewService(rds, broker, 0)
+
 	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker).WithRevisions(nodeRevs)
 	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
 	inviteSvc := service.NewInviteService(invites, memberships, lakes)
@@ -130,9 +133,10 @@ func main() {
 	go weaver.Run(weaverCtx)
 
 	wsH := &httpapi.WSHandlers{
-		Lakes:   lakeSvc,
-		Broker:  broker,
-		Origins: cfg.CORSOriginList(),
+		Lakes:    lakeSvc,
+		Broker:   broker,
+		Presence: presenceSvc,
+		Origins:  cfg.CORSOriginList(),
 	}
 
 	router := httpapi.NewRouter(httpapi.Deps{
@@ -142,6 +146,7 @@ func main() {
 		Edges:       edgeSvc,
 		Invites:     inviteSvc,
 		Clouds:      cloudSvc,
+		Presence:    presenceSvc,
 		WS:          wsH,
 		CORSOrigins: cfg.CORSOriginList(),
 	})

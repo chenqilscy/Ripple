@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -14,9 +15,10 @@ import (
 
 // WSHandlers WebSocket 升级与广播。
 type WSHandlers struct {
-	Lakes   *service.LakeService
-	Broker  realtime.Broker
-	Origins []string // CORS 白名单（用于 ws Origin 校验）
+	Lakes    *service.LakeService
+	Broker   realtime.Broker
+	Presence *presence.Service // 可空
+	Origins  []string          // CORS 白名单（用于 ws Origin 校验）
 }
 
 // LakeWS GET /api/v1/lakes/{id}/ws (鉴权后升级)
@@ -51,6 +53,18 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+
+	// 注册到 presence（广播 presence.joined），断开时 Leave。
+	if h.Presence != nil {
+		if err := h.Presence.Join(ctx, lakeID, user.ID); err == nil {
+			defer func() {
+				// 用独立 ctx，避免 cancel 后 Leave 失败。
+				leaveCtx, c := context.WithTimeout(context.Background(), 2*time.Second)
+				defer c()
+				_ = h.Presence.Leave(leaveCtx, lakeID, user.ID)
+			}()
+		}
+	}
 
 	topic := realtime.LakeTopic(lakeID)
 	ch, err := h.Broker.Subscribe(ctx, topic)
@@ -91,6 +105,10 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 			cancel()
 			conn.Close(websocket.StatusNormalClosure, "client gone")
 			return
+		}
+		// 客户端任意消息都视为心跳；刷新 presence score。
+		if h.Presence != nil {
+			_ = h.Presence.Heartbeat(ctx, lakeID, user.ID)
 		}
 	}
 }
