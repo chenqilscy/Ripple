@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,6 +17,9 @@ type PGCallRecorder struct {
 	pg     *pgxpool.Pool
 	ch     chan llm.CallRecord
 	done   chan struct{}
+
+	mu     sync.RWMutex
+	closed bool
 }
 
 // NewPGCallRecorder 启动后台 worker。bufferSize 建议 256~1024。
@@ -32,7 +37,13 @@ func NewPGCallRecorder(pg *pgxpool.Pool, bufferSize int) *PGCallRecorder {
 }
 
 // Record 实现 llm.CallRecorder。非阻塞，channel 满则丢弃。
+// Close 后调用安全（直接丢弃，不 panic）。
 func (r *PGCallRecorder) Record(rec llm.CallRecord) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed {
+		return
+	}
 	select {
 	case r.ch <- rec:
 	default:
@@ -40,8 +51,16 @@ func (r *PGCallRecorder) Record(rec llm.CallRecord) {
 	}
 }
 
-// Close 优雅关闭：关闭 channel，等 worker 排空。
+// Close 优雅关闭：先标记关闭（防新 Record 写入），再关 channel，等 worker 排空。
+// 多次 Close 安全。
 func (r *PGCallRecorder) Close() {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return
+	}
+	r.closed = true
+	r.mu.Unlock()
 	close(r.ch)
 	<-r.done
 }
@@ -53,7 +72,7 @@ INSERT INTO llm_calls (provider, modality, prompt_hash, candidates_n, cost_token
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 	for rec := range r.ch {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*1e9) // 3s
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		_, _ = r.pg.Exec(ctx, sql,
 			rec.Provider, string(rec.Modality), rec.PromptHash,
 			rec.CandidatesN, rec.CostTokens, rec.LatencyMS,

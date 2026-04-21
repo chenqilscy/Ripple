@@ -134,7 +134,7 @@ func (s *NodeService) Evaporate(ctx context.Context, actor *domain.User, nodeID 
 }
 
 // Condense 把 MIST 节点凝露到 lake：MIST→DROP，落归属。
-// 权限：lake 的 EDITOR/OWNER（与 Create 一致——往湖里塞东西需要写权限）。
+// 权限：（节点 owner 或 节点原 lake 有写权限）AND 目标 lake 有写权限。
 // 若 input.LakeID == ""，沿用节点当前 LakeID（造云时 weaver 已写）。
 func (s *NodeService) Condense(ctx context.Context, actor *domain.User, nodeID string, targetLakeID string) (*domain.Node, error) {
 	n, err := s.nodes.GetByID(ctx, nodeID)
@@ -148,7 +148,17 @@ func (s *NodeService) Condense(ctx context.Context, actor *domain.User, nodeID s
 	if target == "" {
 		return nil, domain.ErrInvalidInput
 	}
-	// 权限：目标 lake 的 EDITOR/OWNER
+	// 来源校验：必须是节点 owner 或对节点原 lake 有写权限，
+	// 防止攻击者把别人的 MIST 节点夺到自己的湖。
+	if n.OwnerID != actor.ID {
+		if n.LakeID == "" {
+			return nil, domain.ErrPermissionDenied
+		}
+		if err := s.requireWrite(ctx, actor, n.LakeID); err != nil {
+			return nil, err
+		}
+	}
+	// 目标校验：actor 在 target lake 必须有写权限。
 	if err := s.requireWrite(ctx, actor, target); err != nil {
 		return nil, err
 	}
