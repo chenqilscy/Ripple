@@ -3,7 +3,7 @@
 **版本：** v1.0
 **日期：** 2026‑04‑21
 **适用对象：** AI 算法 / 后端
-**地位：** 升级 [AI Prompt 工程规范](./系统%20·%20AI%20服务%20Prompt%20工程规范.md)：从单次调用 → 多 Agent 编排。借鉴"青萍与马具"反思的红蓝军对抗模式。
+**地位：** 升级 [D7 AI Prompt 工程规范](./D7-AI-Prompt工程规范.md)：从单次调用 → 多 Agent 编排。借鉴"青萍与马具"反思的红蓝军对抗模式。
 
 ---
 
@@ -59,13 +59,48 @@
 
 **最大对抗轮次：** 2（成本控制）。Weaver round 2 仍未通过则降级为"潜在暗流"（虚线显示）。
 
+### 2.1 工作流时序图
+
+```mermaid
+sequenceDiagram
+    participant Node as 节点服务
+    participant Box as Outbox
+    participant Router as AIRouter
+    participant Diver
+    participant Weaver
+    participant Critic
+    participant Curator
+    participant WS as WebSocket
+
+    Node->>Box: 凝露事件 (node_id)
+    Box->>Router: 消费事件
+    Router->>Router: 复杂度打分 0-1
+    Router->>Diver: 召回 Top-K (向量+图)
+    Diver-->>Router: candidates[]
+    Router->>Weaver: round 1 (便宜模型)
+    Weaver-->>Router: proposals[]
+    Router->>Critic: 评审
+    Critic-->>Router: scores[]
+    alt 全部弱 (<0.5)
+        Router->>Weaver: round 2 (贵模型回退)
+        Weaver-->>Router: proposals'
+        Router->>Critic: 复审
+        Critic-->>Router: scores'
+    end
+    Router->>Curator: 合格的 proposals
+    Curator->>Node: 写入 Neo4j [:RELATES_TO]
+    Curator->>WS: 推送"暗流浮现"
+    WS-->>Node: 前端渲染虚线
+```
+
+
 ---
 
 ## 三、Agent 职责详解
 
 ### 3.1 Weaver（织网者）
 
-System Prompt 沿用 [AI Prompt 规范 §二](./系统%20·%20AI%20服务%20Prompt%20工程规范.md)，但增加：
+System Prompt 沿用 [D7 AI Prompt 规范 §二](./D7-AI-Prompt工程规范.md)，但增加：
 - 上下文注入：候选节点列表、湖泊主题、用户最近 5 个节点
 - 输出 schema：批量 JSON `[{target_id, relation_type, reasoning, strength}]`
 
@@ -157,7 +192,9 @@ def call_llm_with_schema(prompt: str, schema: dict, max_retries: int = 1) -> dic
 - 校验失败计数纳入 [G6 Metrics](G6-可观测性与监控.md) `ripple_ai_schema_violations_total`
 - 长期失败率 > 5% 触发 Prompt 调优工单
 
-## 六、Token 预算与成本
+## 六、Token 预算与成本压缩方案
+
+### 6.1 预算表
 
 | 项 | 预算 |
 | :--- | :--- |
@@ -165,9 +202,40 @@ def call_llm_with_schema(prompt: str, schema: dict, max_retries: int = 1) -> dic
 | 单文档炸开（10 页） | ≤ 30K input + 5K output |
 | 用户日 AI 调用上限（免费层） | 100 次 |
 | 用户日上限（付费层） | 5000 次 |
-| 团队湖月度上限 | 见 SaaS 套餐 |
+| 团队湖月度上限 | 见 [商业化模型](../商业化模型.md) |
 
-成本看板：实时统计 input/output token，按 user/lake 维度归集，超阈值告警。
+### 6.2 多模型路由（方案 3 · 成本压缩 60%）
+
+**原则：** 便宜模型跑"大流量浅水区"，昂贵模型只跑"深水区"。
+
+| Agent | 首选模型（便宜） | 回退模型（贵） | 触发回退的条件 |
+| :--- | :--- | :--- | :--- |
+| Weaver | Qwen2.5-72B / Llama 3 70B（自建推理）| Claude Sonnet | 节点含复杂意象 / Embedding 相似度模糊区 |
+| Diver | 无 LLM（向量 + 图查询） | — | — |
+| Critic | Claude Haiku / GPT-4o-mini | Claude Sonnet | 首轮评分落在 [0.5, 0.7] 模糊区需复审 |
+| Curator | GPT-4o-mini | — | 固定用便宜 |
+
+**路由决策器：** 独立服务 `AIRouter`，根据节点复杂度（token 数、实体数、歧义度）打分 0-1，分值 ≥ 0.7 触发升级。
+
+### 6.3 混合推理（方案 4 · 本地 Embedding）
+
+| 任务 | 原实现 | 新实现 | 成本下降 |
+| :--- | :--- | :--- | :--- |
+| 节点 Embedding | text-embedding-3-large | 本地 BGE-large-zh | 100% 省 |
+| 向量检索 Top-K | 通过 LLM 二次判断 | 纯 cosine + 阈值 0.78 | 100% 省 |
+| 关系判定 | 每对节点都调 LLM | 先向量过滤，只对候选对调 LLM | 70% 省 |
+
+### 6.4 预期效果（对齐 [商业化模型 §3.3](../商业化模型.md)）
+
+| 档位 | 原成本 | 优化后成本 | 优化后毛利率 |
+| :--- | :---: | :---: | :---: |
+| Free | ¥4 | **¥1.5** | — |
+| Pro (¥38) | ¥65 | **¥24** | **+37%** ✅ |
+| Team (¥98) | ¥135 | **¥50** | **+49%** ✅ |
+
+### 6.5 Token 成本看板
+
+实时统计按 user/lake 维度归集，超阈值告警。详见 [G6 §四AI 指标](G6-可观测性与监控.md)。
 
 ---
 
@@ -221,7 +289,7 @@ def call_llm_with_schema(prompt: str, schema: dict, max_retries: int = 1) -> dic
 
 ## 九、与其他文档的关系
 
-- 单次 Prompt 模板：[AI Prompt 工程规范](./系统%20·%20AI%20服务%20Prompt%20工程规范.md)
+- 单次 Prompt 模板：[D7 AI Prompt 工程规范](./D7-AI-Prompt工程规范.md)
 - 节点状态触发：[G1 §三状态机](./G1-数据模型与权限设计.md)
 - 凝露事件源：[G2 §五](./G2-云霓-灵感采集模块设计.md)
 - 文档炸开：[G4 §四](./G4-文件存储与导入流水线.md)
