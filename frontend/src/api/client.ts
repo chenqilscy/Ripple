@@ -3,7 +3,8 @@
 // 401 时清除 token 并触发 onUnauthorized 回调（由上层 UI 路由到登录页）。
 
 import type {
-  ApiError, AuthTokens, CloudTask, Lake, NodeItem, NodeType, User,
+  ApiError, AuthTokens, CloudTask, EdgeItem, EdgeKind, InviteItem, InvitePreview,
+  Lake, NodeItem, NodeType, User,
 } from './types'
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
@@ -94,6 +95,34 @@ export const api = {
   },
   listClouds(): Promise<{ tasks: CloudTask[] }> {
     return request('GET', '/api/v1/clouds')
+  },
+
+  // ---- Edges ----
+  listEdges(lakeId: string, includeDeleted = false): Promise<{ edges: EdgeItem[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/edges?include_deleted=${includeDeleted}`)
+  },
+  createEdge(src_node_id: string, dst_node_id: string, kind: EdgeKind, label?: string): Promise<EdgeItem> {
+    return request('POST', '/api/v1/edges', { src_node_id, dst_node_id, kind, label })
+  },
+  deleteEdge(id: string): Promise<void> {
+    return request('DELETE', `/api/v1/edges/${id}`)
+  },
+
+  // ---- Invites ----
+  createInvite(lakeId: string, role: 'NAVIGATOR' | 'PASSENGER' | 'OBSERVER', max_uses: number, ttl_seconds: number): Promise<InviteItem> {
+    return request('POST', `/api/v1/lakes/${lakeId}/invites`, { role, max_uses, ttl_seconds })
+  },
+  listInvites(lakeId: string, includeInactive = false): Promise<{ invites: InviteItem[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/invites?include_inactive=${includeInactive}`)
+  },
+  revokeInvite(inviteId: string): Promise<void> {
+    return request('DELETE', `/api/v1/lake-invites/${inviteId}`)
+  },
+  previewInvite(token: string): Promise<InvitePreview> {
+    return request('GET', `/api/v1/invites/preview?token=${encodeURIComponent(token)}`)
+  },
+  acceptInvite(token: string): Promise<{ lake_id: string; role: string; already_member: boolean }> {
+    return request('POST', '/api/v1/invites/accept', { token })
   },
 }
 

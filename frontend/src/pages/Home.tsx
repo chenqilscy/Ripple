@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
-import { api, type CloudTask, type Lake, type NodeItem } from '../api/client'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem } from '../api/client'
 import { LakeWS } from '../api/wsClient'
 
 interface Props { onLogout: () => void }
+
+const EDGE_KINDS: EdgeKind[] = ['relates', 'derives', 'opposes', 'refines', 'groups', 'custom']
 
 export function Home({ onLogout }: Props) {
   const [lakes, setLakes] = useState<Lake[]>([])
   const [active, setActive] = useState<Lake | null>(null)
   const [nodes, setNodes] = useState<NodeItem[]>([])
+  const [edges, setEdges] = useState<EdgeItem[]>([])
   const [tasks, setTasks] = useState<CloudTask[]>([])
   const [prompt, setPrompt] = useState('')
   const [n, setN] = useState(5)
@@ -15,6 +18,8 @@ export function Home({ onLogout }: Props) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [wsOnline, setWsOnline] = useState(false)
+  // 连线状态：null=普通 | source_id=已选起点，等待选终点
+  const [linkSrc, setLinkSrc] = useState<string | null>(null)
   const wsRef = useRef<LakeWS | null>(null)
 
   useEffect(() => { void refresh() }, [])
@@ -23,6 +28,8 @@ export function Home({ onLogout }: Props) {
   useEffect(() => {
     if (!active) return
     void loadNodes(active.id)
+    void loadEdges(active.id)
+    setLinkSrc(null)
 
     const token = localStorage.getItem('ripple.token') ?? ''
     if (!token) return
@@ -37,6 +44,9 @@ export function Home({ onLogout }: Props) {
         // node 事件 → 全量刷新节点（MVP 简化，避免增量 merge 复杂度）
         if (msg.type.startsWith('node.')) {
           void loadNodes(active.id)
+        }
+        if (msg.type.startsWith('edge.')) {
+          void loadEdges(active.id)
         }
         // cloud 事件 → 刷新任务列表（如有 task_id）
         if (msg.type.startsWith('cloud.') && msg.payload?.task_id) {
@@ -67,6 +77,47 @@ export function Home({ onLogout }: Props) {
 
   async function loadNodes(lakeId: string) {
     try { setNodes((await api.listNodes(lakeId)).nodes) } catch (e) { setErr((e as Error).message) }
+  }
+
+  async function loadEdges(lakeId: string) {
+    try { setEdges((await api.listEdges(lakeId)).edges) } catch (e) { setErr((e as Error).message) }
+  }
+
+  // 进入连线：点第一个节点设为 source；点第二个节点询问 kind 后创建。
+  async function handleNodeClickForLink(nodeId: string) {
+    if (!linkSrc) {
+      setLinkSrc(nodeId)
+      return
+    }
+    if (linkSrc === nodeId) {
+      setLinkSrc(null) // 再次点同一个 = 取消
+      return
+    }
+    const kind = window.prompt(
+      `选择边的类型（${EDGE_KINDS.join(' / ')}）：`, 'relates',
+    )
+    if (!kind) { setLinkSrc(null); return }
+    if (!EDGE_KINDS.includes(kind as EdgeKind)) {
+      setErr(`无效的边类型：${kind}`); setLinkSrc(null); return
+    }
+    let label: string | undefined
+    if (kind === 'custom') {
+      label = window.prompt('自定义边的标签：') ?? undefined
+      if (!label) { setErr('custom 类型必须填标签'); setLinkSrc(null); return }
+    }
+    try {
+      await api.createEdge(linkSrc, nodeId, kind as EdgeKind, label)
+      if (active) await loadEdges(active.id)
+    } catch (e) { setErr((e as Error).message) }
+    finally { setLinkSrc(null) }
+  }
+
+  async function deleteEdge(id: string) {
+    if (!confirm('确定删除这条边？')) return
+    try {
+      await api.deleteEdge(id)
+      if (active) await loadEdges(active.id)
+    } catch (e) { setErr((e as Error).message) }
   }
 
   async function createLake() {
@@ -120,6 +171,19 @@ export function Home({ onLogout }: Props) {
       if (active) await loadNodes(active.id)
     } catch (e) { setErr((e as Error).message) }
   }
+
+  // O(E) 构建节点出入度；避免在 node.map 内每次 O(E) filter。
+  const { outDeg, inDeg, nodeContentById } = useMemo(() => {
+    const outDeg = new Map<string, number>()
+    const inDeg = new Map<string, number>()
+    for (const e of edges) {
+      outDeg.set(e.src_node_id, (outDeg.get(e.src_node_id) ?? 0) + 1)
+      inDeg.set(e.dst_node_id, (inDeg.get(e.dst_node_id) ?? 0) + 1)
+    }
+    const nodeContentById = new Map<string, string>()
+    for (const n of nodes) nodeContentById.set(n.id, n.content)
+    return { outDeg, inDeg, nodeContentById }
+  }, [edges, nodes])
 
   return (
     <div style={layout}>
@@ -204,26 +268,70 @@ export function Home({ onLogout }: Props) {
 
             <section style={card}>
               <strong style={{ letterSpacing: 2, fontSize: 13 }}>湖中节点 ({nodes.length})</strong>
+              {linkSrc && (
+                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6, color: '#9ec5ee' }}>
+                  连线模式：已选起点 {linkSrc.slice(0, 8)}…，点击另一节点完成。再次点同一节点取消。
+                </div>
+              )}
               {nodes.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>此处风平浪静</div>}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-                {nodes.map(n => (
-                  <div key={n.id} style={{ ...nodeCard, opacity: n.state === 'VAPOR' ? 0.4 : 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ ...statePill, background: stateColor(n.state) }}>{n.state}</span>
+                {nodes.map(n => {
+                  const out = outDeg.get(n.id) ?? 0
+                  const inc = inDeg.get(n.id) ?? 0
+                  const isLinkSrc = linkSrc === n.id
+                  return (
+                    <div key={n.id} style={{
+                      ...nodeCard,
+                      opacity: n.state === 'VAPOR' ? 0.4 : 1,
+                      boxShadow: isLinkSrc ? '0 0 0 2px #9ec5ee' : undefined,
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ ...statePill, background: stateColor(n.state) }}>{n.state}</span>
+                        <span style={{ fontSize: 10, opacity: 0.6 }}>
+                          →{out} ←{inc}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5 }}>{n.content}</div>
+                      <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {n.state === 'MIST' && (
+                          <button onClick={() => condense(n.id)} style={miniBtn}>凝露 ↓</button>
+                        )}
+                        {(n.state === 'DROP' || n.state === 'FROZEN') && (
+                          <button onClick={() => evaporate(n.id)} style={miniBtn}>蒸发 ↑</button>
+                        )}
+                        <button onClick={() => handleNodeClickForLink(n.id)} style={miniBtn}
+                          title={isLinkSrc ? '取消连线' : '连线（先选起点再选终点）'}>
+                          {isLinkSrc ? '✕' : '🔗'}
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5 }}>{n.content}</div>
-                    <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-                      {n.state === 'MIST' && (
-                        <button onClick={() => condense(n.id)} style={miniBtn}>凝露 ↓</button>
-                      )}
-                      {(n.state === 'DROP' || n.state === 'FROZEN') && (
-                        <button onClick={() => evaporate(n.id)} style={miniBtn}>蒸发 ↑</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </section>
+
+            {edges.length > 0 && (
+              <section style={card}>
+                <strong style={{ letterSpacing: 2, fontSize: 13 }}>边 ({edges.length})</strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                  {edges.map(e => {
+                    const src = nodeContentById.get(e.src_node_id)
+                    const dst = nodeContentById.get(e.dst_node_id)
+                    return (
+                      <div key={e.id} style={edgeRow}>
+                        <span style={{ ...edgeKindPill }}>{e.kind}{e.label ? `: ${e.label}` : ''}</span>
+                        <span style={{ flex: 1, fontSize: 12, opacity: 0.85 }}>
+                          {(src ?? e.src_node_id.slice(0, 8)).slice(0, 24)}
+                          {' → '}
+                          {(dst ?? e.dst_node_id.slice(0, 8)).slice(0, 24)}
+                        </span>
+                        <button onClick={() => deleteEdge(e.id)} style={miniBtn}>删</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
           </>
         )}
         {err && <div style={errBanner}>{err}</div>}
@@ -303,6 +411,16 @@ const miniBtn: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.15)',
   color: '#cde', padding: '3px 10px', borderRadius: 3,
   fontSize: 11, cursor: 'pointer',
+}
+const edgeRow: React.CSSProperties = {
+  display: 'flex', gap: 8, alignItems: 'center',
+  padding: '4px 8px', background: 'rgba(255,255,255,0.03)',
+  borderRadius: 4, border: '1px solid rgba(255,255,255,0.06)',
+}
+const edgeKindPill: React.CSSProperties = {
+  fontSize: 10, padding: '2px 8px', borderRadius: 10,
+  background: 'rgba(158,197,238,0.18)', color: '#9ec5ee',
+  letterSpacing: 1, minWidth: 60, textAlign: 'center',
 }
 const errBanner: React.CSSProperties = {
   position: 'fixed', bottom: 16, right: 16,
