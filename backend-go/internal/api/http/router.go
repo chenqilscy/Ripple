@@ -15,6 +15,7 @@ type Deps struct {
 	Auth        *service.AuthService
 	Lakes       *service.LakeService
 	Nodes       *service.NodeService
+	WS          *WSHandlers
 	CORSOrigins []string
 }
 
@@ -63,6 +64,10 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/nodes/{id}", nodeH.Get)
 			r.Post("/nodes/{id}/evaporate", nodeH.Evaporate)
 			r.Post("/nodes/{id}/restore", nodeH.Restore)
+
+			if d.WS != nil {
+				r.Get("/lakes/{id}/ws", d.WS.LakeWS)
+			}
 		})
 	})
 

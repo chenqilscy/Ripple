@@ -4,25 +4,39 @@
 // service(auth) -> api/http -> http.Server。
 //
 // 优雅关停：捕获 SIGINT/SIGTERM，先关 HTTP 再关数据库连接。
+//
+// 命令行 flag：
+//   --healthcheck : 仅探测 http://127.0.0.1:$HTTP_ADDR/healthz，
+//                   返回 0 表示健康，1 表示异常。供 Dockerfile HEALTHCHECK 使用。
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	httpapi "github.com/chenqilscy/ripple/backend-go/internal/api/http"
 	"github.com/chenqilscy/ripple/backend-go/internal/config"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
+	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 )
 
 func main() {
+	healthcheck := flag.Bool("healthcheck", false, "仅 HTTP GET /healthz，0=ok 1=fail")
+	flag.Parse()
+	if *healthcheck {
+		os.Exit(runHealthCheck())
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		panic(err)
@@ -63,10 +77,20 @@ func main() {
 	lakeSvc := service.NewLakeService(lakes, memberships)
 	nodeSvc := service.NewNodeService(nodes, memberships, lakes)
 
+	broker := realtime.NewMemoryBroker(128)
+	defer func() { _ = broker.Close() }()
+
+	wsH := &httpapi.WSHandlers{
+		Lakes:   lakeSvc,
+		Broker:  broker,
+		Origins: cfg.CORSOriginList(),
+	}
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Auth:        authSvc,
 		Lakes:       lakeSvc,
 		Nodes:       nodeSvc,
+		WS:          wsH,
 		CORSOrigins: cfg.CORSOriginList(),
 	})
 
@@ -90,4 +114,30 @@ func main() {
 		logger.Fatal().Err(err).Msg("http server error")
 	}
 	logger.Info().Msg("ripple-go stopped")
+}
+
+// runHealthCheck 探测本机 /healthz；3s 超时；非 200 返 1。
+func runHealthCheck() int {
+	addr := os.Getenv("RIPPLE_HTTP_ADDR")
+	if addr == "" {
+		addr = ":8000"
+	}
+	host := "127.0.0.1"
+	if !strings.HasPrefix(addr, ":") {
+		host = ""
+	}
+	url := fmt.Sprintf("http://%s%s/healthz", host, addr)
+
+	cli := &http.Client{Timeout: 3 * time.Second}
+	resp, err := cli.Get(url) //nolint:noctx // healthcheck 临时进程
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck failed:", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintln(os.Stderr, "healthcheck status:", resp.StatusCode)
+		return 1
+	}
+	return 0
 }
