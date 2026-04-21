@@ -70,15 +70,24 @@ func main() {
 	jwt := platform.NewJWTSigner(cfg.JWTSecret, cfg.JWTExpiresIn)
 	users := store.NewUserRepository(pg)
 	memberships := store.NewMembershipRepository(pg)
+	outbox := store.NewOutboxRepository(pg)
+	txRunner := store.NewTxRunner(pg)
 	lakes := store.NewLakeRepository(neo, cfg.Neo4jDatabase)
 	nodes := store.NewNodeRepository(neo, cfg.Neo4jDatabase)
 
 	authSvc := service.NewAuthService(users, jwt)
-	lakeSvc := service.NewLakeService(lakes, memberships)
-	nodeSvc := service.NewNodeService(nodes, memberships, lakes)
+	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
 
 	broker := realtime.NewMemoryBroker(128)
 	defer func() { _ = broker.Close() }()
+
+	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
+
+	// Outbox dispatcher 在单独 goroutine 中运行
+	dispatcher := service.NewOutboxDispatcher(outbox, lakes, logger)
+	dispatcherCtx, dispatcherCancel := context.WithCancel(context.Background())
+	defer dispatcherCancel()
+	go dispatcher.Run(dispatcherCtx)
 
 	wsH := &httpapi.WSHandlers{
 		Lakes:   lakeSvc,

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,21 +11,35 @@ import (
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
-// LakeService 湖泊用例。
+// OutboxEventLakeCreated 事件类型常量。
+const OutboxEventLakeCreated = "LakeCreated"
+
+// LakeService 湖泊用例（saga 版本）。
 //
-// 当前实现：service 层串行写 PG(membership) + Neo4j(lake)。
-// TODO：切换为 Outbox saga（在 PG 事务内写 outbox + membership，
-//       由 dispatcher 异步消费写 Neo4j）。审查报告 L2-06。
+// Create 在 PG 单事务内：
+//  1. upsert OWNER membership
+//  2. enqueue outbox(LakeCreated payload=domain.Lake)
+//
+// 由 OutboxDispatcher 异步消费 outbox，把 Lake 写到 Neo4j。
+// Create 立即返回；Neo4j 侧最终一致（通常 < 2s 延迟）。
 type LakeService struct {
 	lakes       store.LakeRepository
 	memberships store.MembershipRepository
+	outbox      store.OutboxRepository
+	txRunner    store.TxRunner
 }
 
 // NewLakeService 装配。
-func NewLakeService(lakes store.LakeRepository, memberships store.MembershipRepository) *LakeService {
-	return &LakeService{lakes: lakes, memberships: memberships}
+func NewLakeService(
+	lakes store.LakeRepository,
+	memberships store.MembershipRepository,
+	outbox store.OutboxRepository,
+	txRunner store.TxRunner,
+) *LakeService {
+	return &LakeService{lakes: lakes, memberships: memberships, outbox: outbox, txRunner: txRunner}
 }
 
 // CreateLakeInput 创建湖入参。
@@ -34,8 +49,7 @@ type CreateLakeInput struct {
 	IsPublic    bool
 }
 
-// Create 创建湖：先 Neo4j 落 Lake，再 PG 写 OWNER 成员。
-// 任一步失败返回错误（暂不补偿，等 Outbox 模式上线后修复）。
+// Create 创建湖（saga）。
 func (s *LakeService) Create(ctx context.Context, owner *domain.User, in CreateLakeInput) (*domain.Lake, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -51,9 +65,6 @@ func (s *LakeService) Create(ctx context.Context, owner *domain.User, in CreateL
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := s.lakes.Create(ctx, l); err != nil {
-		return nil, err
-	}
 	mem := &domain.LakeMembership{
 		UserID:    owner.ID,
 		LakeID:    l.ID,
@@ -61,14 +72,25 @@ func (s *LakeService) Create(ctx context.Context, owner *domain.User, in CreateL
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if err := s.memberships.Upsert(ctx, mem); err != nil {
-		// TODO Outbox：此处 Neo4j 已写但 PG 失败，状态不一致
-		return nil, fmt.Errorf("lake created but membership write failed: %w", err)
+	payload, err := json.Marshal(l)
+	if err != nil {
+		return nil, fmt.Errorf("marshal lake: %w", err)
+	}
+	err = s.txRunner.RunInTx(ctx, func(tx pgx.Tx) error {
+		if err := s.memberships.UpsertInTx(ctx, tx, mem); err != nil {
+			return err
+		}
+		return s.outbox.EnqueueInTx(ctx, tx, OutboxEventLakeCreated, payload)
+	})
+	if err != nil {
+		return nil, err
 	}
 	return l, nil
 }
 
 // Get 读取湖。私有湖必须有成员关系才允许访问（审查 L4-02）。
+// 注意：Neo4j 写入最终一致；若 dispatcher 尚未处理，会返回 ErrNotFound，
+// 调用方可短暂重试（通常 < 2s 延迟）。
 func (s *LakeService) Get(ctx context.Context, actor *domain.User, lakeID string) (*domain.Lake, domain.Role, error) {
 	l, err := s.lakes.GetByID(ctx, lakeID)
 	if err != nil {
@@ -79,7 +101,6 @@ func (s *LakeService) Get(ctx context.Context, actor *domain.User, lakeID string
 		if !errors.Is(err, domain.ErrNotFound) {
 			return nil, "", err
 		}
-		// 不是成员
 		if !l.IsPublic {
 			return nil, "", domain.ErrPermissionDenied
 		}

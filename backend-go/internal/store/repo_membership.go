@@ -14,6 +14,7 @@ import (
 // MembershipRepository 湖泊成员关系（存于 PG，权威源）。
 type MembershipRepository interface {
 	Upsert(ctx context.Context, m *domain.LakeMembership) error
+	UpsertInTx(ctx context.Context, tx pgx.Tx, m *domain.LakeMembership) error
 	GetRole(ctx context.Context, userID, lakeID string) (domain.Role, error)
 	ListLakesByUser(ctx context.Context, userID string) ([]string, error)
 	ListMembers(ctx context.Context, lakeID string) ([]domain.LakeMembership, error)
@@ -36,14 +37,25 @@ ON CONFLICT (user_id, lake_id) DO UPDATE
 func (r *membershipRepoPG) Upsert(ctx context.Context, m *domain.LakeMembership) error {
 	_, err := r.pool.Exec(ctx, sqlUpsertMembership,
 		m.UserID, m.LakeID, string(m.Role), m.CreatedAt, m.UpdatedAt)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" { // FK 缺失
-			return fmt.Errorf("%w: user not found", domain.ErrInvalidInput)
-		}
-		return fmt.Errorf("membership upsert: %w", err)
+	return mapMembershipErr(err)
+}
+
+// UpsertInTx 在调用方事务内执行 upsert（saga 用）。
+func (r *membershipRepoPG) UpsertInTx(ctx context.Context, tx pgx.Tx, m *domain.LakeMembership) error {
+	_, err := tx.Exec(ctx, sqlUpsertMembership,
+		m.UserID, m.LakeID, string(m.Role), m.CreatedAt, m.UpdatedAt)
+	return mapMembershipErr(err)
+}
+
+func mapMembershipErr(err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" { // FK 缺失
+		return fmt.Errorf("%w: user not found", domain.ErrInvalidInput)
+	}
+	return fmt.Errorf("membership upsert: %w", err)
 }
 
 const sqlSelectRole = `

@@ -8,26 +8,45 @@ import (
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
+	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 )
 
 // VaporTTL 节点蒸发后保留时长（30 天，对齐设计文档）。
 const VaporTTL = 30 * 24 * time.Hour
 
-// NodeService 节点 CRUD + 状态机。
+// NodeService 节点 CRUD + 状态机 + 广播。
 type NodeService struct {
 	nodes       store.NodeRepository
 	memberships store.MembershipRepository
 	lakes       store.LakeRepository
+	broker      realtime.Broker // 可空（单测场景）
 }
 
-// NewNodeService 装配。
+// NewNodeService 装配。broker 可为 nil，此时所有事件静默。
 func NewNodeService(
 	nodes store.NodeRepository,
 	memberships store.MembershipRepository,
 	lakes store.LakeRepository,
+	broker realtime.Broker,
 ) *NodeService {
-	return &NodeService{nodes: nodes, memberships: memberships, lakes: lakes}
+	return &NodeService{nodes: nodes, memberships: memberships, lakes: lakes, broker: broker}
+}
+
+// publish 非阻塞广播；broker 为 nil 时跳过。
+func (s *NodeService) publish(ctx context.Context, lakeID, eventType string, n *domain.Node) {
+	if s.broker == nil || lakeID == "" {
+		return
+	}
+	_ = s.broker.Publish(ctx, realtime.LakeTopic(lakeID), realtime.Message{
+		Type: eventType,
+		Payload: map[string]any{
+			"node_id":  n.ID,
+			"lake_id":  n.LakeID,
+			"state":    string(n.State),
+			"owner_id": n.OwnerID,
+		},
+	})
 }
 
 // CreateNodeInput 创建节点入参。
@@ -67,6 +86,7 @@ func (s *NodeService) Create(ctx context.Context, actor *domain.User, in CreateN
 	if err := s.nodes.Create(ctx, n); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, n.LakeID, "node.created", n)
 	return n, nil
 }
 
@@ -109,6 +129,7 @@ func (s *NodeService) Evaporate(ctx context.Context, actor *domain.User, nodeID 
 	if err := s.nodes.UpdateState(ctx, n); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, n.LakeID, "node.evaporated", n)
 	return n, nil
 }
 
@@ -127,6 +148,7 @@ func (s *NodeService) Restore(ctx context.Context, actor *domain.User, nodeID st
 	if err := s.nodes.UpdateState(ctx, n); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, n.LakeID, "node.restored", n)
 	return n, nil
 }
 
