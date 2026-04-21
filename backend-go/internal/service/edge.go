@@ -134,6 +134,11 @@ func (s *EdgeService) Delete(ctx context.Context, actor *domain.User, edgeID str
 		}
 	}
 	if err := s.edges.SoftDelete(ctx, edgeID, time.Now().UTC()); err != nil {
+		// 并发场景：另一请求已 SoftDelete，repo 返回 ErrNotFound（WHERE deleted_at IS NULL 守护）
+		// 视为成功（幂等）。
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
 		return err
 	}
 	s.publishDeleted(ctx, e)

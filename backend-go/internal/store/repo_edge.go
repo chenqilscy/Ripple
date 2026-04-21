@@ -39,6 +39,9 @@ func NewEdgeRepository(driver neo4j.DriverWithContext, dbName string) EdgeReposi
 const cypherCreateEdge = `
 MATCH (s:Node {id: $src}), (d:Node {id: $dst})
 WHERE s.lake_id = $lake_id AND d.lake_id = $lake_id
+OPTIONAL MATCH (s)-[dup:EDGE {kind: $kind}]->(d) WHERE dup.deleted_at IS NULL
+WITH s, d, dup
+WHERE dup IS NULL
 CREATE (s)-[e:EDGE {
   id: $id, lake_id: $lake_id,
   kind: $kind, label: $label, owner_id: $owner_id,
@@ -65,8 +68,12 @@ func (r *edgeRepoNeo) Create(ctx context.Context, e *domain.Edge) error {
 			return nil, err
 		}
 		if !res.Next(ctx) {
-			// 节点不存在 / 不同湖 → MATCH 失败
-			return nil, fmt.Errorf("%w: src/dst node not found or not in same lake", domain.ErrInvalidInput)
+			// 三种可能：
+			// 1. src/dst 节点不存在
+			// 2. 不同湖
+			// 3. 已存在同 kind 的 alive 边（TOCTOU 兜底）
+			// 上层 service 已先做精确报错；这里返回通用错误。
+			return nil, fmt.Errorf("%w: src/dst not found, cross-lake, or duplicate edge", domain.ErrInvalidInput)
 		}
 		return nil, nil
 	})

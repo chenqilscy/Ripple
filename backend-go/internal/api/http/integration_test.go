@@ -78,12 +78,14 @@ func setup(t *testing.T) *integrationFixture {
 	txRunner := store.NewTxRunner(pg)
 	lakes := store.NewLakeRepository(neo, cfg.Neo4jDatabase)
 	nodes := store.NewNodeRepository(neo, cfg.Neo4jDatabase)
+	edges := store.NewEdgeRepository(neo, cfg.Neo4jDatabase)
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
 	broker := realtime.NewMemoryBroker(64)
 	t.Cleanup(func() { _ = broker.Close() })
 	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
+	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
 
 	// Outbox dispatcher：把 PG outbox 事件应用到 Neo4j（建湖→建 :Lake 节点）。
 	// 集成测必须启用，否则 ListMine→GetLake 取不到刚建的湖。
@@ -97,6 +99,7 @@ func setup(t *testing.T) *integrationFixture {
 		Auth:        authSvc,
 		Lakes:       lakeSvc,
 		Nodes:       nodeSvc,
+		Edges:       edgeSvc,
 		CORSOrigins: []string{"*"},
 	})
 
@@ -300,6 +303,123 @@ func TestIntegrationFullFlow(t *testing.T) {
 	}, &errBody)
 	if code != http.StatusBadRequest && code != http.StatusConflict && code != http.StatusUnprocessableEntity {
 		t.Fatalf("condense on DROP: want 4xx (cannot condense non-MIST), got %d", code)
+	}
+}
+
+// TestIntegrationEdgeFlow 走通边的 CRUD：建两节点 → 建边 → 列表 → 删边 → 列表为空。
+func TestIntegrationEdgeFlow(t *testing.T) {
+	f := setup(t)
+
+	// 注册 + 登录
+	email := fmt.Sprintf("edge+%s@ripple.local", uuid.NewString()[:8])
+	password := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": email, "password": password, "display_name": "edge",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("register: %d", code)
+	}
+	var login struct {
+		AccessToken string `json:"access_token"`
+	}
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": email, "password": password,
+	}, &login); code != http.StatusOK {
+		t.Fatalf("login: %d", code)
+	}
+	f.tok = login.AccessToken
+
+	// 建湖
+	var lake struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+		"name":      "edge-lake-" + uuid.NewString()[:6],
+		"is_public": false,
+	}, &lake); code != http.StatusCreated {
+		t.Fatalf("create lake: %d", code)
+	}
+
+	// 等 outbox 把 lake 投到 Neo4j
+	for i := 0; i < 30; i++ {
+		var l struct{ ID string `json:"id"` }
+		if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID, nil, &l); code == http.StatusOK && l.ID == lake.ID {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// 建两个节点
+	mkNode := func(content string) string {
+		var n struct{ ID string `json:"id"` }
+		if code := f.do(t, "POST", "/api/v1/nodes", map[string]any{
+			"lake_id": lake.ID, "content": content, "type": "TEXT",
+		}, &n); code != http.StatusCreated {
+			t.Fatalf("create node %s: %d", content, code)
+		}
+		return n.ID
+	}
+	src := mkNode("源节点")
+	dst := mkNode("目标节点")
+
+	// 建边
+	var edge struct {
+		ID        string `json:"id"`
+		LakeID    string `json:"lake_id"`
+		SrcNodeID string `json:"src_node_id"`
+		DstNodeID string `json:"dst_node_id"`
+		Kind      string `json:"kind"`
+	}
+	if code := f.do(t, "POST", "/api/v1/edges", map[string]any{
+		"src_node_id": src, "dst_node_id": dst, "kind": "relates",
+	}, &edge); code != http.StatusCreated {
+		t.Fatalf("create edge: %d", code)
+	}
+	if edge.SrcNodeID != src || edge.DstNodeID != dst || edge.LakeID != lake.ID {
+		t.Fatalf("edge fields wrong: %+v", edge)
+	}
+
+	// 列表应有 1 条
+	var listResp struct {
+		Edges []struct {
+			ID string `json:"id"`
+		} `json:"edges"`
+	}
+	if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID+"/edges", nil, &listResp); code != http.StatusOK {
+		t.Fatalf("list edges: %d", code)
+	}
+	if len(listResp.Edges) != 1 || listResp.Edges[0].ID != edge.ID {
+		t.Fatalf("list want 1, got %+v", listResp)
+	}
+
+	// 重复创建应 409
+	if code := f.do(t, "POST", "/api/v1/edges", map[string]any{
+		"src_node_id": src, "dst_node_id": dst, "kind": "relates",
+	}, nil); code != http.StatusConflict {
+		t.Fatalf("duplicate create: want 409, got %d", code)
+	}
+
+	// 自环应 400
+	if code := f.do(t, "POST", "/api/v1/edges", map[string]any{
+		"src_node_id": src, "dst_node_id": src, "kind": "relates",
+	}, nil); code != http.StatusBadRequest {
+		t.Fatalf("self loop: want 400, got %d", code)
+	}
+
+	// 删边
+	if code := f.do(t, "DELETE", "/api/v1/edges/"+edge.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete edge: want 204, got %d", code)
+	}
+
+	// 列表应空
+	listResp.Edges = nil
+	if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID+"/edges", nil, &listResp); code != http.StatusOK {
+		t.Fatalf("list after delete: %d", code)
+	}
+	if len(listResp.Edges) != 0 {
+		t.Fatalf("after delete want empty, got %d", len(listResp.Edges))
+	}
+
+	// 再删一次应幂等成功
+	if code := f.do(t, "DELETE", "/api/v1/edges/"+edge.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("idempotent delete: want 204, got %d", code)
 	}
 }
 

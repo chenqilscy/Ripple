@@ -277,6 +277,27 @@ func TestEdge_Delete_Idempotent(t *testing.T) {
 	}
 }
 
+// TestEdge_Delete_ConcurrentRaceIsIdempotent 模拟两请求并发软删同一边。
+// 修复前：repo.SoftDelete 第二次返回 ErrNotFound，service 透传给客户端→404，违反幂等。
+// 修复后：service 把 ErrNotFound 视为"另一并发已删"，吞掉返回 nil。
+func TestEdge_Delete_ConcurrentRaceIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, nodes, edges := newEdgeSvc(t)
+	actor, src, dst := setupEdgeFixture(t, svc, lakes, memberships, nodes)
+	e, _ := svc.Create(ctx, actor, CreateEdgeInput{
+		SrcNodeID: src, DstNodeID: dst, Kind: domain.EdgeKindRelates,
+	})
+	// 直接调 repo.SoftDelete 模拟"另一请求已删完"
+	if err := edges.SoftDelete(ctx, e.ID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	// 当前 service.Delete 应幂等：service 先 Get 拿到带 deleted_at 的边 → 早返 nil
+	// 即便不早返（旧路径），repo.SoftDelete 二次调用会返回 ErrNotFound，service 也应吞掉。
+	if err := svc.Delete(ctx, actor, e.ID); err != nil {
+		t.Fatalf("concurrent delete should be idempotent, got %v", err)
+	}
+}
+
 func TestEdge_List_RequiresReadable(t *testing.T) {
 	ctx := context.Background()
 	svc, lakes, _, _, _ := newEdgeSvc(t)
