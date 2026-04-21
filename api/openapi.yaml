@@ -1,0 +1,437 @@
+openapi: 3.1.0
+info:
+  title: Ripple API
+  version: 0.2.0
+  description: |
+    青萍 (Ripple) 水文生态创意系统 · 后端 API 契约
+    
+    **契约原则**：
+    - 本文件是 Python / Go 两个实现的**单一真相源**
+    - 任何 API 变更必须先改此文件再改实现
+    - 破坏性变更必须经接口设计师评审 + 版本路径升级 (/api/v2)
+    
+    **约束参考**：`docs/system-design/系统约束规约.md`
+  contact:
+    name: Ripple 团队
+  license:
+    name: TBD
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: 本地开发
+  - url: https://api.ripple.example.com/api/v1
+    description: 生产（占位）
+
+tags:
+  - name: auth
+    description: 认证（注册/登录/刷新）
+  - name: lake
+    description: 湖泊（容器）CRUD
+  - name: node
+    description: 节点（涟漪/浮萍）CRUD + 状态机
+  - name: cloud
+    description: 云霓（迷雾草稿）与凝露
+  - name: share
+    description: 湖泊分享链接
+  - name: iceberg
+    description: 冰山（版本快照）· M2
+  - name: meta
+    description: 健康检查与元信息
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: 注册新用户
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: 注册成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '409':
+          description: 邮箱已存在
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401':
+          description: 凭证错误
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /lakes:
+    get:
+      tags: [lake]
+      summary: 列出我加入的湖泊
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Lake' }
+    post:
+      tags: [lake]
+      summary: 创建湖泊
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LakeCreate' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Lake' }
+
+  /nodes:
+    post:
+      tags: [node]
+      summary: 创建节点（投下一颗石子 → DROP）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NodeCreate' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Node' }
+
+  /nodes/by-lake/{lake_id}:
+    get:
+      tags: [node]
+      summary: 列出湖内节点（权限：≥ OBSERVER）
+      parameters:
+        - in: path
+          name: lake_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Node' }
+
+  /nodes/{node_id}:
+    get:
+      tags: [node]
+      summary: 获取节点详情
+      parameters:
+        - in: path
+          name: node_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Node' }
+        '404':
+          description: 不存在
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /nodes/{node_id}/evaporate:
+    post:
+      tags: [node]
+      summary: 蒸发（软删，→ VAPOR 30d TTL）
+      description: |
+        权限：节点创建者 OR 湖泊 OWNER。
+        状态前置：DROP 或 FROZEN。
+      parameters:
+        - in: path
+          name: node_id
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: 已蒸发
+        '403':
+          description: 无权
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /nodes/{node_id}/restore:
+    post:
+      tags: [node]
+      summary: 凝露还原（VAPOR → DROP）
+      parameters:
+        - in: path
+          name: node_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 已还原
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Node' }
+
+  /nodes/mist-zone/mine:
+    get:
+      tags: [node]
+      summary: 我的迷雾区（VAPOR 未过期节点）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Node' }
+
+  /cloud/mist:
+    post:
+      tags: [cloud]
+      summary: 提交一条迷雾草稿（MIST 7d TTL）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MistCreate' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mist' }
+
+  /cloud/condense:
+    post:
+      tags: [cloud]
+      summary: 凝露：批量把 MIST 节点迁入目标湖（MIST → DROP）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CondenseRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CondenseResponse' }
+
+  /health:
+    get:
+      tags: [meta]
+      summary: 健康检查
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: ripple-backend }
+                  version: { type: string }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          description: 人类可读错误信息（中文）
+        code:
+          type: string
+          description: 机器可读错误码
+
+    RegisterRequest:
+      type: object
+      required: [email, password, display_name]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        display_name: { type: string, minLength: 1, maxLength: 64 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, user_id, email]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, enum: [bearer] }
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+
+    LakeCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 64 }
+        description: { type: string, nullable: true }
+        is_public: { type: boolean, default: false }
+
+    Lake:
+      type: object
+      required: [id, name, owner_id, role, is_public]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        is_public: { type: boolean }
+        owner_id: { type: string, format: uuid }
+        role:
+          type: string
+          enum: [OWNER, NAVIGATOR, PASSENGER, OBSERVER]
+
+    NodeState:
+      type: string
+      enum: [MIST, DROP, FROZEN, VAPOR, ERASED, GHOST]
+
+    NodeCreate:
+      type: object
+      required: [lake_id, content]
+      properties:
+        lake_id: { type: string }
+        content: { type: string, minLength: 1, maxLength: 10000 }
+        type: { type: string, default: TEXT }
+        position:
+          type: object
+          nullable: true
+          properties:
+            x: { type: number }
+            y: { type: number }
+            z: { type: number }
+
+    Node:
+      type: object
+      required: [id, content, type, state]
+      properties:
+        id: { type: string }
+        lake_id: { type: string, nullable: true }
+        content: { type: string }
+        type: { type: string }
+        state: { $ref: '#/components/schemas/NodeState' }
+        position:
+          type: object
+          nullable: true
+          properties:
+            x: { type: number }
+            y: { type: number }
+            z: { type: number }
+        created_at: { type: string, format: date-time }
+        deleted_at: { type: string, format: date-time, nullable: true }
+        ttl_at: { type: string, format: date-time, nullable: true }
+
+    MistCreate:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1, maxLength: 4000 }
+        source:
+          type: string
+          enum: [mobile, desktop-widget, web]
+          default: mobile
+
+    Mist:
+      type: object
+      required: [id, content, state, ttl_at]
+      properties:
+        id: { type: string }
+        content: { type: string }
+        state: { type: string, enum: [MIST] }
+        ttl_at: { type: string, format: date-time }
+
+    CondenseRequest:
+      type: object
+      required: [mist_ids, target_lake_id]
+      properties:
+        mist_ids:
+          type: array
+          items: { type: string }
+          minItems: 1
+          maxItems: 200
+        target_lake_id: { type: string }
+
+    CondenseResponse:
+      type: object
+      required: [condensed]
+      properties:
+        condensed: { type: integer }
+
+# WebSocket 契约（OpenAPI 3.1 不原生支持 WS，用 x- 扩展）
+x-websocket:
+  '/ws/lakes/{lake_id}':
+    description: 湖泊实时频道
+    auth: query ?token=JWT（M2 改握手子协议）
+    messages:
+      client_to_server:
+        - type: subscribe
+          payload: { lake_id: string }
+        - type: cursor
+          payload: { x: number, y: number }
+      server_to_client:
+        - type: node.created
+          payload: { node: Node }
+        - type: node.evaporated
+          payload: { id: string }
+        - type: node.restored
+          payload: { node: Node }
+        - type: edges.proposed
+          payload:
+            source: string
+            edges:
+              - { target: string, strength: number }
+
+# 版本策略
+x-versioning:
+  current: v1
+  support_window: 12 months
+  breaking_change_policy: 必须升级到 /api/v2 新路径，v1 保留 12 个月
