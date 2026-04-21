@@ -96,7 +96,10 @@ func main() {
 
 	// AI Weaver worker pool（造云）
 	zhipu := llm.NewZhipuClient(cfg.ZhipuAPIKey, cfg.ZhipuModel, "")
-	weaver := service.NewAIWeaver(cloudTasks, nodes, zhipu, broker, logger, 3)
+	llmRecorder := store.NewPGCallRecorder(pg, 512)
+	defer llmRecorder.Close()
+	llmRouter := llm.NewDefaultRouter([]llm.Provider{zhipu.AsProvider()}, llm.Policy{}, llmRecorder)
+	weaver := service.NewAIWeaver(cloudTasks, nodes, llmRouter, broker, logger, 3)
 	weaverCtx, weaverCancel := context.WithCancel(context.Background())
 	defer weaverCancel()
 	go weaver.Run(weaverCtx)

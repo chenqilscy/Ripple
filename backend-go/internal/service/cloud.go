@@ -115,7 +115,7 @@ func (s *CloudService) ListMyTasks(ctx context.Context, actor *domain.User, limi
 type AIWeaver struct {
 	tasks   store.CloudTaskRepository
 	nodes   store.NodeRepository
-	llm     llm.Client
+	router  llm.Router
 	broker  realtime.Broker // 可空
 	log     zerolog.Logger
 	workers int
@@ -123,10 +123,11 @@ type AIWeaver struct {
 }
 
 // NewAIWeaver 装配。workers <= 0 时默认 3。
+// router 是 llm.Router（业务侧统一入口，背后可挂多个 Provider）。
 func NewAIWeaver(
 	tasks store.CloudTaskRepository,
 	nodes store.NodeRepository,
-	client llm.Client,
+	router llm.Router,
 	broker realtime.Broker,
 	log zerolog.Logger,
 	workers int,
@@ -137,7 +138,7 @@ func NewAIWeaver(
 	return &AIWeaver{
 		tasks:   tasks,
 		nodes:   nodes,
-		llm:     client,
+		router:  router,
 		broker:  broker,
 		log:     log,
 		workers: workers,
@@ -188,15 +189,24 @@ func (w *AIWeaver) process(ctx context.Context, t *domain.CloudTask, idx int) {
 
 	llmCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	candidates, err := w.llm.Generate(llmCtx, t.Prompt, t.N)
+	cands, err := w.router.Generate(llmCtx, llm.GenerateRequest{
+		Prompt:   t.Prompt,
+		N:        t.N,
+		Modality: llm.ModalityText,
+		Hints:    llm.TextHints{Temperature: 0.9},
+	})
 	if err != nil {
 		w.log.Error().Err(err).Str("task", t.ID).Msg("llm failed")
 		_ = w.tasks.MarkFailed(ctx, t.ID, err.Error())
 		return
 	}
-	if len(candidates) == 0 {
+	if len(cands) == 0 {
 		_ = w.tasks.MarkFailed(ctx, t.ID, "llm returned empty")
 		return
+	}
+	candidates := make([]string, 0, len(cands))
+	for _, c := range cands {
+		candidates = append(candidates, c.Text)
 	}
 	now := time.Now().UTC()
 	mistTTL := now.Add(7 * 24 * time.Hour)

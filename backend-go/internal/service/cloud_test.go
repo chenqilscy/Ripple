@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/rs/zerolog"
 )
 
@@ -89,20 +90,31 @@ func (r *memCloudTaskRepo) MarkFailed(_ context.Context, id string, reason strin
 }
 func (r *memCloudTaskRepo) RecoverRunning(_ context.Context) (int64, error) { return 0, nil }
 
-// fakeLLM · llm.Client 桩
-type fakeLLM struct {
+// fakeProvider · llm.Provider 桩
+type fakeProvider struct {
 	candidates []string
 	err        error
 }
 
-func (f *fakeLLM) Generate(_ context.Context, _ string, n int) ([]string, error) {
+func (f *fakeProvider) Name() string                { return "fake" }
+func (f *fakeProvider) Supports(_ llm.Modality) bool { return true }
+func (f *fakeProvider) Generate(_ context.Context, req llm.GenerateRequest) ([]llm.Candidate, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
+	n := req.N
 	if n > len(f.candidates) {
-		return f.candidates, nil
+		n = len(f.candidates)
 	}
-	return f.candidates[:n], nil
+	out := make([]llm.Candidate, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, llm.Candidate{Modality: llm.ModalityText, Text: f.candidates[i]})
+	}
+	return out, nil
+}
+
+func newFakeRouter(cands []string, err error) llm.Router {
+	return llm.NewDefaultRouter([]llm.Provider{&fakeProvider{candidates: cands, err: err}}, llm.Policy{}, nil)
 }
 
 // ---------- Tests ----------
@@ -166,7 +178,7 @@ func TestAIWeaver_Process_CreatesMistNodes(t *testing.T) {
 	}
 	tasks.queue = []string{"task-1"}
 
-	weaver := NewAIWeaver(tasks, nodes, &fakeLLM{candidates: []string{"a", "b", "c"}}, nil, zerolog.Nop(), 1)
+	weaver := NewAIWeaver(tasks, nodes, newFakeRouter([]string{"a", "b", "c"}, nil), nil, zerolog.Nop(), 1)
 	go weaver.Run(ctx)
 
 	// 等任务被处理
@@ -211,7 +223,7 @@ func TestAIWeaver_Process_LLMFailureMarksFailed(t *testing.T) {
 	}
 	tasks.queue = []string{"task-2"}
 
-	weaver := NewAIWeaver(tasks, newMemNodeRepo(), &fakeLLM{err: errors.New("boom")}, nil, zerolog.Nop(), 1)
+	weaver := NewAIWeaver(tasks, newMemNodeRepo(), newFakeRouter(nil, errors.New("boom")), nil, zerolog.Nop(), 1)
 	go weaver.Run(ctx)
 
 	deadline := time.After(2 * time.Second)
