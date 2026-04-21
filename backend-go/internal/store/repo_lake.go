@@ -13,6 +13,9 @@ import (
 type LakeRepository interface {
 	Create(ctx context.Context, l *domain.Lake) error
 	GetByID(ctx context.Context, id string) (*domain.Lake, error)
+	// GetManyByIDs 批量查询，返回按输入顺序（缺失的 ID 跳过，不报错）。
+	// 用于 ListMine 等需要一次性取多个湖的场景，避免 N+1。
+	GetManyByIDs(ctx context.Context, ids []string) ([]domain.Lake, error)
 }
 
 type lakeRepoNeo struct {
@@ -88,6 +91,45 @@ func (r *lakeRepoNeo) GetByID(ctx context.Context, id string) (*domain.Lake, err
 		return nil, err
 	}
 	return out.(*domain.Lake), nil
+}
+
+const cypherGetManyLakes = `
+MATCH (l:Lake) WHERE l.id IN $ids
+RETURN l.id, l.name, l.description, l.is_public, l.owner_id, l.created_at, l.updated_at
+`
+
+// GetManyByIDs 单次 Cypher 查询。结果顺序由 Neo4j 决定；调用方若需固定顺序可自行排序。
+func (r *lakeRepoNeo) GetManyByIDs(ctx context.Context, ids []string) ([]domain.Lake, error) {
+	if len(ids) == 0 {
+		return []domain.Lake{}, nil
+	}
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	out, err := sess.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		rec, err := tx.Run(ctx, cypherGetManyLakes, map[string]any{"ids": ids})
+		if err != nil {
+			return nil, err
+		}
+		list := make([]domain.Lake, 0, len(ids))
+		for rec.Next(ctx) {
+			vals := rec.Record().Values
+			list = append(list, domain.Lake{
+				ID:          asString(vals[0]),
+				Name:        asString(vals[1]),
+				Description: asString(vals[2]),
+				IsPublic:    asBool(vals[3]),
+				OwnerID:     asString(vals[4]),
+				CreatedAt:   parseTime(asString(vals[5])),
+				UpdatedAt:   parseTime(asString(vals[6])),
+			})
+		}
+		return list, rec.Err()
+	})
+	if err != nil {
+		return nil, fmt.Errorf("lake get many: %w", err)
+	}
+	return out.([]domain.Lake), nil
 }
 
 func asString(v any) string {

@@ -29,6 +29,15 @@ func (r *memLakeRepo) GetByID(_ context.Context, id string) (*domain.Lake, error
 	}
 	return nil, domain.ErrNotFound
 }
+func (r *memLakeRepo) GetManyByIDs(_ context.Context, ids []string) ([]domain.Lake, error) {
+	out := make([]domain.Lake, 0, len(ids))
+	for _, id := range ids {
+		if l, ok := r.data[id]; ok {
+			out = append(out, *l)
+		}
+	}
+	return out, nil
+}
 
 type memMembershipRepo struct {
 	data map[string]map[string]*domain.LakeMembership // userID -> lakeID -> m
@@ -60,6 +69,15 @@ func (r *memMembershipRepo) ListLakesByUser(_ context.Context, userID string) ([
 	if u, ok := r.data[userID]; ok {
 		for lid := range u {
 			out = append(out, lid)
+		}
+	}
+	return out, nil
+}
+func (r *memMembershipRepo) ListLakesByUserWithRole(_ context.Context, userID string) ([]domain.LakeMembership, error) {
+	out := []domain.LakeMembership{}
+	if u, ok := r.data[userID]; ok {
+		for _, m := range u {
+			out = append(out, *m)
 		}
 	}
 	return out, nil

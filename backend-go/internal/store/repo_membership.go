@@ -17,6 +17,9 @@ type MembershipRepository interface {
 	UpsertInTx(ctx context.Context, tx pgx.Tx, m *domain.LakeMembership) error
 	GetRole(ctx context.Context, userID, lakeID string) (domain.Role, error)
 	ListLakesByUser(ctx context.Context, userID string) ([]string, error)
+	// ListLakesByUserWithRole 返回 user 加入的所有湖 + 角色，一次 SQL 完成；
+	// 用于 ListMine 等列表场景，避免"每个湖再查 role"的 N+1。
+	ListLakesByUserWithRole(ctx context.Context, userID string) ([]domain.LakeMembership, error)
 	ListMembers(ctx context.Context, lakeID string) ([]domain.LakeMembership, error)
 }
 
@@ -91,6 +94,31 @@ func (r *membershipRepoPG) ListLakesByUser(ctx context.Context, userID string) (
 			return nil, err
 		}
 		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+const sqlListLakesByUserWithRole = `
+SELECT user_id, lake_id, role, created_at, updated_at
+FROM lake_memberships WHERE user_id = $1 ORDER BY updated_at DESC
+`
+
+// ListLakesByUserWithRole 返回 user 加入的所有湖 + 角色（单 SQL）。
+func (r *membershipRepoPG) ListLakesByUserWithRole(ctx context.Context, userID string) ([]domain.LakeMembership, error) {
+	rows, err := r.pool.Query(ctx, sqlListLakesByUserWithRole, userID)
+	if err != nil {
+		return nil, fmt.Errorf("membership list with role: %w", err)
+	}
+	defer rows.Close()
+	out := make([]domain.LakeMembership, 0)
+	for rows.Next() {
+		var m domain.LakeMembership
+		var role string
+		if err := rows.Scan(&m.UserID, &m.LakeID, &role, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		m.Role = domain.Role(role)
+		out = append(out, m)
 	}
 	return out, rows.Err()
 }

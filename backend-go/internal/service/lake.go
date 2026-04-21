@@ -114,6 +114,48 @@ func (s *LakeService) ListMine(ctx context.Context, actor *domain.User) ([]strin
 	return s.memberships.ListLakesByUser(ctx, actor.ID)
 }
 
+// LakeWithRole 列表返回结构：湖 + 当前用户在其中的角色。
+type LakeWithRole struct {
+	Lake *domain.Lake
+	Role domain.Role
+}
+
+// ListMineFull 一次性拉取 user 的所有湖（含角色），避免 handler 端 N+1。
+//
+// 实现：
+//  1. 单 SQL 取 [(lake_id, role), ...]
+//  2. 单 Cypher 批量取 Lake 节点
+//  3. 按 lake_id zip 起来；membership 存在但 Lake 不存在（outbox 投影滞后）静默跳过
+func (s *LakeService) ListMineFull(ctx context.Context, actor *domain.User) ([]LakeWithRole, error) {
+	ms, err := s.memberships.ListLakesByUserWithRole(ctx, actor.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(ms) == 0 {
+		return []LakeWithRole{}, nil
+	}
+	ids := make([]string, 0, len(ms))
+	for _, m := range ms {
+		ids = append(ids, m.LakeID)
+	}
+	lakes, err := s.lakes.GetManyByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]*domain.Lake, len(lakes))
+	for i := range lakes {
+		byID[lakes[i].ID] = &lakes[i]
+	}
+	// 按 membership 顺序（updated_at desc）输出，跳过缺失的
+	out := make([]LakeWithRole, 0, len(ms))
+	for _, m := range ms {
+		if l, ok := byID[m.LakeID]; ok {
+			out = append(out, LakeWithRole{Lake: l, Role: m.Role})
+		}
+	}
+	return out, nil
+}
+
 // requireRole 取角色并校验权限层级。
 func (s *LakeService) requireRole(ctx context.Context, actor *domain.User, lakeID string, min domain.Role) (domain.Role, error) {
 	role, err := s.memberships.GetRole(ctx, actor.ID, lakeID)

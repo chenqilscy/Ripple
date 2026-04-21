@@ -67,21 +67,19 @@ func (h *LakeHandlers) Get(w http.ResponseWriter, r *http.Request) {
 // ListMine GET /api/v1/lakes
 func (h *LakeHandlers) ListMine(w http.ResponseWriter, r *http.Request) {
 	u, _ := CurrentUser(r.Context())
-	ids, err := h.Lakes.ListMine(r.Context(), u)
+	items, err := h.Lakes.ListMineFull(r.Context(), u)
 	if err != nil {
 		writeError(w, mapDomainError(err), err.Error())
 		return
 	}
-	out := make([]lakeResp, 0, len(ids))
-	for _, id := range ids {
-		l, role, err := h.Lakes.Get(r.Context(), u, id)
-		if err != nil {
-			continue // 容忍单个湖不可见（成员关系与湖节点短暂不一致）
-		}
+	out := make([]lakeResp, 0, len(items))
+	ids := make([]string, 0, len(items))
+	for _, it := range items {
 		out = append(out, lakeResp{
-			ID: l.ID, Name: l.Name, Description: l.Description,
-			IsPublic: l.IsPublic, OwnerID: l.OwnerID, Role: string(role),
+			ID: it.Lake.ID, Name: it.Lake.Name, Description: it.Lake.Description,
+			IsPublic: it.Lake.IsPublic, OwnerID: it.Lake.OwnerID, Role: string(it.Role),
 		})
+		ids = append(ids, it.Lake.ID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"lakes": out, "lake_ids": ids})
 }
