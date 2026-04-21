@@ -46,9 +46,39 @@ type Config struct {
 	JWTExpiresIn time.Duration `envconfig:"JWT_EXPIRES_IN" default:"24h"`
 
 	// LLM
+	// 多 provider 支持：zhipu / openai / deepseek / volc(豆包) / minimax / 任意 openai-compat。
+	// 留空则该 provider 不注册。
+	// 优先级 = LLM_PROVIDER_ORDER 字符串里的位置（如 "zhipu,deepseek,openai"），
+	// 留空则按代码内置默认顺序：zhipu → deepseek → openai → volc → minimax → openai-compat。
+	LLMProviderOrder string `envconfig:"LLM_PROVIDER_ORDER" default:""`
+	LLMFallback      bool   `envconfig:"LLM_FALLBACK" default:"true"`
+
+	// Zhipu
 	ZhipuAPIKey string `envconfig:"ZHIPU_API_KEY"`
 	ZhipuModel  string `envconfig:"ZHIPU_MODEL" default:"glm-4-flash"`
-	MiniMaxKey  string `envconfig:"MINIMAX_API_KEY"`
+
+	// OpenAI 官方
+	OpenAIAPIKey   string `envconfig:"OPENAI_API_KEY"`
+	OpenAIModel    string `envconfig:"OPENAI_MODEL" default:"gpt-4o-mini"`
+	OpenAIEndpoint string `envconfig:"OPENAI_ENDPOINT"` // 留空走默认
+
+	// DeepSeek
+	DeepSeekAPIKey string `envconfig:"DEEPSEEK_API_KEY"`
+	DeepSeekModel  string `envconfig:"DEEPSEEK_MODEL" default:"deepseek-chat"`
+
+	// 火山豆包
+	VolcAPIKey string `envconfig:"VOLC_API_KEY"`
+	VolcModel  string `envconfig:"VOLC_MODEL" default:"doubao-1-5-lite-32k-250115"`
+
+	// MiniMax
+	MiniMaxAPIKey string `envconfig:"MINIMAX_API_KEY"`
+	MiniMaxModel  string `envconfig:"MINIMAX_MODEL" default:"abab6.5s-chat"`
+
+	// 通用 OpenAI 兼容（如本地 Ollama / vLLM）。同时配 KEY+ENDPOINT+MODEL 才注册。
+	OpenAICompatKey      string `envconfig:"OPENAI_COMPAT_KEY"`
+	OpenAICompatModel    string `envconfig:"OPENAI_COMPAT_MODEL"`
+	OpenAICompatEndpoint string `envconfig:"OPENAI_COMPAT_ENDPOINT"`
+	OpenAICompatName     string `envconfig:"OPENAI_COMPAT_NAME" default:"openai-compat"`
 }
 
 // Load 从环境变量加载配置。

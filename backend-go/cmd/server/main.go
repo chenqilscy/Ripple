@@ -95,10 +95,30 @@ func main() {
 	go dispatcher.Run(dispatcherCtx)
 
 	// AI Weaver worker pool（造云）
-	zhipu := llm.NewZhipuClient(cfg.ZhipuAPIKey, cfg.ZhipuModel, "")
 	llmRecorder := store.NewPGCallRecorder(pg, 512)
 	defer llmRecorder.Close()
-	llmRouter := llm.NewDefaultRouter([]llm.Provider{zhipu.AsProvider()}, llm.Policy{}, llmRecorder)
+	providers := llm.BuildProviders(llm.ProviderConfig{
+		ZhipuKey: cfg.ZhipuAPIKey, ZhipuModel: cfg.ZhipuModel,
+		OpenAIKey: cfg.OpenAIAPIKey, OpenAIModel: cfg.OpenAIModel, OpenAIEndpoint: cfg.OpenAIEndpoint,
+		DeepSeekKey: cfg.DeepSeekAPIKey, DeepSeekModel: cfg.DeepSeekModel,
+		VolcKey: cfg.VolcAPIKey, VolcModel: cfg.VolcModel,
+		MiniMaxKey: cfg.MiniMaxAPIKey, MiniMaxModel: cfg.MiniMaxModel,
+		OpenAICompatKey:      cfg.OpenAICompatKey,
+		OpenAICompatModel:    cfg.OpenAICompatModel,
+		OpenAICompatEndpoint: cfg.OpenAICompatEndpoint,
+		OpenAICompatName:     cfg.OpenAICompatName,
+		Order:                cfg.LLMProviderOrder,
+	})
+	if len(providers) == 0 {
+		logger.Warn().Msg("no LLM provider configured; cloud generation will fail")
+	} else {
+		names := make([]string, 0, len(providers))
+		for _, p := range providers {
+			names = append(names, p.Name())
+		}
+		logger.Info().Strs("providers", names).Bool("fallback", cfg.LLMFallback).Msg("llm router assembled")
+	}
+	llmRouter := llm.NewDefaultRouter(providers, llm.Policy{EnableFallback: cfg.LLMFallback}, llmRecorder)
 	weaver := service.NewAIWeaver(cloudTasks, nodes, llmRouter, broker, logger, 3)
 	weaverCtx, weaverCancel := context.WithCancel(context.Background())
 	defer weaverCancel()
