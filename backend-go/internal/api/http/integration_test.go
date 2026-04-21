@@ -79,6 +79,7 @@ func setup(t *testing.T) *integrationFixture {
 	lakes := store.NewLakeRepository(neo, cfg.Neo4jDatabase)
 	nodes := store.NewNodeRepository(neo, cfg.Neo4jDatabase)
 	edges := store.NewEdgeRepository(neo, cfg.Neo4jDatabase)
+	invites := store.NewInviteRepository(pg)
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
@@ -86,6 +87,7 @@ func setup(t *testing.T) *integrationFixture {
 	t.Cleanup(func() { _ = broker.Close() })
 	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
 	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
+	inviteSvc := service.NewInviteService(invites, memberships, lakes)
 
 	// Outbox dispatcher：把 PG outbox 事件应用到 Neo4j（建湖→建 :Lake 节点）。
 	// 集成测必须启用，否则 ListMine→GetLake 取不到刚建的湖。
@@ -100,6 +102,7 @@ func setup(t *testing.T) *integrationFixture {
 		Lakes:       lakeSvc,
 		Nodes:       nodeSvc,
 		Edges:       edgeSvc,
+		Invites:     inviteSvc,
 		CORSOrigins: []string{"*"},
 	})
 
@@ -420,6 +423,169 @@ func TestIntegrationEdgeFlow(t *testing.T) {
 	// 再删一次应幂等成功
 	if code := f.do(t, "DELETE", "/api/v1/edges/"+edge.ID, nil, nil); code != http.StatusNoContent {
 		t.Fatalf("idempotent delete: want 204, got %d", code)
+	}
+}
+
+// TestIntegrationInviteFlow 走通邀请链路：
+//  1. user A 建湖、签发邀请
+//  2. user B 用 token 接受 → 成为 PASSENGER
+//  3. user B 可访问该湖
+//  4. 重复使用同 token（max_uses=1）应失败
+//  5. 撤销后再接受应失败
+func TestIntegrationInviteFlow(t *testing.T) {
+	f := setup(t)
+
+	// ---- user A 注册+登录+建湖 ----
+	emailA := fmt.Sprintf("inviter+%s@ripple.local", uuid.NewString()[:8])
+	passwordA := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": emailA, "password": passwordA, "display_name": "A",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("A register: %d", code)
+	}
+	var loginA struct{ AccessToken string `json:"access_token"` }
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": emailA, "password": passwordA,
+	}, &loginA); code != http.StatusOK {
+		t.Fatalf("A login: %d", code)
+	}
+	f.tok = loginA.AccessToken
+
+	var lake struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+		"name": "invite-lake-" + uuid.NewString()[:6], "is_public": false,
+	}, &lake); code != http.StatusCreated {
+		t.Fatalf("create lake: %d", code)
+	}
+
+	// 等 outbox 投到 Neo4j（preview 里的 lakes.GetByID 需要）
+	for i := 0; i < 30; i++ {
+		var l struct{ ID string `json:"id"` }
+		if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID, nil, &l); code == http.StatusOK && l.ID == lake.ID {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// 签发邀请（max_uses=1, ttl=1h, role=PASSENGER）
+	var invite struct {
+		ID    string `json:"id"`
+		Token string `json:"token"`
+	}
+	if code := f.do(t, "POST", "/api/v1/lakes/"+lake.ID+"/invites", map[string]any{
+		"role": "PASSENGER", "max_uses": 1, "ttl_seconds": 3600,
+	}, &invite); code != http.StatusCreated {
+		t.Fatalf("create invite: %d", code)
+	}
+	if invite.Token == "" {
+		t.Fatal("invite token empty")
+	}
+
+	// 列表（A 可见）
+	var invList struct {
+		Invites []struct {
+			ID string `json:"id"`
+		} `json:"invites"`
+	}
+	if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID+"/invites", nil, &invList); code != http.StatusOK {
+		t.Fatalf("list invites: %d", code)
+	}
+	if len(invList.Invites) != 1 {
+		t.Fatalf("want 1 invite, got %d", len(invList.Invites))
+	}
+
+	// ---- user B 注册+登录 ----
+	emailB := fmt.Sprintf("joiner+%s@ripple.local", uuid.NewString()[:8])
+	passwordB := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": emailB, "password": passwordB, "display_name": "B",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("B register: %d", code)
+	}
+	var loginB struct{ AccessToken string `json:"access_token"` }
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": emailB, "password": passwordB,
+	}, &loginB); code != http.StatusOK {
+		t.Fatalf("B login: %d", code)
+	}
+	f.tok = loginB.AccessToken
+
+	// B 预览邀请
+	var preview struct {
+		LakeID string `json:"lake_id"`
+		Alive  bool   `json:"alive"`
+	}
+	if code := f.do(t, "GET", "/api/v1/invites/preview?token="+invite.Token, nil, &preview); code != http.StatusOK {
+		t.Fatalf("preview: %d", code)
+	}
+	if preview.LakeID != lake.ID || !preview.Alive {
+		t.Fatalf("bad preview: %+v", preview)
+	}
+
+	// B 接受
+	var accept struct {
+		LakeID        string `json:"lake_id"`
+		Role          string `json:"role"`
+		AlreadyMember bool   `json:"already_member"`
+	}
+	if code := f.do(t, "POST", "/api/v1/invites/accept", map[string]string{"token": invite.Token}, &accept); code != http.StatusOK {
+		t.Fatalf("accept: %d", code)
+	}
+	if accept.LakeID != lake.ID || accept.Role != "PASSENGER" || accept.AlreadyMember {
+		t.Fatalf("bad accept: %+v", accept)
+	}
+
+	// B 可 GET 该 lake（有 membership）
+	var lakeGet struct{ ID string `json:"id"` }
+	for i := 0; i < 10; i++ {
+		if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID, nil, &lakeGet); code == http.StatusOK && lakeGet.ID == lake.ID {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if lakeGet.ID != lake.ID {
+		t.Fatal("B cannot access lake after accept")
+	}
+
+	// 另一个用户 C 再用同一个 token（已耗尽）
+	emailC := fmt.Sprintf("late+%s@ripple.local", uuid.NewString()[:8])
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": emailC, "password": passwordB, "display_name": "C",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("C register: %d", code)
+	}
+	var loginC struct{ AccessToken string `json:"access_token"` }
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": emailC, "password": passwordB,
+	}, &loginC); code != http.StatusOK {
+		t.Fatalf("C login: %d", code)
+	}
+	f.tok = loginC.AccessToken
+	if code := f.do(t, "POST", "/api/v1/invites/accept", map[string]string{"token": invite.Token}, nil); code != http.StatusBadRequest {
+		t.Fatalf("C accept exhausted: want 400, got %d", code)
+	}
+
+	// ---- A 再签一枚，然后撤销，C 再接受应失败 ----
+	f.tok = loginA.AccessToken
+	var invite2 struct {
+		ID    string `json:"id"`
+		Token string `json:"token"`
+	}
+	if code := f.do(t, "POST", "/api/v1/lakes/"+lake.ID+"/invites", map[string]any{
+		"role": "PASSENGER", "max_uses": 1, "ttl_seconds": 3600,
+	}, &invite2); code != http.StatusCreated {
+		t.Fatalf("create invite2: %d", code)
+	}
+	if code := f.do(t, "DELETE", "/api/v1/lake-invites/"+invite2.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("revoke: %d", code)
+	}
+	// 幂等撤销
+	if code := f.do(t, "DELETE", "/api/v1/lake-invites/"+invite2.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("idempotent revoke: %d", code)
+	}
+	f.tok = loginC.AccessToken
+	if code := f.do(t, "POST", "/api/v1/invites/accept", map[string]string{"token": invite2.Token}, nil); code != http.StatusBadRequest {
+		t.Fatalf("C accept revoked: want 400, got %d", code)
 	}
 }
 

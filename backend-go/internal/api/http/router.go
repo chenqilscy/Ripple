@@ -16,6 +16,7 @@ type Deps struct {
 	Lakes       *service.LakeService
 	Nodes       *service.NodeService
 	Edges       *service.EdgeService
+	Invites     *service.InviteService
 	Clouds      *service.CloudService
 	WS          *WSHandlers
 	CORSOrigins []string
@@ -51,6 +52,10 @@ func NewRouter(d Deps) http.Handler {
 	if d.Edges != nil {
 		edgeH = &EdgeHandlers{Edges: d.Edges}
 	}
+	var inviteH *InviteHandlers
+	if d.Invites != nil {
+		inviteH = &InviteHandlers{Invites: d.Invites}
+	}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// 公开端点
@@ -83,6 +88,14 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/edges", edgeH.Create)
 				r.Delete("/edges/{id}", edgeH.Delete)
 				r.Get("/lakes/{id}/edges", edgeH.ListByLake)
+			}
+
+			if inviteH != nil {
+				r.Post("/lakes/{id}/invites", inviteH.Create)
+				r.Get("/lakes/{id}/invites", inviteH.ListByLake)
+				r.Delete("/lake-invites/{id}", inviteH.Revoke)
+				r.Get("/invites/preview", inviteH.Preview)
+				r.Post("/invites/accept", inviteH.Accept)
 			}
 
 			if d.WS != nil {

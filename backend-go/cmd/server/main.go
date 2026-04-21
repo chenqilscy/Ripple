@@ -79,6 +79,7 @@ func main() {
 	lakes := store.NewLakeRepository(neo, cfg.Neo4jDatabase)
 	nodes := store.NewNodeRepository(neo, cfg.Neo4jDatabase)
 	edges := store.NewEdgeRepository(neo, cfg.Neo4jDatabase)
+	invites := store.NewInviteRepository(pg)
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
@@ -88,6 +89,7 @@ func main() {
 
 	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
 	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
+	inviteSvc := service.NewInviteService(invites, memberships, lakes)
 	cloudSvc := service.NewCloudService(cloudTasks, nodes, lakes)
 
 	// Outbox dispatcher 在单独 goroutine 中运行
@@ -137,6 +139,7 @@ func main() {
 		Lakes:       lakeSvc,
 		Nodes:       nodeSvc,
 		Edges:       edgeSvc,
+		Invites:     inviteSvc,
 		Clouds:      cloudSvc,
 		WS:          wsH,
 		CORSOrigins: cfg.CORSOriginList(),
