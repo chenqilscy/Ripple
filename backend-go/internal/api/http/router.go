@@ -15,6 +15,7 @@ type Deps struct {
 	Auth        *service.AuthService
 	Lakes       *service.LakeService
 	Nodes       *service.NodeService
+	Clouds      *service.CloudService
 	WS          *WSHandlers
 	CORSOrigins []string
 }
@@ -44,6 +45,7 @@ func NewRouter(d Deps) http.Handler {
 	authH := &AuthHandlers{Auth: d.Auth}
 	lakeH := &LakeHandlers{Lakes: d.Lakes}
 	nodeH := &NodeHandlers{Nodes: d.Nodes}
+	cloudH := &CloudHandlers{Clouds: d.Clouds}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// 公开端点
@@ -64,6 +66,12 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/nodes/{id}", nodeH.Get)
 			r.Post("/nodes/{id}/evaporate", nodeH.Evaporate)
 			r.Post("/nodes/{id}/restore", nodeH.Restore)
+
+			if d.Clouds != nil {
+				r.Post("/clouds", cloudH.Create)
+				r.Get("/clouds", cloudH.ListMine)
+				r.Get("/clouds/{id}", cloudH.Get)
+			}
 
 			if d.WS != nil {
 				r.Get("/lakes/{id}/ws", d.WS.LakeWS)

@@ -24,6 +24,7 @@ import (
 
 	httpapi "github.com/chenqilscy/ripple/backend-go/internal/api/http"
 	"github.com/chenqilscy/ripple/backend-go/internal/config"
+	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
 	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
@@ -72,6 +73,7 @@ func main() {
 	memberships := store.NewMembershipRepository(pg)
 	outbox := store.NewOutboxRepository(pg)
 	txRunner := store.NewTxRunner(pg)
+	cloudTasks := store.NewCloudTaskRepository(pg)
 	lakes := store.NewLakeRepository(neo, cfg.Neo4jDatabase)
 	nodes := store.NewNodeRepository(neo, cfg.Neo4jDatabase)
 
@@ -82,12 +84,20 @@ func main() {
 	defer func() { _ = broker.Close() }()
 
 	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
+	cloudSvc := service.NewCloudService(cloudTasks, nodes, lakes)
 
 	// Outbox dispatcher 在单独 goroutine 中运行
 	dispatcher := service.NewOutboxDispatcher(outbox, lakes, logger)
 	dispatcherCtx, dispatcherCancel := context.WithCancel(context.Background())
 	defer dispatcherCancel()
 	go dispatcher.Run(dispatcherCtx)
+
+	// AI Weaver worker pool（造云）
+	zhipu := llm.NewZhipuClient(cfg.ZhipuAPIKey, cfg.ZhipuModel, "")
+	weaver := service.NewAIWeaver(cloudTasks, nodes, zhipu, broker, logger, 3)
+	weaverCtx, weaverCancel := context.WithCancel(context.Background())
+	defer weaverCancel()
+	go weaver.Run(weaverCtx)
 
 	wsH := &httpapi.WSHandlers{
 		Lakes:   lakeSvc,
@@ -99,6 +109,7 @@ func main() {
 		Auth:        authSvc,
 		Lakes:       lakeSvc,
 		Nodes:       nodeSvc,
+		Clouds:      cloudSvc,
 		WS:          wsH,
 		CORSOrigins: cfg.CORSOriginList(),
 	})
