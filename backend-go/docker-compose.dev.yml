@@ -1,0 +1,30 @@
+# Ripple Go 后端开发用 docker-compose
+# 中间件均使用外部 fn.cky 服务，本文件仅打包应用本身。
+# 用法：
+#   cd backend-go
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# 真实凭据从宿主机的 .env 文件读取（已在 .gitignore 中）。
+
+services:
+  ripple-go:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ripple-go:dev
+    container_name: ripple-go-dev
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    # fn.cky 必须在宿主机或容器内可解析。
+    # 若 fn.cky 是宿主机 hosts 项，docker 容器无法继承，需要 extra_hosts：
+    # extra_hosts:
+    #   - "fn.cky:192.168.x.x"
+    healthcheck:
+      test: ["CMD", "/app/ripple-go", "--healthcheck"]  # 暂未实现，可改 wget
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
