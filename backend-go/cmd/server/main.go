@@ -29,6 +29,8 @@ import (
 	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
+	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
 )
 
 func main() {
@@ -80,7 +82,7 @@ func main() {
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
 
-	broker := realtime.NewMemoryBroker(128)
+	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
 
 	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
@@ -160,4 +162,17 @@ func runHealthCheck() int {
 		return 1
 	}
 	return 0
+}
+
+
+// newBroker 按 cfg.BrokerKind 选择 memory 或 redis 实现。
+func newBroker(cfg *config.Config, rds *redis.Client, logger zerolog.Logger) realtime.Broker {
+	switch cfg.BrokerKind {
+	case "redis":
+		logger.Info().Str("kind", "redis").Msg("broker selected")
+		return realtime.NewRedisBroker(rds, 128)
+	default:
+		logger.Info().Str("kind", "memory").Msg("broker selected")
+		return realtime.NewMemoryBroker(128)
+	}
 }

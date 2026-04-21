@@ -38,6 +38,9 @@ type Config struct {
 	RedisPass string `envconfig:"REDIS_PASS"`
 	RedisDB   int    `envconfig:"REDIS_DB" default:"0"`
 
+	// Broker（实时广播）：memory（单实例） | redis（多实例）
+	BrokerKind string `envconfig:"BROKER_KIND" default:"memory"`
+
 	// JWT
 	JWTSecret    string        `envconfig:"JWT_SECRET" required:"true"`
 	JWTExpiresIn time.Duration `envconfig:"JWT_EXPIRES_IN" default:"24h"`
