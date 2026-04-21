@@ -15,6 +15,7 @@ type Deps struct {
 	Auth        *service.AuthService
 	Lakes       *service.LakeService
 	Nodes       *service.NodeService
+	Edges       *service.EdgeService
 	Clouds      *service.CloudService
 	WS          *WSHandlers
 	CORSOrigins []string
@@ -46,6 +47,10 @@ func NewRouter(d Deps) http.Handler {
 	lakeH := &LakeHandlers{Lakes: d.Lakes}
 	nodeH := &NodeHandlers{Nodes: d.Nodes}
 	cloudH := &CloudHandlers{Clouds: d.Clouds}
+	var edgeH *EdgeHandlers
+	if d.Edges != nil {
+		edgeH = &EdgeHandlers{Edges: d.Edges}
+	}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// 公开端点
@@ -72,6 +77,12 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/clouds", cloudH.Create)
 				r.Get("/clouds", cloudH.ListMine)
 				r.Get("/clouds/{id}", cloudH.Get)
+			}
+
+			if edgeH != nil {
+				r.Post("/edges", edgeH.Create)
+				r.Delete("/edges/{id}", edgeH.Delete)
+				r.Get("/lakes/{id}/edges", edgeH.ListByLake)
 			}
 
 			if d.WS != nil {

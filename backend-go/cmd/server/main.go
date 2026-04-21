@@ -78,6 +78,7 @@ func main() {
 	cloudTasks := store.NewCloudTaskRepository(pg)
 	lakes := store.NewLakeRepository(neo, cfg.Neo4jDatabase)
 	nodes := store.NewNodeRepository(neo, cfg.Neo4jDatabase)
+	edges := store.NewEdgeRepository(neo, cfg.Neo4jDatabase)
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
@@ -86,6 +87,7 @@ func main() {
 	defer func() { _ = broker.Close() }()
 
 	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
+	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
 	cloudSvc := service.NewCloudService(cloudTasks, nodes, lakes)
 
 	// Outbox dispatcher 在单独 goroutine 中运行
@@ -134,6 +136,7 @@ func main() {
 		Auth:        authSvc,
 		Lakes:       lakeSvc,
 		Nodes:       nodeSvc,
+		Edges:       edgeSvc,
 		Clouds:      cloudSvc,
 		WS:          wsH,
 		CORSOrigins: cfg.CORSOriginList(),
