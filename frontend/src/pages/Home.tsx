@@ -18,6 +18,7 @@ export function Home({ onLogout }: Props) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [wsOnline, setWsOnline] = useState(false)
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([])
   // 连线状态：null=普通 | source_id=已选起点，等待选终点
   const [linkSrc, setLinkSrc] = useState<string | null>(null)
   const wsRef = useRef<LakeWS | null>(null)
@@ -29,6 +30,7 @@ export function Home({ onLogout }: Props) {
     if (!active) return
     void loadNodes(active.id)
     void loadEdges(active.id)
+    void loadPresence(active.id)
     setLinkSrc(null)
 
     const token = localStorage.getItem('ripple.token') ?? ''
@@ -47,6 +49,9 @@ export function Home({ onLogout }: Props) {
         }
         if (msg.type.startsWith('edge.')) {
           void loadEdges(active.id)
+        }
+        if (msg.type.startsWith('presence.')) {
+          void loadPresence(active.id)
         }
         // cloud 事件 → 刷新任务列表（如有 task_id）
         if (msg.type.startsWith('cloud.') && msg.payload?.task_id) {
@@ -81,6 +86,10 @@ export function Home({ onLogout }: Props) {
 
   async function loadEdges(lakeId: string) {
     try { setEdges((await api.listEdges(lakeId)).edges) } catch (e) { setErr((e as Error).message) }
+  }
+
+  async function loadPresence(lakeId: string) {
+    try { setOnlineUsers((await api.listPresence(lakeId)).users) } catch { /* 非关键：静默 */ }
   }
 
   // 进入连线：点第一个节点设为 source；点第二个节点询问 kind 后创建。
@@ -119,6 +128,98 @@ export function Home({ onLogout }: Props) {
       if (active) await loadEdges(active.id)
     } catch (e) { setErr((e as Error).message) }
   }
+
+  async function editNodeContent(node: NodeItem) {
+    const next = window.prompt('编辑节点内容：', node.content)
+    if (next === null || next === node.content) return
+    if (!next.trim()) { setErr('内容不能为空'); return }
+    const reason = window.prompt('变更说明（可选）：', '') ?? ''
+    try {
+      await api.updateNodeContent(node.id, next, reason)
+      if (active) await loadNodes(active.id)
+    } catch (e) { setErr((e as Error).message) }
+  }
+
+  async function showHistory(node: NodeItem) {
+    try {
+      const { revisions } = await api.listNodeRevisions(node.id, 50)
+      if (revisions.length === 0) { alert('暂无历史'); return }
+      const lines = revisions.map(r =>
+        `rev ${r.rev_number} | ${new Date(r.created_at).toLocaleString()} | ${r.edit_reason || '(无说明)'}\n  ${r.content.slice(0, 80)}`
+      ).join('\n\n')
+      const input = window.prompt(
+        `${node.id.slice(0, 8)} 历史（输入 rev 号回滚，空取消）：\n\n${lines}`,
+        '',
+      )
+      if (!input) return
+      const target = parseInt(input, 10)
+      if (!Number.isFinite(target) || target <= 0) { setErr('无效 rev 号'); return }
+      if (!confirm(`回滚到 rev ${target}？`)) return
+      await api.rollbackNode(node.id, target)
+      if (active) await loadNodes(active.id)
+    } catch (e) { setErr((e as Error).message) }
+  }
+
+  async function copyText(text: string): Promise<boolean> {
+    try { await navigator.clipboard.writeText(text); return true } catch { return false }
+  }
+
+  async function manageInvites() {
+    if (!active) return
+    try {
+      const { invites } = await api.listInvites(active.id, false)
+      const aliveLines = invites.length === 0
+        ? '(无活跃邀请)'
+        : invites.map(i => `${i.id.slice(0, 8)} | ${i.role} | ${i.used_count}/${i.max_uses} | 到期 ${new Date(i.expires_at).toLocaleString()}\n  token: ${i.token}`).join('\n\n')
+      const action = window.prompt(
+        `湖 ${active.name} 邀请：\n\n${aliveLines}\n\n输入：\nC = 创建新邀请\nR:<id前缀> = 撤销\n空取消`,
+        '',
+      )
+      if (!action) return
+      if (action.toUpperCase() === 'C') {
+        const roleIn = window.prompt('角色（NAVIGATOR/PASSENGER/OBSERVER）：', 'PASSENGER')
+        if (!roleIn) return
+        const role = roleIn.toUpperCase()
+        if (!['NAVIGATOR', 'PASSENGER', 'OBSERVER'].includes(role)) { setErr('无效角色'); return }
+        const maxUsesIn = window.prompt('最大使用次数（1-10000）：', '5')
+        const maxUses = parseInt(maxUsesIn ?? '', 10)
+        if (!Number.isFinite(maxUses) || maxUses < 1 || maxUses > 10000) { setErr('无效 max_uses'); return }
+        const ttlHoursIn = window.prompt('有效时长（小时，1-8760）：', '168')
+        const ttlHours = parseFloat(ttlHoursIn ?? '')
+        if (!Number.isFinite(ttlHours) || ttlHours < 1 || ttlHours > 8760) { setErr('无效 TTL'); return }
+        const inv = await api.createInvite(active.id, role as 'NAVIGATOR' | 'PASSENGER' | 'OBSERVER', maxUses, Math.round(ttlHours * 3600))
+        const link = `${window.location.origin}/?invite=${encodeURIComponent(inv.token)}`
+        const copied = await copyText(link)
+        alert(`邀请已创建\n\nToken: ${inv.token}\n链接: ${link}\n\n${copied ? '（已复制链接到剪贴板）' : '（剪贴板复制失败，请手动复制）'}`)
+      } else if (action.toUpperCase().startsWith('R:')) {
+        const prefix = action.slice(2).trim()
+        const target = invites.find(i => i.id.startsWith(prefix))
+        if (!target) { setErr('未找到匹配邀请'); return }
+        if (!confirm(`撤销 ${target.id.slice(0, 8)}？`)) return
+        await api.revokeInvite(target.id)
+        alert('已撤销')
+      }
+    } catch (e) { setErr((e as Error).message) }
+  }
+
+  // URL 中带 ?invite=... 时自动尝试接受。
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('invite')
+    if (!token) return
+    ;(async () => {
+      try {
+        const prev = await api.previewInvite(token)
+        if (!prev.alive) { setErr(`邀请已失效（${prev.used_count}/${prev.max_uses}）`); return }
+        if (!confirm(`加入湖 "${prev.lake_name}" 作为 ${prev.role}？`)) return
+        const r = await api.acceptInvite(token)
+        window.history.replaceState({}, '', window.location.pathname)
+        await refresh()
+        // refresh 已把 lakes 刷新并可能自动选中首个；这里不手动设置 active，避免 stale closure。
+        void r
+      } catch (e) { setErr((e as Error).message) }
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function createLake() {
     if (!newLakeName.trim()) return
@@ -215,7 +316,13 @@ export function Home({ onLogout }: Props) {
                 background: active?.id === l.id ? 'rgba(74,144,226,0.25)' : 'transparent',
               }}
             >
-              <div>{l.name}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>{l.name}</div>
+                {active?.id === l.id && l.role === 'OWNER' && (
+                  <button onClick={e => { e.stopPropagation(); void manageInvites() }}
+                    style={{ ...miniBtn, padding: '2px 6px', fontSize: 10 }}>邀请</button>
+                )}
+              </div>
               <div style={{ fontSize: 10, opacity: 0.5 }}>{l.role}</div>
             </li>
           ))}
@@ -230,6 +337,15 @@ export function Home({ onLogout }: Props) {
             <div style={{ opacity: 0.5, marginBottom: 24, fontSize: 12 }}>
               {active.description || '未命名湖区 · ' + active.id.slice(0, 8)}
             </div>
+            {onlineUsers.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, opacity: 0.8 }}>
+                <span>在线 {onlineUsers.length}：</span>
+                {onlineUsers.slice(0, 8).map(uid => (
+                  <span key={uid} title={uid} style={presenceDot}>{uid.slice(0, 2).toUpperCase()}</span>
+                ))}
+                {onlineUsers.length > 8 && <span>+{onlineUsers.length - 8}</span>}
+              </div>
+            )}
 
             <section style={card}>
               <strong style={{ letterSpacing: 2, fontSize: 13 }}>造云 · AI 发散</strong>
@@ -303,6 +419,8 @@ export function Home({ onLogout }: Props) {
                           title={isLinkSrc ? '取消连线' : '连线（先选起点再选终点）'}>
                           {isLinkSrc ? '✕' : '🔗'}
                         </button>
+                        <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容">✎</button>
+                        <button onClick={() => showHistory(n)} style={miniBtn} title="历史版本">⟲</button>
                       </div>
                     </div>
                   )
@@ -421,6 +539,13 @@ const edgeKindPill: React.CSSProperties = {
   fontSize: 10, padding: '2px 8px', borderRadius: 10,
   background: 'rgba(158,197,238,0.18)', color: '#9ec5ee',
   letterSpacing: 1, minWidth: 60, textAlign: 'center',
+}
+const presenceDot: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 22, height: 22, borderRadius: '50%',
+  background: 'rgba(127,219,182,0.22)',
+  border: '1px solid rgba(127,219,182,0.5)',
+  color: '#7fdbb6', fontSize: 9, letterSpacing: 0,
 }
 const errBanner: React.CSSProperties = {
   position: 'fixed', bottom: 16, right: 16,

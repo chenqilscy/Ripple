@@ -4,7 +4,7 @@
 
 import type {
   ApiError, AuthTokens, CloudTask, EdgeItem, EdgeKind, InviteItem, InvitePreview,
-  Lake, NodeItem, NodeType, User,
+  Lake, NodeItem, NodeRevision, NodeType, User,
 } from './types'
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
@@ -123,6 +123,22 @@ export const api = {
   },
   acceptInvite(token: string): Promise<{ lake_id: string; role: string; already_member: boolean }> {
     return request('POST', '/api/v1/invites/accept', { token })
+  },
+
+  // ---- Presence ----
+  listPresence(lakeId: string): Promise<{ users: string[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/presence`)
+  },
+
+  // ---- Node revisions (F3) ----
+  updateNodeContent(id: string, content: string, edit_reason?: string): Promise<NodeItem> {
+    return request('PUT', `/api/v1/nodes/${id}/content`, { content, edit_reason: edit_reason ?? '' })
+  },
+  listNodeRevisions(id: string, limit = 50): Promise<{ revisions: NodeRevision[] }> {
+    return request('GET', `/api/v1/nodes/${id}/revisions?limit=${limit}`)
+  },
+  rollbackNode(id: string, target_rev_number: number): Promise<NodeItem> {
+    return request('POST', `/api/v1/nodes/${id}/rollback`, { target_rev_number })
   },
 }
 

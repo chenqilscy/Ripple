@@ -100,3 +100,15 @@ export interface InvitePreview {
   max_uses: number
   alive: boolean
 }
+
+// ---- Node Revisions (F3) ----
+export interface NodeRevision {
+  id: string
+  node_id: string
+  rev_number: number
+  content: string
+  title: string
+  editor_id: string
+  edit_reason: string
+  created_at: string
+}

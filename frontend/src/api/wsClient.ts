@@ -21,6 +21,7 @@ export class LakeWS {
   private retry = 0
   private closed = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(
     private lakeId: string,
@@ -41,6 +42,8 @@ export class LakeWS {
     ws.onopen = () => {
       this.retry = 0
       this.onStatusChange?.(true)
+      // 每 30s 发送心跳（后端任意帧都视为 heartbeat，用于续期 presence TTL=60s）。
+      this.startHeartbeat()
     }
     ws.onmessage = ev => {
       try {
@@ -52,11 +55,30 @@ export class LakeWS {
     }
     ws.onclose = () => {
       this.onStatusChange?.(false)
+      this.stopHeartbeat()
       this.ws = null
       if (!this.closed) this.scheduleReconnect()
     }
     ws.onerror = () => {
       // onclose 会跟着触发，统一在那里处理重连
+    }
+  }
+
+  send(msg: LakeMessage) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try { this.ws.send(JSON.stringify(msg)) } catch { /* ignore */ }
+    }
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat()
+    this.heartbeatTimer = setInterval(() => this.send({ type: 'ping' }), 30_000)
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
     }
   }
 
@@ -70,6 +92,7 @@ export class LakeWS {
 
   close() {
     this.closed = true
+    this.stopHeartbeat()
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     if (this.ws) {
       try { this.ws.close() } catch { /* ignore */ }
