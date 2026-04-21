@@ -1,13 +1,30 @@
-"""节点 (Node) API 骨架 · 实现参考 G1 §二 Neo4j Schema + §三状态机"""
+"""节点 API · 参考 G1 §三状态机 + 故事 5/6/7
 
-from fastapi import APIRouter, Depends, HTTPException
+功能：创建 (DROP)、列出、蒸发、还原、迷雾区、触发织网
+"""
+
+import uuid
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.weaver import weave_for_node
+from app.core.db import get_pg_session
 from app.core.security import get_current_user
+from app.services.audit_service import log_event
+from app.services.lake_service import assert_access
+from app.services.node_service import (
+    create_drop_node,
+    evaporate_node,
+    get_node,
+    list_mist_zone,
+    list_nodes_in_lake,
+    restore_node,
+)
+from app.ws.hub import hub
 
 router = APIRouter()
-
-NodeState = str  # "MIST" | "DROP" | "FROZEN" | "VAPOR" | "ERASED" | "GHOST"
 
 
 class NodeCreate(BaseModel):
@@ -19,39 +36,94 @@ class NodeCreate(BaseModel):
 
 class NodeResponse(BaseModel):
     id: str
-    lake_id: str
+    lake_id: str | None
     content: str
     type: str
-    state: NodeState
-    position: dict[str, float] | None
+    state: str
+    position: dict[str, float] | None = None
 
 
 @router.post("", response_model=NodeResponse, status_code=201)
-async def create_node(body: NodeCreate, user: dict = Depends(get_current_user)) -> NodeResponse:
-    # TODO: M1 Neo4j CREATE (:Node {state:'DROP', lake_id:$lake_id, ...})
-    # TODO: 校验 user 对 lake_id 有写权限（参见 G7 §三权限矩阵）
-    return NodeResponse(
-        id="node_stub_id",
-        lake_id=body.lake_id,
-        content=body.content,
-        type=body.type,
-        state="DROP",
-        position=body.position,
+async def create_node(
+    body: NodeCreate,
+    bg: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_pg_session),
+) -> NodeResponse:
+    await assert_access(session, uuid.UUID(user["user_id"]), body.lake_id, min_role="PASSENGER")
+    data = await create_drop_node(
+        body.lake_id, user["user_id"], body.content, body.type, body.position
     )
+    await log_event(
+        session,
+        uuid.UUID(user["user_id"]),
+        "node.create",
+        "node",
+        data["id"],
+        lake_id=body.lake_id,
+    )
+    await hub.broadcast(body.lake_id, {"type": "node.created", "node": data})
+    bg.add_task(_weave_and_broadcast, data["id"], body.content, body.lake_id)
+    return NodeResponse(**data)
+
+
+async def _weave_and_broadcast(node_id: str, content: str, lake_id: str) -> None:
+    edges = await weave_for_node(node_id, content, lake_id)
+    if edges:
+        await hub.broadcast(
+            lake_id,
+            {"type": "edges.proposed", "source": node_id, "edges": edges},
+        )
+
+
+@router.get("/by-lake/{lake_id}", response_model=list[NodeResponse])
+async def list_by_lake(
+    lake_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_pg_session),
+) -> list[NodeResponse]:
+    await assert_access(session, uuid.UUID(user["user_id"]), lake_id, min_role="OBSERVER")
+    return [NodeResponse(**r) for r in await list_nodes_in_lake(lake_id)]
+
+
+@router.get("/{node_id}", response_model=NodeResponse)
+async def get_node_endpoint(
+    node_id: str, user: dict = Depends(get_current_user)
+) -> NodeResponse:
+    data = await get_node(node_id)
+    if not data:
+        raise HTTPException(404, "Node not found")
+    return NodeResponse(**data)
 
 
 @router.post("/{node_id}/evaporate", status_code=204)
-async def evaporate_node(node_id: str, user: dict = Depends(get_current_user)) -> None:
-    """蒸发：软删，进入 VAPOR 态，30 天后 ERASED（参见故事 7）"""
-    # TODO: SET state='VAPOR', deleted_at=NOW()
-    if not node_id:
-        raise HTTPException(400, "node_id required")
+async def evaporate(
+    node_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_pg_session),
+) -> None:
+    """蒸发：软删（VAPOR），30 天后物理删除"""
+    await evaporate_node(node_id, user["user_id"])
+    await log_event(session, uuid.UUID(user["user_id"]), "node.evaporate", "node", node_id)
+    node = await get_node(node_id)
+    if node and node.get("lake_id"):
+        await hub.broadcast(node["lake_id"], {"type": "node.evaporated", "id": node_id})
 
 
 @router.post("/{node_id}/restore", response_model=NodeResponse)
-async def restore_node(node_id: str, user: dict = Depends(get_current_user)) -> NodeResponse:
-    """凝露还原 · VAPOR → DROP + 还原全部连线"""
-    # TODO: 校验 user 为原创者 or Owner
-    return NodeResponse(
-        id=node_id, lake_id="lake_stub_id", content="...", type="TEXT", state="DROP", position=None
-    )
+async def restore(
+    node_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_pg_session),
+) -> NodeResponse:
+    data = await restore_node(node_id, user["user_id"])
+    await log_event(session, uuid.UUID(user["user_id"]), "node.restore", "node", node_id)
+    if data.get("lake_id"):
+        await hub.broadcast(data["lake_id"], {"type": "node.restored", "node": data})
+    return NodeResponse(**data)
+
+
+@router.get("/mist-zone/mine", response_model=list[dict])
+async def mist_zone(user: dict = Depends(get_current_user)) -> list[dict]:
+    """迷雾区：我可还原的蒸发节点"""
+    return await list_mist_zone(user["user_id"])

@@ -1,9 +1,14 @@
-"""湖泊 (Lake) API 骨架 · 实现参考 G1-数据模型与权限设计.md"""
+"""湖泊 (Lake) API · 实现参考 G1-数据模型与权限设计.md + 故事 2"""
+
+import uuid
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import get_pg_session
 from app.core.security import get_current_user
+from app.services.lake_service import create_lake, list_lakes_for_user
 
 router = APIRouter()
 
@@ -20,21 +25,25 @@ class LakeResponse(BaseModel):
     description: str | None
     is_public: bool
     owner_id: str
+    role: str
 
 
 @router.post("", response_model=LakeResponse, status_code=201)
-async def create_lake(body: LakeCreate, user: dict = Depends(get_current_user)) -> LakeResponse:
-    # TODO: M1 写入 Neo4j (:Lake) + PG lake_memberships(role=OWNER)
-    return LakeResponse(
-        id="lake_stub_id",
-        name=body.name,
-        description=body.description,
-        is_public=body.is_public,
-        owner_id=user["user_id"],
+async def create_lake_endpoint(
+    body: LakeCreate,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_pg_session),
+) -> LakeResponse:
+    data = await create_lake(
+        session, uuid.UUID(user["user_id"]), body.name, body.description, body.is_public
     )
+    return LakeResponse(**data)
 
 
 @router.get("", response_model=list[LakeResponse])
-async def list_lakes(user: dict = Depends(get_current_user)) -> list[LakeResponse]:
-    # TODO: M1 查询 lake_memberships WHERE user_id = user["user_id"]
-    return []
+async def list_lakes_endpoint(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_pg_session),
+) -> list[LakeResponse]:
+    rows = await list_lakes_for_user(session, uuid.UUID(user["user_id"]))
+    return [LakeResponse(**r) for r in rows]

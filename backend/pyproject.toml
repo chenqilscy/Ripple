@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2.4.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.2.0",
     "neo4j>=5.23.0",
     "psycopg[binary]>=3.2.0",
     "sqlalchemy>=2.0.30",
@@ -43,7 +44,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "B", "C4", "UP", "RUF"]
-ignore = ["E501"]
+ignore = ["E501", "RUF001", "RUF002", "RUF003", "B008"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
