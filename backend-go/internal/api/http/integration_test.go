@@ -28,6 +28,7 @@ import (
 	httpapi "github.com/chenqilscy/ripple/backend-go/internal/api/http"
 	"github.com/chenqilscy/ripple/backend-go/internal/config"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
+	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
@@ -85,9 +86,17 @@ func setup(t *testing.T) *integrationFixture {
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
 	broker := realtime.NewMemoryBroker(64)
 	t.Cleanup(func() { _ = broker.Close() })
-	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
+	nodeRevs := store.NewNodeRevisionRepository(pg)
+	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker).WithRevisions(nodeRevs)
 	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
 	inviteSvc := service.NewInviteService(invites, memberships, lakes)
+
+	// Redis（可选，没有时 presence 走内存存储）
+	rds, _ := store.NewRedis(ctx, cfg)
+	if rds != nil {
+		t.Cleanup(func() { _ = rds.Close() })
+	}
+	presenceSvc := presence.NewService(rds, broker, 0)
 
 	// Outbox dispatcher：把 PG outbox 事件应用到 Neo4j（建湖→建 :Lake 节点）。
 	// 集成测必须启用，否则 ListMine→GetLake 取不到刚建的湖。
@@ -103,6 +112,7 @@ func setup(t *testing.T) *integrationFixture {
 		Nodes:       nodeSvc,
 		Edges:       edgeSvc,
 		Invites:     inviteSvc,
+		Presence:    presenceSvc,
 		CORSOrigins: []string{"*"},
 	})
 
@@ -611,5 +621,220 @@ func TestIntegrationHealthz(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("healthz: want 200, got %d", resp.StatusCode)
+	}
+}
+
+// TestIntegrationNodeRevisionFlow 走通节点编辑与回滚：
+//  1. 建湖→建节点（自动记 rev 1 "initial"）
+//  2. 更新内容（rev 2）→ 再更新（rev 3）
+//  3. 列出 revisions，按时间倒序
+//  4. 回滚到 rev 1 → 内容恢复为初始 → 产生 rev 4 reason "rollback to rev 1"
+func TestIntegrationNodeRevisionFlow(t *testing.T) {
+	f := setup(t)
+
+	email := fmt.Sprintf("rev+%s@ripple.local", uuid.NewString()[:8])
+	password := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": email, "password": password, "display_name": "rev",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("register: %d", code)
+	}
+	var login struct {
+		AccessToken string `json:"access_token"`
+	}
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": email, "password": password,
+	}, &login); code != http.StatusOK {
+		t.Fatalf("login: %d", code)
+	}
+	f.tok = login.AccessToken
+
+	var lake struct {
+		ID string `json:"id"`
+	}
+	if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+		"name": "rev-lake-" + uuid.NewString()[:6], "is_public": false,
+	}, &lake); code != http.StatusCreated {
+		t.Fatalf("create lake: %d", code)
+	}
+	// 等 outbox 投到 Neo4j
+	for i := 0; i < 30; i++ {
+		var l struct {
+			ID string `json:"id"`
+		}
+		if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID, nil, &l); code == http.StatusOK && l.ID == lake.ID {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	initial := "初始内容 v1"
+	var node struct {
+		ID string `json:"id"`
+	}
+	if code := f.do(t, "POST", "/api/v1/nodes", map[string]any{
+		"lake_id": lake.ID, "content": initial, "type": "TEXT",
+	}, &node); code != http.StatusCreated {
+		t.Fatalf("create node: %d", code)
+	}
+
+	// 更新到 v2
+	if code := f.do(t, "PUT", "/api/v1/nodes/"+node.ID+"/content", map[string]any{
+		"content": "内容 v2", "edit_reason": "typo fix",
+	}, nil); code != http.StatusOK {
+		t.Fatalf("update v2: %d", code)
+	}
+	// 更新到 v3
+	if code := f.do(t, "PUT", "/api/v1/nodes/"+node.ID+"/content", map[string]any{
+		"content": "内容 v3", "edit_reason": "rewrite",
+	}, nil); code != http.StatusOK {
+		t.Fatalf("update v3: %d", code)
+	}
+	// 同内容更新：幂等不新增 rev
+	if code := f.do(t, "PUT", "/api/v1/nodes/"+node.ID+"/content", map[string]any{
+		"content": "内容 v3",
+	}, nil); code != http.StatusOK {
+		t.Fatalf("update same: %d", code)
+	}
+
+	// 列表 revisions
+	var revList struct {
+		Revisions []struct {
+			RevNumber  int    `json:"rev_number"`
+			Content    string `json:"content"`
+			EditReason string `json:"edit_reason"`
+		} `json:"revisions"`
+	}
+	if code := f.do(t, "GET", "/api/v1/nodes/"+node.ID+"/revisions?limit=50", nil, &revList); code != http.StatusOK {
+		t.Fatalf("list revisions: %d", code)
+	}
+	if len(revList.Revisions) != 3 {
+		t.Fatalf("want 3 revisions, got %d: %+v", len(revList.Revisions), revList.Revisions)
+	}
+	// 按 created_at DESC
+	if revList.Revisions[0].RevNumber != 3 || revList.Revisions[2].RevNumber != 1 {
+		t.Fatalf("rev order wrong: %+v", revList.Revisions)
+	}
+	if revList.Revisions[2].Content != initial {
+		t.Fatalf("rev 1 content want %q, got %q", initial, revList.Revisions[2].Content)
+	}
+
+	// 回滚到 rev 1
+	if code := f.do(t, "POST", "/api/v1/nodes/"+node.ID+"/rollback", map[string]any{
+		"target_rev_number": 1,
+	}, nil); code != http.StatusOK {
+		t.Fatalf("rollback: %d", code)
+	}
+
+	// 列表应有 4 条，最新 content=initial
+	if code := f.do(t, "GET", "/api/v1/nodes/"+node.ID+"/revisions?limit=50", nil, &revList); code != http.StatusOK {
+		t.Fatalf("list after rollback: %d", code)
+	}
+	if len(revList.Revisions) != 4 {
+		t.Fatalf("after rollback want 4 revs, got %d", len(revList.Revisions))
+	}
+	if revList.Revisions[0].RevNumber != 4 || revList.Revisions[0].Content != initial {
+		t.Fatalf("rev 4 should equal initial: %+v", revList.Revisions[0])
+	}
+
+	// 非法 target_rev_number
+	if code := f.do(t, "POST", "/api/v1/nodes/"+node.ID+"/rollback", map[string]any{
+		"target_rev_number": 999,
+	}, nil); code != http.StatusNotFound && code != http.StatusBadRequest {
+		t.Fatalf("rollback invalid: want 4xx, got %d", code)
+	}
+}
+
+// TestIntegrationPresenceFlow 校验在线状态端点：
+//  1. 初始空列表
+//  2. 调 service 层 Join（因 HTTP 层仅通过 WS 触发 Join）
+//  3. GET /presence 返回该 user
+//  4. Leave 后列表空
+func TestIntegrationPresenceFlow(t *testing.T) {
+	f := setup(t)
+
+	email := fmt.Sprintf("pres+%s@ripple.local", uuid.NewString()[:8])
+	password := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": email, "password": password, "display_name": "pres",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("register: %d", code)
+	}
+	var login struct {
+		AccessToken string `json:"access_token"`
+		User        struct {
+			ID string `json:"id"`
+		} `json:"user"`
+	}
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": email, "password": password,
+	}, &login); code != http.StatusOK {
+		t.Fatalf("login: %d", code)
+	}
+	f.tok = login.AccessToken
+	userID := login.User.ID
+
+	var lake struct {
+		ID string `json:"id"`
+	}
+	if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+		"name": "pres-lake-" + uuid.NewString()[:6], "is_public": false,
+	}, &lake); code != http.StatusCreated {
+		t.Fatalf("create lake: %d", code)
+	}
+	// 等 outbox
+	for i := 0; i < 30; i++ {
+		var l struct {
+			ID string `json:"id"`
+		}
+		if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID, nil, &l); code == http.StatusOK && l.ID == lake.ID {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// 初始空
+	var pr struct {
+		Users []string `json:"users"`
+	}
+	if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID+"/presence", nil, &pr); code != http.StatusOK {
+		t.Fatalf("presence initial: %d", code)
+	}
+	if len(pr.Users) != 0 {
+		t.Fatalf("initial presence want empty, got %v", pr.Users)
+	}
+
+	// 不开 WS，直接重新装配一个 presence.Service 来 Join（复用 router 背后的 svc 需通过 WS，
+	// 这里新建一个连接同一 Redis 的 svc 来触发 Join，然后 HTTP 查询同一 key）
+	cfg, _ := config.Load()
+	rds, err := store.NewRedis(context.Background(), cfg)
+	if err != nil {
+		t.Skipf("presence flow requires redis: %v", err)
+	}
+	defer func() { _ = rds.Close() }()
+	localBroker := realtime.NewMemoryBroker(8)
+	defer func() { _ = localBroker.Close() }()
+	svc := presence.NewService(rds, localBroker, 0)
+
+	if err := svc.Join(context.Background(), lake.ID, userID); err != nil {
+		t.Fatalf("svc.Join: %v", err)
+	}
+	pr.Users = nil
+	if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID+"/presence", nil, &pr); code != http.StatusOK {
+		t.Fatalf("presence after join: %d", code)
+	}
+	if len(pr.Users) != 1 || pr.Users[0] != userID {
+		t.Fatalf("after join want [%s], got %v", userID, pr.Users)
+	}
+
+	if err := svc.Leave(context.Background(), lake.ID, userID); err != nil {
+		t.Fatalf("svc.Leave: %v", err)
+	}
+	pr.Users = nil
+	if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID+"/presence", nil, &pr); code != http.StatusOK {
+		t.Fatalf("presence after leave: %d", code)
+	}
+	if len(pr.Users) != 0 {
+		t.Fatalf("after leave want empty, got %v", pr.Users)
 	}
 }
