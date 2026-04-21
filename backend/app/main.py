@@ -1,0 +1,48 @@
+"""青萍 (Ripple) · FastAPI 应用入口
+
+实现参考：
+- docs/system-design/D0-技术架构总览.md
+- docs/system-design/D4-API网关设计.md
+- docs/MVP-范围与里程碑.md  §M1 骨架
+"""
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.v1 import api_router
+from app.core.config import settings
+from app.core.db import close_db, init_db
+from app.core.logging import setup_logging
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
+    await init_db()
+    yield
+    await close_db()
+
+
+app = FastAPI(
+    title="Ripple API",
+    version="0.1.0",
+    description="青萍 (Ripple) 水文生态创意系统 · 后端 API",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api/v1")
+
+
+@app.get("/health", tags=["meta"])
+async def health() -> dict[str, str]:
+    return {"status": "ok", "service": "ripple-backend", "version": "0.1.0"}
