@@ -12,8 +12,10 @@ import (
 
 // Deps 路由所需依赖。
 type Deps struct {
-	Auth         *service.AuthService
-	CORSOrigins  []string
+	Auth        *service.AuthService
+	Lakes       *service.LakeService
+	Nodes       *service.NodeService
+	CORSOrigins []string
 }
 
 // NewRouter 装配 Chi 路由。
@@ -39,6 +41,8 @@ func NewRouter(d Deps) http.Handler {
 	})
 
 	authH := &AuthHandlers{Auth: d.Auth}
+	lakeH := &LakeHandlers{Lakes: d.Lakes}
+	nodeH := &NodeHandlers{Nodes: d.Nodes}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// 公开端点
@@ -49,6 +53,16 @@ func NewRouter(d Deps) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(AuthMiddleware(d.Auth))
 			r.Get("/auth/me", authH.Me)
+
+			r.Post("/lakes", lakeH.Create)
+			r.Get("/lakes", lakeH.ListMine)
+			r.Get("/lakes/{id}", lakeH.Get)
+			r.Get("/lakes/{id}/nodes", nodeH.ListByLake)
+
+			r.Post("/nodes", nodeH.Create)
+			r.Get("/nodes/{id}", nodeH.Get)
+			r.Post("/nodes/{id}/evaporate", nodeH.Evaporate)
+			r.Post("/nodes/{id}/restore", nodeH.Restore)
 		})
 	})
 

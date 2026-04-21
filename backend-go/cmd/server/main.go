@@ -55,10 +55,18 @@ func main() {
 
 	jwt := platform.NewJWTSigner(cfg.JWTSecret, cfg.JWTExpiresIn)
 	users := store.NewUserRepository(pg)
+	memberships := store.NewMembershipRepository(pg)
+	lakes := store.NewLakeRepository(neo, cfg.Neo4jDatabase)
+	nodes := store.NewNodeRepository(neo, cfg.Neo4jDatabase)
+
 	authSvc := service.NewAuthService(users, jwt)
+	lakeSvc := service.NewLakeService(lakes, memberships)
+	nodeSvc := service.NewNodeService(nodes, memberships, lakes)
 
 	router := httpapi.NewRouter(httpapi.Deps{
 		Auth:        authSvc,
+		Lakes:       lakeSvc,
+		Nodes:       nodeSvc,
 		CORSOrigins: cfg.CORSOriginList(),
 	})
 

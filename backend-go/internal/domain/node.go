@@ -61,6 +61,15 @@ const (
 	NodeTypeAudio NodeType = "AUDIO"
 )
 
+// IsValid 校验节点类型是否合法。
+func (t NodeType) IsValid() bool {
+	switch t {
+	case NodeTypeText, NodeTypeImage, NodeTypeLink, NodeTypeAudio:
+		return true
+	}
+	return false
+}
+
 // Node 是青萍系统的核心实体（涟漪 / 浮萍）。
 // Node 实体存于 Neo4j；不在 PG。
 type Node struct {
