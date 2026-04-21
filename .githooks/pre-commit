@@ -1,0 +1,27 @@
+#!/bin/sh
+# Ripple secrets pre-commit hook
+# 拦截常见密钥模式，防止泄露到 git 历史。
+# 安装：cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# 或：git config core.hooksPath .githooks
+
+set -e
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+# 扫描模式：ZhipuAI（32hex.16alnum）、OpenAI（sk-...）、AWS（AKIA...）、私钥头
+PATTERN='([0-9a-f]{32}\.[A-Za-z0-9]{16})|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
+
+HIT=$(git diff --cached -U0 -- $STAGED | grep -E "$PATTERN" || true)
+
+if [ -n "$HIT" ]; then
+  echo "❌ 提交被拦截：检测到疑似密钥/凭证"
+  echo "$HIT" | head -5
+  echo ""
+  echo "请脱敏后重新提交（或使用 git commit --no-verify 跳过，但需老板审批）"
+  exit 1
+fi
+
+exit 0
