@@ -15,6 +15,8 @@ type NodeRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.Node, error)
 	ListByLake(ctx context.Context, lakeID string, includeVapor bool) ([]domain.Node, error)
 	UpdateState(ctx context.Context, n *domain.Node) error
+	// UpdateContent 更新节点 content 与 updated_at。不改状态、不动软删字段。
+	UpdateContent(ctx context.Context, n *domain.Node) error
 }
 
 type nodeRepoNeo struct {
@@ -172,6 +174,37 @@ func (r *nodeRepoNeo) UpdateState(ctx context.Context, n *domain.Node) error {
 	})
 	if err != nil {
 		return fmt.Errorf("node update state: %w", err)
+	}
+	return nil
+}
+
+const cypherUpdateNodeContent = `
+MATCH (n:Node {id: $id})
+SET n.content = $content, n.updated_at = $updated_at
+RETURN n.id
+`
+
+// UpdateContent 更新节点 content 与 updated_at。若节点不存在返回 ErrNotFound。
+func (r *nodeRepoNeo) UpdateContent(ctx context.Context, n *domain.Node) error {
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	_, err := sess.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		rec, err := tx.Run(ctx, cypherUpdateNodeContent, map[string]any{
+			"id":         n.ID,
+			"content":    n.Content,
+			"updated_at": n.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !rec.Next(ctx) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, nil
+	})
+	if err != nil {
+		return fmt.Errorf("node update content: %w", err)
 	}
 	return nil
 }

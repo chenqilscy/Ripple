@@ -80,6 +80,7 @@ func main() {
 	nodes := store.NewNodeRepository(neo, cfg.Neo4jDatabase)
 	edges := store.NewEdgeRepository(neo, cfg.Neo4jDatabase)
 	invites := store.NewInviteRepository(pg)
+	nodeRevs := store.NewNodeRevisionRepository(pg)
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
@@ -87,7 +88,7 @@ func main() {
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
 
-	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker)
+	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker).WithRevisions(nodeRevs)
 	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
 	inviteSvc := service.NewInviteService(invites, memberships, lakes)
 	cloudSvc := service.NewCloudService(cloudTasks, nodes, lakes)

@@ -150,3 +150,105 @@ func (h *NodeHandlers) Condense(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, toNodeResp(n))
 }
+
+// --- 编辑历史 M2-F3 ---
+
+type updateContentReq struct {
+	Content    string `json:"content"`
+	EditReason string `json:"edit_reason"`
+}
+
+type revisionResp struct {
+	ID         string    `json:"id"`
+	NodeID     string    `json:"node_id"`
+	RevNumber  int       `json:"rev_number"`
+	Content    string    `json:"content"`
+	Title      string    `json:"title"`
+	EditorID   string    `json:"editor_id"`
+	EditReason string    `json:"edit_reason"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func toRevisionResp(rev *domain.NodeRevision) revisionResp {
+	return revisionResp{
+		ID: rev.ID, NodeID: rev.NodeID, RevNumber: rev.RevNumber,
+		Content: rev.Content, Title: rev.Title,
+		EditorID: rev.EditorID, EditReason: rev.EditReason,
+		CreatedAt: rev.CreatedAt,
+	}
+}
+
+// UpdateContent PUT /api/v1/nodes/{id}/content
+func (h *NodeHandlers) UpdateContent(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	id := chi.URLParam(r, "id")
+	var body updateContentReq
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	n, err := h.Nodes.UpdateContent(r.Context(), u, service.UpdateContentInput{
+		NodeID:     id,
+		Content:    body.Content,
+		EditReason: body.EditReason,
+	})
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toNodeResp(n))
+}
+
+// ListRevisions GET /api/v1/nodes/{id}/revisions?limit=50
+func (h *NodeHandlers) ListRevisions(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	id := chi.URLParam(r, "id")
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	revs, err := h.Nodes.ListRevisions(r.Context(), u, id, limit)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	out := make([]revisionResp, 0, len(revs))
+	for i := range revs {
+		out = append(out, toRevisionResp(&revs[i]))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"revisions": out})
+}
+
+// GetRevision GET /api/v1/nodes/{id}/revisions/{rev}
+func (h *NodeHandlers) GetRevision(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	id := chi.URLParam(r, "id")
+	revStr := chi.URLParam(r, "rev")
+	rev, err := strconv.Atoi(revStr)
+	if err != nil || rev <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid rev")
+		return
+	}
+	r2, err := h.Nodes.GetRevision(r.Context(), u, id, rev)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toRevisionResp(r2))
+}
+
+// Rollback POST /api/v1/nodes/{id}/rollback {"target_rev_number": N}
+func (h *NodeHandlers) Rollback(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	id := chi.URLParam(r, "id")
+	var body struct {
+		TargetRevNumber int `json:"target_rev_number"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	n, err := h.Nodes.Rollback(r.Context(), u, id, body.TargetRevNumber)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toNodeResp(n))
+}

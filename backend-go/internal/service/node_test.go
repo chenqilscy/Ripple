@@ -45,6 +45,13 @@ func (r *memNodeRepo) UpdateState(_ context.Context, n *domain.Node) error {
 	r.data[n.ID] = n
 	return nil
 }
+func (r *memNodeRepo) UpdateContent(_ context.Context, n *domain.Node) error {
+	if _, ok := r.data[n.ID]; !ok {
+		return domain.ErrNotFound
+	}
+	r.data[n.ID] = n
+	return nil
+}
 
 func newNodeSvc(t *testing.T) (*NodeService, *memLakeRepo, *memMembershipRepo, *memNodeRepo) {
 	t.Helper()

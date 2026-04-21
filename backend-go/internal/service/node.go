@@ -18,12 +18,13 @@ const VaporTTL = 30 * 24 * time.Hour
 // NodeService 节点 CRUD + 状态机 + 广播。
 type NodeService struct {
 	nodes       store.NodeRepository
+	revisions   store.NodeRevisionRepository // 可空：未接入时 Create/UpdateContent 不写历史
 	memberships store.MembershipRepository
 	lakes       store.LakeRepository
 	broker      realtime.Broker // 可空（单测场景）
 }
 
-// NewNodeService 装配。broker 可为 nil，此时所有事件静默。
+// NewNodeService 装配。broker / revisions 可为 nil。
 func NewNodeService(
 	nodes store.NodeRepository,
 	memberships store.MembershipRepository,
@@ -31,6 +32,12 @@ func NewNodeService(
 	broker realtime.Broker,
 ) *NodeService {
 	return &NodeService{nodes: nodes, memberships: memberships, lakes: lakes, broker: broker}
+}
+
+// WithRevisions 注入编辑历史仓库（装配阶段可选）。返回自身便于链式。
+func (s *NodeService) WithRevisions(revs store.NodeRevisionRepository) *NodeService {
+	s.revisions = revs
+	return s
 }
 
 // publish 非阻塞广播；broker 为 nil 时跳过。
@@ -86,6 +93,8 @@ func (s *NodeService) Create(ctx context.Context, actor *domain.User, in CreateN
 	if err := s.nodes.Create(ctx, n); err != nil {
 		return nil, err
 	}
+	// 初版 revision：rev_number=1。revisions 未注入时静默跳过（M2 前行为兼容）。
+	s.recordRevision(ctx, n, actor.ID, "initial")
 	s.publish(ctx, n.LakeID, "node.created", n)
 	return n, nil
 }
@@ -189,6 +198,126 @@ func (s *NodeService) Restore(ctx context.Context, actor *domain.User, nodeID st
 	}
 	s.publish(ctx, n.LakeID, "node.restored", n)
 	return n, nil
+}
+
+// --- 编辑历史（M2-F3）---
+
+// UpdateContentInput 更新节点内容入参。
+type UpdateContentInput struct {
+	NodeID     string
+	Content    string
+	EditReason string // 可选：审计注释
+}
+
+// UpdateContent 更新节点 content 并追加一条 revision。
+// 权限沿用 assertCanMutateNode（owner 或 lake owner）。
+// 若 revisions 未注入，仅更新 content，不记录历史。
+func (s *NodeService) UpdateContent(ctx context.Context, actor *domain.User, in UpdateContentInput) (*domain.Node, error) {
+	if in.NodeID == "" {
+		return nil, fmt.Errorf("%w: node_id required", domain.ErrInvalidInput)
+	}
+	if in.Content == "" {
+		return nil, fmt.Errorf("%w: content required", domain.ErrInvalidInput)
+	}
+	n, err := s.nodes.GetByID(ctx, in.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCanMutateNode(ctx, actor, n); err != nil {
+		return nil, err
+	}
+	// 内容未变化 → 幂等：不写 revision，不广播事件。
+	if n.Content == in.Content {
+		return n, nil
+	}
+	n.Content = in.Content
+	n.UpdatedAt = time.Now().UTC()
+	if err := s.nodes.UpdateContent(ctx, n); err != nil {
+		return nil, err
+	}
+	s.recordRevision(ctx, n, actor.ID, in.EditReason)
+	s.publish(ctx, n.LakeID, "node.updated", n)
+	return n, nil
+}
+
+// ListRevisions 按时间倒序取节点历史。limit<=0 默认 50；limit>200 截断 200。
+func (s *NodeService) ListRevisions(ctx context.Context, actor *domain.User, nodeID string, limit int) ([]domain.NodeRevision, error) {
+	if s.revisions == nil {
+		return []domain.NodeRevision{}, nil
+	}
+	n, err := s.nodes.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	// 读权限：节点所在湖可读即可（不要求写权限，历史透明）。
+	if n.LakeID != "" {
+		if err := s.assertReadable(ctx, actor, n.LakeID); err != nil {
+			return nil, err
+		}
+	} else if n.OwnerID != actor.ID {
+		return nil, domain.ErrPermissionDenied
+	}
+	return s.revisions.ListByNode(ctx, nodeID, limit)
+}
+
+// GetRevision 取单条 revision。权限同 ListRevisions。
+func (s *NodeService) GetRevision(ctx context.Context, actor *domain.User, nodeID string, revNumber int) (*domain.NodeRevision, error) {
+	if s.revisions == nil {
+		return nil, domain.ErrNotFound
+	}
+	n, err := s.nodes.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	if n.LakeID != "" {
+		if err := s.assertReadable(ctx, actor, n.LakeID); err != nil {
+			return nil, err
+		}
+	} else if n.OwnerID != actor.ID {
+		return nil, domain.ErrPermissionDenied
+	}
+	return s.revisions.GetByNodeAndRev(ctx, nodeID, revNumber)
+}
+
+// Rollback 把节点回滚到指定 revision。等价于 UpdateContent(target.content, reason="rollback to N")。
+// 权限同 UpdateContent。
+func (s *NodeService) Rollback(ctx context.Context, actor *domain.User, nodeID string, targetRev int) (*domain.Node, error) {
+	if s.revisions == nil {
+		return nil, fmt.Errorf("%w: revisions not enabled", domain.ErrInvalidInput)
+	}
+	if targetRev <= 0 {
+		return nil, fmt.Errorf("%w: target_rev_number must be > 0", domain.ErrInvalidInput)
+	}
+	target, err := s.revisions.GetByNodeAndRev(ctx, nodeID, targetRev)
+	if err != nil {
+		return nil, err
+	}
+	return s.UpdateContent(ctx, actor, UpdateContentInput{
+		NodeID:     nodeID,
+		Content:    target.Content,
+		EditReason: fmt.Sprintf("rollback to rev %d", targetRev),
+	})
+}
+
+// recordRevision 尝试追加 revision；失败只记日志不影响主流程（revisions 是审计数据，不应阻塞写）。
+// revisions 未注入时（单测 / 尚未装配）静默跳过。
+func (s *NodeService) recordRevision(ctx context.Context, n *domain.Node, editorID, reason string) {
+	if s.revisions == nil {
+		return
+	}
+	rev := &domain.NodeRevision{
+		ID:         platform.NewID(),
+		NodeID:     n.ID,
+		Content:    n.Content,
+		Title:      "",
+		EditorID:   editorID,
+		EditReason: reason,
+		CreatedAt:  n.UpdatedAt,
+	}
+	if err := s.revisions.InsertNext(ctx, rev); err != nil {
+		// 审计数据丢失不阻塞主流程，但要可观测。
+		fmt.Printf("[warn] record node revision failed: node=%s err=%v\n", n.ID, err)
+	}
 }
 
 // --- 内部权限工具 ---
