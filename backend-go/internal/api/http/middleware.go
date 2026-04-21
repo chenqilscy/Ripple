@@ -17,15 +17,23 @@ type ctxKey int
 const ctxUserKey ctxKey = 1
 
 // AuthMiddleware 强制 JWT 校验，注入 *domain.User 到 ctx。
+//
+// 优先 Authorization: Bearer <token> header。
+// 浏览器 WebSocket 不支持自定义 header，兜底从 ?access_token= 取。
+// 注意：query token 会出现在 access log 中，仅推荐用于 WS 升级路径。
 func AuthMiddleware(auth *service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			h := r.Header.Get("Authorization")
-			if !strings.HasPrefix(h, "Bearer ") {
+			tok := ""
+			if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+				tok = strings.TrimPrefix(h, "Bearer ")
+			} else if qt := r.URL.Query().Get("access_token"); qt != "" {
+				tok = qt
+			}
+			if tok == "" {
 				writeError(w, http.StatusUnauthorized, "missing bearer token")
 				return
 			}
-			tok := strings.TrimPrefix(h, "Bearer ")
 			u, err := auth.VerifyToken(r.Context(), tok)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "invalid token")

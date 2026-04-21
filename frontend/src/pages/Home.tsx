@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type CloudTask, type Lake, type NodeItem } from '../api/client'
+import { LakeWS } from '../api/wsClient'
 
 interface Props { onLogout: () => void }
 
@@ -13,9 +14,48 @@ export function Home({ onLogout }: Props) {
   const [newLakeName, setNewLakeName] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [wsOnline, setWsOnline] = useState(false)
+  const wsRef = useRef<LakeWS | null>(null)
 
   useEffect(() => { void refresh() }, [])
-  useEffect(() => { if (active) void loadNodes(active.id) }, [active])
+
+  // 切换 active 湖时：重建 WS 订阅，并加载节点。
+  useEffect(() => {
+    if (!active) return
+    void loadNodes(active.id)
+
+    const token = localStorage.getItem('ripple.token') ?? ''
+    if (!token) return
+
+    // 关闭旧连接
+    wsRef.current?.close()
+
+    const ws = new LakeWS(
+      active.id,
+      token,
+      msg => {
+        // node 事件 → 全量刷新节点（MVP 简化，避免增量 merge 复杂度）
+        if (msg.type.startsWith('node.')) {
+          void loadNodes(active.id)
+        }
+        // cloud 事件 → 刷新任务列表（如有 task_id）
+        if (msg.type.startsWith('cloud.') && msg.payload?.task_id) {
+          api.getCloud(msg.payload.task_id)
+            .then(t => setTasks(prev => prev.map(x => x.id === t.id ? t : x)))
+            .catch(() => { /* ignore */ })
+        }
+      },
+      online => setWsOnline(online),
+    )
+    ws.connect()
+    wsRef.current = ws
+
+    return () => {
+      ws.close()
+      wsRef.current = null
+      setWsOnline(false)
+    }
+  }, [active])
 
   async function refresh() {
     try {
@@ -85,7 +125,14 @@ export function Home({ onLogout }: Props) {
     <div style={layout}>
       <aside style={sidebar}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong style={{ letterSpacing: 3 }}>青萍 · 我的湖</strong>
+          <strong style={{ letterSpacing: 3 }}>
+            青萍 · 我的湖
+            <span title={wsOnline ? '实时连接已建立' : '实时离线'} style={{
+              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+              marginLeft: 8, background: wsOnline ? '#7fdbb6' : '#777',
+              boxShadow: wsOnline ? '0 0 6px #7fdbb6' : 'none',
+            }} />
+          </strong>
           <button onClick={onLogout} style={ghostBtn}>退出</button>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
