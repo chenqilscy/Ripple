@@ -65,7 +65,7 @@ export const api = {
     return request('GET', `/api/v1/lakes/${id}`)
   },
   listNodes(lakeId: string, includeVapor = false): Promise<{ nodes: NodeItem[] }> {
-    return request('GET', `/api/v1/lakes/${lakeId}/nodes?vapor=${includeVapor}`)
+    return request('GET', `/api/v1/lakes/${lakeId}/nodes?include_vapor=${includeVapor}`)
   },
 
   // ---- Nodes ----

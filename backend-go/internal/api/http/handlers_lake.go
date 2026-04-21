@@ -72,5 +72,16 @@ func (h *LakeHandlers) ListMine(w http.ResponseWriter, r *http.Request) {
 		writeError(w, mapDomainError(err), err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"lake_ids": ids})
+	out := make([]lakeResp, 0, len(ids))
+	for _, id := range ids {
+		l, role, err := h.Lakes.Get(r.Context(), u, id)
+		if err != nil {
+			continue // 容忍单个湖不可见（成员关系与湖节点短暂不一致）
+		}
+		out = append(out, lakeResp{
+			ID: l.ID, Name: l.Name, Description: l.Description,
+			IsPublic: l.IsPublic, OwnerID: l.OwnerID, Role: string(role),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"lakes": out, "lake_ids": ids})
 }
