@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/rs/zerolog"
 )
@@ -63,16 +64,22 @@ func (d *OutboxDispatcher) tick(ctx context.Context) {
 		d.log.Error().Err(err).Msg("outbox dequeue failed")
 		return
 	}
+	metrics.OutboxBatchSize.Set(int64(len(evs)))
 	for _, ev := range evs {
+		t0 := time.Now()
 		if err := d.handle(ctx, ev); err != nil {
 			d.log.Error().Int64("id", ev.ID).Str("type", ev.EventType).
 				Err(err).Msg("outbox handle failed")
 			_ = d.outbox.MarkFailed(ctx, ev.ID, err.Error())
+			metrics.OutboxFailed.Inc()
+			metrics.OutboxHandleDurationMs.Observe(float64(time.Since(t0).Microseconds()) / 1000.0)
 			continue
 		}
 		if err := d.outbox.MarkDone(ctx, ev.ID); err != nil {
 			d.log.Error().Int64("id", ev.ID).Err(err).Msg("outbox mark done failed")
 		}
+		metrics.OutboxProcessed.Inc()
+		metrics.OutboxHandleDurationMs.Observe(float64(time.Since(t0).Microseconds()) / 1000.0)
 	}
 }
 

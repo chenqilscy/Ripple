@@ -57,3 +57,20 @@ var WSConnections = Default.GaugeVec("ripple_ws_connections", "Active WebSocket 
 // WSMessagesIn / WSMessagesOut 消息计数。
 var WSMessagesIn = Default.CounterVec("ripple_ws_messages_in_total", "WebSocket messages received from clients.", nil)
 var WSMessagesOut = Default.CounterVec("ripple_ws_messages_out_total", "WebSocket messages sent to clients.", nil)
+
+// OutboxProcessed outbox 事件成功处理数。
+var OutboxProcessed = Default.CounterVec("ripple_outbox_processed_total", "Outbox events processed successfully.", nil)
+
+// OutboxFailed outbox 事件失败数（已 MarkFailed）。
+var OutboxFailed = Default.CounterVec("ripple_outbox_failed_total", "Outbox events failed.", nil)
+
+// OutboxBatchSize 每次 dequeue 拉到的事件数（gauge，最近一次）。
+var OutboxBatchSize = Default.GaugeVec("ripple_outbox_last_batch_size", "Outbox last dequeue batch size.", nil)
+
+// OutboxHandleDurationMs 单条事件处理耗时分布。
+var OutboxHandleDurationMs = Default.HistogramVec(
+	"ripple_outbox_handle_duration_ms",
+	"Outbox event handle duration in milliseconds.",
+	defaultDurationBucketsMs,
+	nil,
+)
