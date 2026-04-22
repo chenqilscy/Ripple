@@ -79,6 +79,9 @@ type Config struct {
 	OpenAICompatModel    string `envconfig:"OPENAI_COMPAT_MODEL"`
 	OpenAICompatEndpoint string `envconfig:"OPENAI_COMPAT_ENDPOINT"`
 	OpenAICompatName     string `envconfig:"OPENAI_COMPAT_NAME" default:"openai-compat"`
+
+	// Claude Code CLI（订阅制 provider；当前仅做启动侦测 + 日志）
+	ClaudeCodeCLIPath string `envconfig:"CLAUDE_CODE_CLI_PATH"`
 }
 
 // Load 从环境变量加载配置。

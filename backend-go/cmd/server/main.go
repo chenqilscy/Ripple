@@ -126,6 +126,18 @@ func main() {
 		}
 		logger.Info().Strs("providers", names).Bool("fallback", cfg.LLMFallback).Msg("llm router assembled")
 	}
+	// Claude Code CLI 侦测（非阻塞，仅日志）。订阅制 provider，单独于 token-based router。
+	go func() {
+		pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer pcancel()
+		r := llm.ProbeClaudeCodeCLI(pctx, cfg.ClaudeCodeCLIPath)
+		if r.Available {
+			logger.Info().Str("path", r.Path).Str("version", r.Version).Msg("claude code cli detected")
+		} else if cfg.ClaudeCodeCLIPath != "" {
+			// 显式配置了路径却不可用，报 warn
+			logger.Warn().Err(r.Err).Str("configured_path", cfg.ClaudeCodeCLIPath).Msg("claude code cli not available")
+		}
+	}()
 	llmRouter := llm.NewDefaultRouter(providers, llm.Policy{EnableFallback: cfg.LLMFallback}, llmRecorder)
 	weaver := service.NewAIWeaver(cloudTasks, nodes, llmRouter, broker, logger, 3)
 	weaverCtx, weaverCancel := context.WithCancel(context.Background())

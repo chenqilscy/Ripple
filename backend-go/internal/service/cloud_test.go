@@ -62,7 +62,9 @@ func (r *memCloudTaskRepo) ClaimNext(_ context.Context) (*domain.CloudTask, erro
 		t.Status = domain.CloudStatusRunning
 		now := time.Now().UTC()
 		t.StartedAt = &now
-		return t, nil
+		// 返回拷贝，避免外部 worker 与后续 Mark*/Get 等操作共享指针引发数据竞争
+		cp := *t
+		return &cp, nil
 	}
 	return nil, domain.ErrNotFound
 }
@@ -191,13 +193,15 @@ func TestAIWeaver_Process_CreatesMistNodes(t *testing.T) {
 		}
 		tasks.mu.Lock()
 		t1 := tasks.data["task-1"]
+		status := t1.Status
+		resultIDs := append([]string(nil), t1.ResultNodeIDs...)
 		tasks.mu.Unlock()
-		if t1.Status == domain.CloudStatusDone {
-			if len(t1.ResultNodeIDs) != 3 {
-				t.Fatalf("want 3 nodes, got %d", len(t1.ResultNodeIDs))
+		if status == domain.CloudStatusDone {
+			if len(resultIDs) != 3 {
+				t.Fatalf("want 3 nodes, got %d", len(resultIDs))
 			}
-			// 校验 mist 状态 + ttl
-			for _, id := range t1.ResultNodeIDs {
+			// 校验 mist 状态 + ttl（memNodeRepo 也需要锁，但当前实现是单 worker，无并发写）
+			for _, id := range resultIDs {
 				n := nodes.data[id]
 				if n.State != domain.StateMist {
 					t.Fatalf("node should be MIST, got %s", n.State)
@@ -235,9 +239,11 @@ func TestAIWeaver_Process_LLMFailureMarksFailed(t *testing.T) {
 		}
 		tasks.mu.Lock()
 		t2 := tasks.data["task-2"]
+		status := t2.Status
+		lastErr := t2.LastError
 		tasks.mu.Unlock()
-		if t2.Status == domain.CloudStatusFailed {
-			if t2.LastError == "" {
+		if status == domain.CloudStatusFailed {
+			if lastErr == "" {
 				t.Fatalf("want last_error set")
 			}
 			return
