@@ -59,12 +59,16 @@ func (s *CrystallizeService) Crystallize(ctx context.Context, actor *domain.User
 		return nil, fmt.Errorf("%w: source_node_ids must be 2-20", domain.ErrInvalidInput)
 	}
 
-	// 2. 权限：actor 必须是该 lake 的成员（任意角色可读，可凝结）
-	if _, err := s.members.GetRole(ctx, actor.ID, in.LakeID); err != nil {
+	// 2. 权限：actor 必须是该 lake 的成员，且角色 >= PASSENGER（OBSERVER 只读不可凝结）
+	role, err := s.members.GetRole(ctx, actor.ID, in.LakeID)
+	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, domain.ErrPermissionDenied
 		}
 		return nil, err
+	}
+	if !role.AtLeast(domain.RolePassenger) {
+		return nil, domain.ErrPermissionDenied
 	}
 
 	// 3. 取每个 source 节点（顺序遍历；S2.5 改 GetManyByIDs 优化）

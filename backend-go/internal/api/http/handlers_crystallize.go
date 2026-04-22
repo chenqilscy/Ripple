@@ -33,9 +33,11 @@ type permaResp struct {
 // Create POST /api/v1/perma_nodes
 func (h *CrystallizeHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	u, _ := CurrentUser(r.Context())
+	// 限制 body 64KB（source_node_ids 最多 20 个 UUID + title_hint，足够）
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	var in crystallizeReq
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json")
+		writeError(w, http.StatusBadRequest, "invalid json or body too large")
 		return
 	}
 	p, err := h.Svc.Crystallize(r.Context(), u, service.CrystallizeInput{

@@ -173,7 +173,8 @@ func main() {
 		Crystallize: crystallizeSvc,
 		Presence:    presenceSvc,
 		WS:          wsH,
-		CORSOrigins: cfg.CORSOriginList(),
+		CORSOrigins:    cfg.CORSOriginList(),
+		MetricsEnabled: cfg.MetricsEnabled,
 	})
 
 	srv := &http.Server{

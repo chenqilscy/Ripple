@@ -41,7 +41,12 @@ export default function SpaceMembersDrawer(props: SpaceMembersDrawerProps) {
       title: '邀请成员',
       label: '输入用户的 UUID（M3-S4 将支持邮箱邀请）',
       placeholder: '例如：8400ec3a-…',
-      validate: v => v.trim().length < 32 ? 'UUID 看起来不对' : null,
+      validate: v => {
+        const s = v.trim()
+        // UUID v4 标准 36 字符，含 4 个连字符；放宽允许大小写
+        const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+        return uuidRe.test(s) ? null : 'UUID 格式无效（需 36 位含连字符）'
+      },
     })
     if (!uid) return
     const role = await modalPrompt({

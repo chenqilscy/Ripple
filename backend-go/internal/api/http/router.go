@@ -25,6 +25,8 @@ type Deps struct {
 	Presence    *presence.Service
 	WS          *WSHandlers
 	CORSOrigins []string
+	// MetricsEnabled true 时挂载 GET /metrics（Prometheus 文本格式）；false 不暴露。
+	MetricsEnabled bool
 }
 
 // NewRouter 装配 Chi 路由。
@@ -50,11 +52,13 @@ func NewRouter(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// Prometheus 文本格式指标。无鉴权（生产建议 IP 白名单 / 反代过滤）。
-	r.Get("/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_ = metrics.Default.WriteText(w)
-	})
+	// Prometheus 文本格式指标。受 cfg.MetricsEnabled 开关控制。
+	if d.MetricsEnabled {
+		r.Get("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+			_ = metrics.Default.WriteText(w)
+		})
+	}
 
 	authH := &AuthHandlers{Auth: d.Auth}
 	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces}

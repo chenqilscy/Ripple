@@ -141,3 +141,17 @@ func TestCrystallize_LLMError(t *testing.T) {
 
 // 防止 llm 包未使用警告
 var _ = llm.ModalityText
+
+// OBSERVER 角色不能凝结（M3-S2 P4 安全）
+func TestCrystallize_ObserverDenied(t *testing.T) {
+	nodes := newMemNodeRepo()
+	for _, id := range []string{"n1", "n2"} {
+		_ = nodes.Create(context.Background(), &domain.Node{ID: id, LakeID: "l", OwnerID: "u", Content: "c", Type: domain.NodeTypeText, State: domain.StateMist})
+	}
+	members := &memMembers{roles: map[string]domain.Role{memberKey("u", "l"): domain.RoleObserver}}
+	svc := NewCrystallizeService(newMemPermaRepo(), nodes, members, newFakeRouter([]string{"ok"}, nil))
+	_, err := svc.Crystallize(context.Background(), &domain.User{ID: "u"}, CrystallizeInput{LakeID: "l", SourceNodeIDs: []string{"n1", "n2"}})
+	if !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Fatalf("want ErrPermissionDenied, got %v", err)
+	}
+}

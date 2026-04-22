@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -52,7 +53,7 @@ func (r *DefaultRouter) GenerateStream(ctx context.Context, req GenerateRequest)
 			continue
 		}
 		// 包一层把最终统计写进 recorder
-		return r.wrapStream(ch, p.Name(), req.Modality, hash, started), nil
+		return r.wrapStream(ctx, ch, p.Name(), req.Modality, hash, started), nil
 	}
 
 	if streamTried == 0 {
@@ -63,7 +64,8 @@ func (r *DefaultRouter) GenerateStream(ctx context.Context, req GenerateRequest)
 }
 
 // wrapStream 包装上游 chunk，结束时记录一条 CallRecord。
-func (r *DefaultRouter) wrapStream(in <-chan StreamChunk, name string, mod Modality, hash string, started time.Time) <-chan StreamChunk {
+// 传入 ctx 用于在消费者断开（ctx 取消）时优雅退出，避免 goroutine 泄漏。
+func (r *DefaultRouter) wrapStream(ctx context.Context, in <-chan StreamChunk, name string, mod Modality, hash string, started time.Time) <-chan StreamChunk {
 	out := make(chan StreamChunk, 16)
 	go func() {
 		defer close(out)
@@ -76,8 +78,15 @@ func (r *DefaultRouter) wrapStream(in <-chan StreamChunk, name string, mod Modal
 			if c.CostTokens > 0 {
 				totalCost += c.CostTokens
 			}
-			out <- c
+			select {
+			case out <- c:
+			case <-ctx.Done():
+				// 消费者已断开，丢弃后续 chunk 并退出
+				sawErr = ctx.Err()
+				goto done
+			}
 		}
+	done:
 		status := "ok"
 		errMsg := ""
 		if sawErr != nil {
@@ -89,6 +98,7 @@ func (r *DefaultRouter) wrapStream(in <-chan StreamChunk, name string, mod Modal
 			CandidatesN: 1, LatencyMS: int(time.Since(started).Milliseconds()),
 			Status: status, ErrorMessage: errMsg,
 		})
+		// totalCost 当前未持久化（CallRecord 暂无 cost 字段；S2.5 加）
 		_ = totalCost
 	}()
 	return out
@@ -124,6 +134,16 @@ func (r *DefaultRouter) fallbackGenerateAsStream(ctx context.Context, req Genera
 			text := ""
 			if len(cands) > 0 {
 				text = cands[0].Text
+			}
+			if strings.TrimSpace(text) == "" {
+				out <- StreamChunk{Err: fmt.Errorf("provider %s: empty output", p.Name())}
+				r.recorder.Record(CallRecord{
+					Provider: p.Name(), Modality: req2.Modality, PromptHash: hash,
+					CandidatesN: len(cands),
+					LatencyMS:   int(time.Since(started).Milliseconds()),
+					Status:      "error", ErrorMessage: "empty output",
+				})
+				return
 			}
 			out <- StreamChunk{Delta: text}
 			out <- StreamChunk{Done: true}

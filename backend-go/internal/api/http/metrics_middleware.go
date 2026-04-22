@@ -13,8 +13,8 @@ import (
 // 后续如需更细维度，建议接入 chi.RouteContext 在路由匹配后再 wrap。
 func metricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 跳过 /metrics 自身，避免自引计数干扰
-		if r.URL.Path == "/metrics" {
+		// 跳过 /metrics 自身 + /healthz（健康检查频率高、无业务意义）
+		if r.URL.Path == "/metrics" || r.URL.Path == "/healthz" {
 			next.ServeHTTP(w, r)
 			return
 		}

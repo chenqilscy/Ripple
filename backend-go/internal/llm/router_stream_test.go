@@ -160,5 +160,31 @@ func TestRouterStream_NoFallbackByDefault(t *testing.T) {
 	}
 }
 
+// fallback 路径下 provider 返回空文本应当 emit Err 而不是空 Done
+func TestRouterStream_FallbackEmptyOutputEmitsErr(t *testing.T) {
+	p := &rsNoStreamStub{name: "ns", supports: ModalityText, text: ""}
+	r := NewDefaultRouter([]Provider{p}, Policy{}, nil)
+	ch, err := r.GenerateStream(context.Background(), GenerateRequest{Prompt: "x", Modality: ModalityText, N: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawErr error
+	sawDone := false
+	for c := range ch {
+		if c.Err != nil {
+			sawErr = c.Err
+		}
+		if c.Done {
+			sawDone = true
+		}
+	}
+	if sawErr == nil {
+		t.Fatal("expected Err for empty output")
+	}
+	if sawDone {
+		t.Error("Done should not be emitted on empty-output failure")
+	}
+}
+
 // 防止 time 包未使用警告
 var _ = time.Second
