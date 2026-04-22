@@ -63,6 +63,15 @@ export interface ApiError extends Error {
   code?: string
 }
 
+// ---- Notification (P13-B) ----
+export interface Notification {
+  id: number
+  type: string
+  payload: Record<string, unknown>
+  is_read: boolean
+  created_at: string
+}
+
 // ---- Edges ----
 export type EdgeKind = 'relates' | 'derives' | 'opposes' | 'refines' | 'groups' | 'custom'
 

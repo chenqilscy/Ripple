@@ -14,6 +14,7 @@ import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
 import AttachmentBar from '../components/AttachmentBar'
 import CollabDemo from '../components/CollabDemo'
 import OfflineBar from '../components/OfflineBar'
+import NotificationBell from '../components/NotificationBell'
 import { LakeWS } from '../api/wsClient'
 
 interface Props { onLogout: () => void }
@@ -44,6 +45,7 @@ export function Home({ onLogout }: Props) {
   const [orgOpen, setOrgOpen] = useState(false)
   const [meId, setMeId] = useState<string>('')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [exportBusy, setExportBusy] = useState(false)
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -445,6 +447,16 @@ export function Home({ onLogout }: Props) {
     } catch (e) { setErr((e as Error).message) }
   }
 
+  // P13-D：导出湖内容
+  async function exportLakeUI(format: 'json' | 'markdown') {
+    if (!active) return
+    setExportBusy(true)
+    try {
+      await api.exportLake(active.id, format)
+    } catch (e) { setErr((e as Error).message) }
+    finally { setExportBusy(false) }
+  }
+
   // M3 T7：移动湖到其他空间
   async function moveLakeUI(lake: Lake) {
     try {
@@ -523,6 +535,7 @@ export function Home({ onLogout }: Props) {
             title="组织管理"
             style={{ ...ghostBtn, color: orgOpen ? '#89b4fa' : undefined }}
           >🏢</button>
+          <NotificationBell />
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
           <input
@@ -571,8 +584,17 @@ export function Home({ onLogout }: Props) {
         {active && (
           <>
             <h2 style={{ margin: '0 0 8px', fontWeight: 300 }}>{active.name}</h2>
-            <div style={{ opacity: 0.5, marginBottom: 24, fontSize: 12 }}>
+            <div style={{ opacity: 0.5, marginBottom: 12, fontSize: 12 }}>
               {active.description || '未命名湖区 · ' + active.id.slice(0, 8)}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, opacity: 0.5 }}>导出：</span>
+              <button onClick={() => void exportLakeUI('json')} disabled={exportBusy} style={miniBtn}>
+                {exportBusy ? '…' : 'JSON'}
+              </button>
+              <button onClick={() => void exportLakeUI('markdown')} disabled={exportBusy} style={miniBtn}>
+                {exportBusy ? '…' : 'Markdown'}
+              </button>
             </div>
             {onlineUsers.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, opacity: 0.8 }}>

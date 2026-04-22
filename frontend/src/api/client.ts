@@ -274,6 +274,40 @@ export const api = {
     return request('GET', `/api/v1/organizations/${orgId}/lakes`)
   },
 
+  // P13-D：内容导出
+  async exportLake(lakeId: string, format: 'json' | 'markdown'): Promise<void> {
+    const tok = getToken()
+    const resp = await fetch(`${BASE}/api/v1/lakes/${lakeId}/export?format=${format}`, {
+      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const blob = await resp.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `lake-${lakeId}.${format === 'json' ? 'json' : 'md'}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
+
+  // P13-B：通知系统
+  listNotifications(limit = 20, before?: number): Promise<{ notifications: import('./types').Notification[] }> {
+    const q = new URLSearchParams({ limit: String(limit) })
+    if (before !== undefined) q.set('before', String(before))
+    return request('GET', `/api/v1/notifications?${q}`)
+  },
+  markNotificationRead(id: number): Promise<void> {
+    return request('POST', `/api/v1/notifications/${id}/read`)
+  },
+  markAllNotificationsRead(): Promise<void> {
+    return request('POST', '/api/v1/notifications/read_all')
+  },
+  getUnreadNotificationCount(): Promise<{ count: number }> {
+    return request('GET', '/api/v1/notifications/unread_count')
+  },
+
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
   streamWeave(

@@ -117,7 +117,9 @@ func main() {
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
 	spaceSvc := service.NewSpaceService(spaceRepo)
-	orgSvc := service.NewOrgService(orgRepo) // P12-C
+	orgSvc := service.NewOrgService(orgRepo)               // P12-C
+	notifRepo := store.NewNotificationRepository(pg)        // P13-B
+	notifSvc := service.NewNotificationService(notifRepo)   // P13-B
 
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
@@ -240,6 +242,7 @@ func main() {
 		APIKeys:        apiKeyRepo,
 		AuditLogs:      auditLogRepo,
 		Orgs:           orgSvc,
+		Notifications:  notifSvc,
 		LLMRouter:      llmRouter,
 		CORSOrigins:    cfg.CORSOriginList(),
 		MetricsEnabled: cfg.MetricsEnabled,

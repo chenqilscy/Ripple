@@ -41,6 +41,8 @@ type Deps struct {
 	AuditLogs   store.AuditLogRepository
 	// Orgs 非 nil 时挂载 /organizations 端点（P12-C）。
 	Orgs        *service.OrgService
+	// Notifications 非 nil 时挂载 /notifications 端点（P13-B）。
+	Notifications *service.NotificationService
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
 	LLMRouter   llm.StreamProvider
 	CORSOrigins []string
@@ -80,7 +82,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	authH := &AuthHandlers{Auth: d.Auth}
-	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces, Orgs: d.Orgs}
+	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces, Orgs: d.Orgs, Nodes: d.Nodes, Edges: d.Edges}
 	nodeH := &NodeHandlers{Nodes: d.Nodes}
 	cloudH := &CloudHandlers{Clouds: d.Clouds}
 	var edgeH *EdgeHandlers
@@ -238,6 +240,17 @@ func NewRouter(d Deps) http.Handler {
 			}
 			// P13-A：设置湖组织归属
 			r.Patch("/lakes/{id}/org", lakeH.SetLakeOrg)
+			// P13-D：内容导出
+			r.Get("/lakes/{id}/export", lakeH.Export)
+
+			// P13-B：通知系统
+			if d.Notifications != nil {
+				notifH := &NotificationHandlers{Svc: d.Notifications}
+				r.Get("/notifications", notifH.List)
+				r.Get("/notifications/unread_count", notifH.UnreadCount)
+				r.Post("/notifications/{id}/read", notifH.MarkRead)
+				r.Post("/notifications/read_all", notifH.MarkAllRead)
+			}
 		})
 	})
 
