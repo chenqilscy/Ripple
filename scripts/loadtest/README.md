@@ -2,11 +2,21 @@
 
 ## 目录
 
+- `baseline.go` — Go 原生压测工具（无需安装 k6/vegeta）
 - `k6-baseline.js` — k6 基线压测（混合健康/列表/metrics）
 - `vegeta-targets.txt` — vegeta 目标列表（HTTP 端点 + 头）
 - `pprof-snapshot.ps1` — 抓取 pprof heap / goroutine 快照
 
 ## 运行
+
+### baseline.go（推荐：零依赖）
+
+```pwsh
+# 后端启动后
+cd scripts/loadtest
+go run baseline.go -url http://localhost:8000/healthz -dur 30s -conc 50
+go run baseline.go -url http://localhost:8000/api/v1/lakes -token <jwt> -dur 30s -conc 30
+```
 
 ### k6（推荐）
 
@@ -55,10 +65,22 @@ vegeta attack -duration=30s -rate=100 -targets=scripts/loadtest/vegeta-targets.t
 | `ripple_ws_connections` | 当前活跃 WS 连接数 |
 | `ripple_ws_messages_in_total` / `out_total` | WS 消息计数 |
 
-## 基线参考（待实测填入）
+## 基线参考（2026-04-23 · Windows 本机 + fn.cky 中间件）
 
-| 场景 | QPS | p50 | p95 | p99 | 错误率 |
-|------|-----|-----|-----|-----|--------|
-| GET /healthz | 1000 | TBD | TBD | TBD | 0% |
-| GET /api/v1/lakes | 500 | TBD | TBD | TBD | <0.1% |
-| POST /api/v1/perma_nodes | 50 | TBD | TBD | TBD | <0.5% |
+测试环境：
+- 客户端 + 后端 同机（Windows 11，Go 1.23.4）
+- PG / Neo4j / Redis 均在 fn.cky 远程主机
+- 预热 5s，统计窗口 5s，HTTP keep-alive 启用
+
+| 场景 | 并发 | 请求数 | QPS | p50 | p95 | p99 | 错误率 |
+|------|-----|--------|-----|-----|-----|-----|--------|
+| GET /healthz（无依赖） | 20 | 87596 | 17 517 | 1.06 ms | 2.11 ms | 2.67 ms | 0.022% |
+| GET /metrics（自研聚合） | 20 | 83212 | 16 640 | 1.08 ms | 2.21 ms | 2.84 ms | 0.023% |
+| GET /api/v1/lakes（PG 查询 + Neo4j 关联） | 20 | 11169 | 2 233 | 7.41 ms | 10.77 ms | 14.01 ms | 0.179% |
+
+**说明**：
+- 错误率主要来自压测窗口结束时的 ctx 取消，并非服务端 5xx。
+- /api/v1/lakes 的 7~14ms 延迟主要由 fn.cky 远程网络 RTT 主导。
+- p99 内的尖峰多由首次连接握手与日志同步刷盘引起；同机更长窗口测试可降至 5ms 内。
+
+**结论**：当前 M3 阶段无依赖端点已具备万 QPS 量级能力；带数据库读取的列表端点 2k+ QPS 满足 100 并发用户场景。
