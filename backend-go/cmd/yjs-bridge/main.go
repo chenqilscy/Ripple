@@ -22,7 +22,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -37,11 +40,22 @@ import (
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
+	"github.com/redis/go-redis/v9"
 	"nhooyr.io/websocket"
 )
 
+// newRandomID 生成 16 字节随机十六进制字符串（32 字符）。
+func newRandomID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic("yjs-bridge: failed to generate random ID: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
+
 type peer struct {
 	conn   *websocket.Conn
+	id     string // 对端唯一 ID（hex），用于 Redis 消息去重
 	nodeID string // P8-D：使用 node_id 作为房间键
 	lakeID string
 	userID string // P6-B 鉴权后写入
@@ -49,16 +63,55 @@ type peer struct {
 }
 
 type hub struct {
-	mu              sync.RWMutex
-	rooms           map[string]map[*peer]struct{} // nodeID -> peers
-	jwt             *platform.JWTSigner           // nil 表示禁用鉴权
-	allowedOrigins  map[string]struct{}           // empty 表示不限 Origin（仅当 jwt==nil 时安全）
-	originsRawList  []string                      // 用于 AcceptOptions
-	apiURL          string                        // P8-D：Ripple 后端 URL（如 http://localhost:8000）
-	httpClient      *http.Client                  // P8-D：用于加载快照的 HTTP 客户端
+	mu             sync.RWMutex
+	rooms          map[string]map[*peer]struct{}    // nodeID -> peers
+	roomSubs       map[string]context.CancelFunc    // P9-A：nodeID -> 订阅 goroutine cancel 函数
+	jwt            *platform.JWTSigner              // nil 表示禁用鉴权
+	allowedOrigins map[string]struct{}              // empty 表示不限 Origin（仅当 jwt==nil 时安全）
+	originsRawList []string                         // 用于 AcceptOptions
+	apiURL         string                           // P8-D：Ripple 后端 URL（如 http://localhost:8000）
+	httpClient     *http.Client                     // P8-D：用于加载快照的 HTTP 客户端
+	// P9-A：Redis Pub/Sub（nil = 单实例模式，禁用 Redis 广播）
+	rdb        *redis.Client
+	instanceID string // 当前实例唯一 ID，用于消息去重（防止本实例收到自己发出的广播）
+	peerSeq    uint64 // 简单递增 ID（配合 sync/atomic）
 }
 
-func newHub(jwtSigner *platform.JWTSigner, originsList []string, apiURL string) *hub {
+// redisChannel 返回指定 nodeID 的 Redis Pub/Sub channel 名。
+func redisChannel(nodeID string) string {
+	return "yjs:room:" + nodeID
+}
+
+// encodeRedisMsg 将 Yjs 帧编码为 Redis 消息：<instanceID>\n<peerID>\n<payload>。
+// 格式保证 instanceID 和 peerID 不含换行符（均为十六进制字符串）。
+func encodeRedisMsg(instanceID, peerID string, payload []byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(instanceID)
+	buf.WriteByte('\n')
+	buf.WriteString(peerID)
+	buf.WriteByte('\n')
+	buf.Write(payload)
+	return buf.Bytes()
+}
+
+// decodeRedisMsg 从 Redis 消息中解析 instanceID、peerID 和原始 payload。
+func decodeRedisMsg(msg []byte) (instanceID, peerID string, payload []byte, ok bool) {
+	idx1 := bytes.IndexByte(msg, '\n')
+	if idx1 < 0 {
+		return
+	}
+	idx2 := bytes.IndexByte(msg[idx1+1:], '\n')
+	if idx2 < 0 {
+		return
+	}
+	instanceID = string(msg[:idx1])
+	peerID = string(msg[idx1+1 : idx1+1+idx2])
+	payload = msg[idx1+1+idx2+1:]
+	ok = true
+	return
+}
+
+func newHub(jwtSigner *platform.JWTSigner, originsList []string, apiURL string, rdb *redis.Client, instanceID string) *hub {
 	allowed := map[string]struct{}{}
 	for _, o := range originsList {
 		o = strings.TrimSpace(o)
@@ -68,11 +121,14 @@ func newHub(jwtSigner *platform.JWTSigner, originsList []string, apiURL string) 
 	}
 	return &hub{
 		rooms:          map[string]map[*peer]struct{}{},
+		roomSubs:       map[string]context.CancelFunc{},
 		jwt:            jwtSigner,
 		allowedOrigins: allowed,
 		originsRawList: originsList,
 		apiURL:         apiURL,
 		httpClient:     &http.Client{Timeout: 5 * time.Second},
+		rdb:            rdb,
+		instanceID:     instanceID,
 	}
 }
 
@@ -91,6 +147,13 @@ func (h *hub) join(p *peer) joinResult {
 		h.rooms[p.nodeID] = room
 	}
 	room[p] = struct{}{}
+
+	// P9-A：首个对端加入时启动 Redis 订阅 goroutine
+	if isFirst && h.rdb != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		h.roomSubs[p.nodeID] = cancel
+		go h.subscribeRoom(ctx, p.nodeID)
+	}
 	return joinResult{isFirst: isFirst}
 }
 
@@ -101,10 +164,17 @@ func (h *hub) leave(p *peer) {
 		delete(room, p)
 		if len(room) == 0 {
 			delete(h.rooms, p.nodeID)
+			// P9-A：最后一个对端离开时取消 Redis 订阅
+			if cancel, ok := h.roomSubs[p.nodeID]; ok {
+				cancel()
+				delete(h.roomSubs, p.nodeID)
+			}
 		}
 	}
 }
 
+// broadcast 将消息广播给同 room 的本地对端（排除 sender）。
+// P9-A：同时 publish 到 Redis，供其他实例转发。
 func (h *hub) broadcast(ctx context.Context, sender *peer, msgType websocket.MessageType, data []byte) {
 	h.mu.RLock()
 	room := h.rooms[sender.nodeID]
@@ -115,10 +185,79 @@ func (h *hub) broadcast(ctx context.Context, sender *peer, msgType websocket.Mes
 		}
 	}
 	h.mu.RUnlock()
+
 	for _, p := range peers {
 		c, cancel := context.WithTimeout(ctx, 3*time.Second)
 		_ = p.conn.Write(c, msgType, data)
 		cancel()
+	}
+
+	// P9-A：publish 到 Redis（其他实例的对端会收到并转发）
+	if h.rdb != nil && msgType == websocket.MessageBinary {
+		msg := encodeRedisMsg(h.instanceID, sender.id, data)
+		// 使用独立的 background context 避免因 WS 请求 context 取消导致 publish 失败
+		pubCtx, pubCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := h.rdb.Publish(pubCtx, redisChannel(sender.nodeID), msg).Err(); err != nil {
+			log.Printf("yjs-bridge: redis publish node=%s err=%v", sender.nodeID, err)
+		}
+		pubCancel()
+	}
+}
+
+// subscribeRoom 订阅 Redis channel，将远端消息广播给本实例的本地对端（P9-A）。
+// 调用方须保证 nodeID 对应 room 存在；ctx cancel 时退出。
+// 内置重连逻辑：Redis 断开后每 2s 重试，直到 ctx 取消。
+func (h *hub) subscribeRoom(ctx context.Context, nodeID string) {
+	ch := redisChannel(nodeID)
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		ps := h.rdb.Subscribe(ctx, ch)
+		msgCh := ps.Channel()
+		exited := false
+		for !exited {
+			select {
+			case <-ctx.Done():
+				_ = ps.Unsubscribe(context.Background(), ch)
+				_ = ps.Close()
+				return
+			case msg, ok := <-msgCh:
+				if !ok {
+					// Redis 连接断开，退出内层循环以触发重连
+					_ = ps.Close()
+					exited = true
+					break
+				}
+				instanceID, _, payload, valid := decodeRedisMsg([]byte(msg.Payload))
+				if !valid {
+					continue
+				}
+				// 跳过本实例自己发出的消息（避免回环广播）
+				if instanceID == h.instanceID {
+					continue
+				}
+				// 广播给本地 room 的所有对端
+				h.mu.RLock()
+				room := h.rooms[nodeID]
+				peers := make([]*peer, 0, len(room))
+				for p := range room {
+					peers = append(peers, p)
+				}
+				h.mu.RUnlock()
+				for _, p := range peers {
+					wCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+					_ = p.conn.Write(wCtx, websocket.MessageBinary, payload)
+					cancel()
+				}
+			}
+		}
+		log.Printf("yjs-bridge: redis subscription lost for node=%s, retrying in 2s", nodeID)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
 	}
 }
 
@@ -240,7 +379,7 @@ func (h *hub) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer c.Close(websocket.StatusInternalError, "")
 
-	p := &peer{conn: c, nodeID: roomKey, lakeID: lakeID, userID: userID, token: rawToken}
+	p := &peer{conn: c, id: newRandomID(), nodeID: roomKey, lakeID: lakeID, userID: userID, token: rawToken}
 	result := h.join(p)
 	defer h.leave(p)
 	log.Printf("yjs-bridge: peer joined node=%s lake=%s user=%s first=%v", roomKey, lakeID, userID, result.isFirst)
@@ -324,7 +463,24 @@ func main() {
 	// P8-D：Ripple 后端 URL（用于加载 Y.Doc 快照）
 	apiURL := strings.TrimRight(os.Getenv("YJS_BRIDGE_API_URL"), "/")
 
-	h := newHub(jwtSigner, originsList, apiURL)
+	// P9-A：Redis Pub/Sub（多实例广播）
+	var rdb *redis.Client
+	instanceID := newRandomID()
+	if redisURL := os.Getenv("YJS_BRIDGE_REDIS_URL"); redisURL != "" {
+		opt, err := redis.ParseURL(redisURL)
+		if err != nil {
+			log.Fatalf("yjs-bridge: invalid YJS_BRIDGE_REDIS_URL: %v", err)
+		}
+		rdb = redis.NewClient(opt)
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if err := rdb.Ping(pingCtx).Err(); err != nil {
+			log.Fatalf("yjs-bridge: redis ping failed: %v", err)
+		}
+		pingCancel()
+		log.Printf("yjs-bridge: redis pub/sub enabled (instance=%s)", instanceID)
+	}
+
+	h := newHub(jwtSigner, originsList, apiURL, rdb, instanceID)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/yjs", h.handleWS)
 	mux.HandleFunc("/yjs/", h.handleWS) // P8-E：y-websocket params 选项会追加 /<roomName> 到 URL 路径
@@ -340,7 +496,11 @@ func main() {
 	if apiURL != "" {
 		apiStatus = apiURL
 	}
-	log.Printf("yjs-bridge listening on %s (auth=%s, origins=%v, api=%s)", addr, authStatus, originsList, apiStatus)
+	redisStatus := "DISABLED"
+	if rdb != nil {
+		redisStatus = "ENABLED (instance=" + instanceID + ")"
+	}
+	log.Printf("yjs-bridge listening on %s (auth=%s, origins=%v, api=%s, redis=%s)", addr, authStatus, originsList, apiStatus, redisStatus)
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -355,4 +515,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
+	if rdb != nil {
+		_ = rdb.Close()
+	}
 }
