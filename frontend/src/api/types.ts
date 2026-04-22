@@ -190,3 +190,23 @@ export interface SearchHit {
   snippet: string
   score: number
 }
+
+// ---- Organizations (P12-C) ----
+export type OrgRole = 'OWNER' | 'ADMIN' | 'MEMBER'
+
+export interface Organization {
+  id: string
+  name: string
+  slug: string
+  description: string
+  owner_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface OrgMember {
+  org_id: string
+  user_id: string
+  role: OrgRole
+  joined_at: string
+}

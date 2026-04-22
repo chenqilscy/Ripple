@@ -39,6 +39,8 @@ type Deps struct {
 	APIKeys     store.APIKeyRepository
 	// AuditLogs 非 nil 时挂载 GET /audit_logs（P10-B）。
 	AuditLogs   store.AuditLogRepository
+	// Orgs 非 nil 时挂载 /organizations 端点（P12-C）。
+	Orgs        *service.OrgService
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
 	LLMRouter   llm.StreamProvider
 	CORSOrigins []string
@@ -220,6 +222,18 @@ func NewRouter(d Deps) http.Handler {
 			r.Put("/lakes/{id}/members/{userID}/role", lakeH.UpdateMemberRole)
 			// P11-C：湖成员列表（VIEWER+）
 			r.Get("/lakes/{id}/members", lakeH.ListMembers)
+
+			// P12-C：组织
+			if d.Orgs != nil {
+				orgH := &OrgHandlers{Orgs: d.Orgs}
+				r.Post("/organizations", orgH.CreateOrg)
+				r.Get("/organizations", orgH.ListMyOrgs)
+				r.Get("/organizations/{id}", orgH.GetOrg)
+				r.Get("/organizations/{id}/members", orgH.ListMembers)
+				r.Post("/organizations/{id}/members", orgH.AddMember)
+				r.Patch("/organizations/{id}/members/{userId}/role", orgH.UpdateMemberRole)
+				r.Delete("/organizations/{id}/members/{userId}", orgH.RemoveMember)
+			}
 		})
 	})
 

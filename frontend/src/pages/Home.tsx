@@ -7,6 +7,7 @@ const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
 const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManager'))
 const SearchModal = React.lazy(() => import('../components/SearchModal'))
 const ImportModal = React.lazy(() => import('../components/ImportModal'))
+const OrgPanel = React.lazy(() => import('../components/OrgPanel'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -40,7 +41,14 @@ export function Home({ onLogout }: Props) {
   const [membersDrawer, setMembersDrawer] = useState<Space | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [orgOpen, setOrgOpen] = useState(false)
+  const [meId, setMeId] = useState<string>('')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
+
+  // P12-C：拉取当前登录用户 ID（用于组织权限判断）
+  useEffect(() => {
+    api.me().then(u => setMeId(u.id)).catch(() => { /* 静默 */ })
+  }, [])
 
   // P12-E：PWA shortcut 处理 — ?action=search|import（需等 active 湖加载完毕）
   useEffect(() => {
@@ -510,6 +518,11 @@ export function Home({ onLogout }: Props) {
             onClick={() => setMainTab(t => t === 'settings' ? 'lakes' : 'settings')}
             style={{ ...ghostBtn, color: mainTab === 'settings' ? '#89b4fa' : undefined }}
           >⚙</button>
+          <button
+            onClick={() => setOrgOpen(o => !o)}
+            title="组织管理"
+            style={{ ...ghostBtn, color: orgOpen ? '#89b4fa' : undefined }}
+          >🏢</button>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
           <input
@@ -853,6 +866,15 @@ export function Home({ onLogout }: Props) {
             onImported={() => api.listNodes(active.id).then(r => setNodes(r.nodes))}
           />
         </React.Suspense>
+      )}
+      {orgOpen && (
+        <div style={{
+          position: 'fixed', top: 60, right: 20, zIndex: 300,
+        }}>
+          <React.Suspense fallback={null}>
+            <OrgPanel currentUserId={meId} onClose={() => setOrgOpen(false)} />
+          </React.Suspense>
+        </div>
       )}
     </div>
   )

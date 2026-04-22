@@ -55,6 +55,9 @@ export const api = {
       .then(t => { setToken(t.access_token); return t })
   },
   logout() { setToken(null) },
+  me(): Promise<User> {
+    return request('GET', '/api/v1/auth/me')
+  },
 
   // ---- Lakes ----
   listLakes(spaceId?: string): Promise<{ lakes: Lake[] }> {
@@ -239,6 +242,29 @@ export const api = {
   // ---- Batch Import (P12-A) ----
   batchImportNodes(lakeId: string, nodes: { content: string; type?: string }[]): Promise<{ created: number; nodes: NodeItem[] }> {
     return request('POST', `/api/v1/lakes/${lakeId}/nodes/batch`, { nodes })
+  },
+
+  // ---- Organizations (P12-C) ----
+  createOrg(name: string, slug: string, description?: string): Promise<import('./types').Organization> {
+    return request('POST', '/api/v1/organizations', { name, slug, description: description ?? '' })
+  },
+  listOrgs(): Promise<{ organizations: import('./types').Organization[] }> {
+    return request('GET', '/api/v1/organizations')
+  },
+  getOrg(id: string): Promise<import('./types').Organization> {
+    return request('GET', `/api/v1/organizations/${id}`)
+  },
+  listOrgMembers(orgId: string): Promise<{ members: import('./types').OrgMember[] }> {
+    return request('GET', `/api/v1/organizations/${orgId}/members`)
+  },
+  addOrgMember(orgId: string, userId: string, role: import('./types').OrgRole): Promise<void> {
+    return request('POST', `/api/v1/organizations/${orgId}/members`, { user_id: userId, role })
+  },
+  updateOrgMemberRole(orgId: string, userId: string, role: import('./types').OrgRole): Promise<void> {
+    return request('PATCH', `/api/v1/organizations/${orgId}/members/${userId}/role`, { role })
+  },
+  removeOrgMember(orgId: string, userId: string): Promise<void> {
+    return request('DELETE', `/api/v1/organizations/${orgId}/members/${userId}`)
   },
 
   // ---- Weave Stream (SSE / M3 T4) ----

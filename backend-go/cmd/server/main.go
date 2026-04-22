@@ -89,6 +89,7 @@ func main() {
 	docStateRepo := store.NewNodeDocStateRepository(pg) // P8-A/B/C
 	apiKeyRepo := store.NewAPIKeyRepository(pg)          // P10-A
 	auditLogRepo := store.NewAuditLogRepository(pg)      // P10-B
+	orgRepo := store.NewOrgRepository(pg)                // P12-C
 
 	// P10-B：启动时清理 30 天以前的审计日志（非阻塞）
 	go func() {
@@ -116,6 +117,7 @@ func main() {
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
 	spaceSvc := service.NewSpaceService(spaceRepo)
+	orgSvc := service.NewOrgService(orgRepo) // P12-C
 
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
@@ -237,6 +239,7 @@ func main() {
 		DocStates:      docStateRepo,
 		APIKeys:        apiKeyRepo,
 		AuditLogs:      auditLogRepo,
+		Orgs:           orgSvc,
 		LLMRouter:      llmRouter,
 		CORSOrigins:    cfg.CORSOriginList(),
 		MetricsEnabled: cfg.MetricsEnabled,
