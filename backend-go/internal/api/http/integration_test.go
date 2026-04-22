@@ -114,6 +114,8 @@ func setup(t *testing.T) *integrationFixture {
 		Invites:     inviteSvc,
 		Presence:    presenceSvc,
 		WsToken:     &httpapi.WsTokenHandlers{JWT: jwt},
+		APIKeys:     store.NewAPIKeyRepository(pg),
+		AuditLogs:   store.NewAuditLogRepository(pg),
 		CORSOrigins: []string{"*"},
 	})
 
@@ -902,6 +904,124 @@ func TestIntegration_WsToken(t *testing.T) {
 	f.tok = ""
 	if code := f.do(t, "POST", "/api/v1/ws_token", nil, nil); code != http.StatusUnauthorized {
 		t.Fatalf("no token: want 401, got %d", code)
+	}
+}
+
+// TestIntegration_APIKeyFlow 验证 P10-A API Key 完整生命周期：
+//
+//  1. 注册/登录，获取 JWT
+//  2. 用 JWT 创建 API Key → 201，返回 raw_key（一次性）
+//  3. 用 ApiKey header 访问受保护端点 → 200（CombinedAuthMiddleware）
+//  4. 列出 API Keys → 200，能看到刚建的 key（raw_key 已掩码）
+//  5. 用无效 ApiKey → 401
+//  6. 撤销 key → 204
+//  7. 用已撤销的 key 访问 → 401
+func TestIntegration_APIKeyFlow(t *testing.T) {
+	f := setup(t)
+
+	email := fmt.Sprintf("apikey+%s@ripple.local", uuid.NewString()[:8])
+	password := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": email, "password": password, "display_name": "apikey-user",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("register: want 201, got %d", code)
+	}
+
+	var login struct {
+		AccessToken string `json:"access_token"`
+	}
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": email, "password": password,
+	}, &login); code != http.StatusOK {
+		t.Fatalf("login: want 200, got %d", code)
+	}
+	f.tok = login.AccessToken
+
+	// 场景 2：创建 API Key
+	var created struct {
+		ID      string `json:"id"`
+		RawKey  string `json:"raw_key"`
+		Prefix  string `json:"key_prefix"`
+		Scopes  []string `json:"scopes"`
+	}
+	if code := f.do(t, "POST", "/api/v1/api_keys", map[string]any{
+		"name":   "ci-test-key",
+		"scopes": []string{"read_lake"},
+	}, &created); code != http.StatusCreated {
+		t.Fatalf("create api_key: want 201, got %d", code)
+	}
+	if created.RawKey == "" || created.ID == "" {
+		t.Fatal("create api_key: expected raw_key and id in response")
+	}
+
+	// 场景 3：用 ApiKey header 访问 GET /api/v1/api_keys
+	reqWithApiKey := func(method, path string, body any, out any) int {
+		var rd io.Reader
+		if body != nil {
+			b, _ := json.Marshal(body)
+			rd = bytes.NewReader(b)
+		}
+		req, _ := http.NewRequest(method, f.srv.URL+path, rd)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "ApiKey "+created.RawKey)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("apikey request %s %s: %v", method, path, err)
+		}
+		defer resp.Body.Close()
+		if out != nil && resp.StatusCode < 400 {
+			_ = json.NewDecoder(resp.Body).Decode(out)
+		}
+		return resp.StatusCode
+	}
+
+	var listResp struct {
+		Keys []struct {
+			ID     string `json:"id"`
+			Name   string `json:"name"`
+		} `json:"keys"`
+	}
+	if code := reqWithApiKey("GET", "/api/v1/api_keys", nil, &listResp); code != http.StatusOK {
+		t.Fatalf("list with ApiKey header: want 200, got %d", code)
+	}
+	found := false
+	for _, k := range listResp.Keys {
+		if k.ID == created.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("list api_keys: created key %s not found in list", created.ID)
+	}
+
+	// 场景 4：列出（用 JWT）— 应同样能看到
+	var listByJWT struct {
+		Keys []struct {
+			ID string `json:"id"`
+		} `json:"keys"`
+	}
+	if code := f.do(t, "GET", "/api/v1/api_keys", nil, &listByJWT); code != http.StatusOK {
+		t.Fatalf("list api_keys via JWT: want 200, got %d", code)
+	}
+
+	// 场景 5：无效 ApiKey → 401
+	req5, _ := http.NewRequest("GET", f.srv.URL+"/api/v1/api_keys", nil)
+	req5.Header.Set("Authorization", "ApiKey rpl_0000000000000000.0000000000000000000000000000000000000000000000000000000000000000")
+	resp5, _ := http.DefaultClient.Do(req5)
+	_ = resp5.Body.Close()
+	if resp5.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("invalid ApiKey: want 401, got %d", resp5.StatusCode)
+	}
+
+	// 场景 6：撤销 key
+	if code := f.do(t, "DELETE", "/api/v1/api_keys/"+created.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("revoke api_key: want 204, got %d", code)
+	}
+
+	// 场景 7：用已撤销的 key 访问 → 401
+	if code := reqWithApiKey("GET", "/api/v1/api_keys", nil, nil); code != http.StatusUnauthorized {
+		t.Fatalf("revoked ApiKey: want 401, got %d", code)
 	}
 }
 
