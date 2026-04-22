@@ -1,4 +1,4 @@
--- P12-C：组织（多租户）表
+﻿-- P12-C: 组织（多租户）表
 -- organizations + org_members，向后兼容：不修改任何现有表。
 
 CREATE TABLE IF NOT EXISTS organizations (
@@ -13,7 +13,11 @@ CREATE TABLE IF NOT EXISTS organizations (
 
 CREATE INDEX IF NOT EXISTS org_owner_idx ON organizations (owner_id);
 
-CREATE TYPE IF NOT EXISTS org_role AS ENUM ('OWNER', 'ADMIN', 'MEMBER');
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'org_role') THEN
+        CREATE TYPE org_role AS ENUM ('OWNER', 'ADMIN', 'MEMBER');
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS org_members (
     org_id      TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
