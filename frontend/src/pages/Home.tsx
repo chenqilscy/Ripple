@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
 
 const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
+const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
+const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -42,6 +44,8 @@ export function Home({ onLogout }: Props) {
   const streamAbortRef = useRef<(() => void) | null>(null)
   // P9-C：节点视图模式（列表 | 图谱）
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list')
+  // P11：主区 Tab（lakes=主流程 | settings=API Key+审计日志）
+  const [mainTab, setMainTab] = useState<'lakes' | 'settings'>('lakes')
   // M3-S3：推荐位（基于历史 LIKE 反馈的协同过滤）
   const [recos, setRecos] = useState<{ target_id: string; score: number }[]>([])
   const wsRef = useRef<LakeWS | null>(null)
@@ -453,6 +457,10 @@ export function Home({ onLogout }: Props) {
             }} />
           </strong>
           <button onClick={onLogout} style={ghostBtn}>退出</button>
+          <button
+            onClick={() => setMainTab(t => t === 'settings' ? 'lakes' : 'settings')}
+            style={{ ...ghostBtn, color: mainTab === 'settings' ? '#89b4fa' : undefined }}
+          >⚙</button>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
           <input
@@ -488,7 +496,16 @@ export function Home({ onLogout }: Props) {
       </aside>
 
       <main style={main}>
-        {!active && <div style={{ opacity: 0.5 }}>选择一个湖，或新建一个</div>}
+        {mainTab === 'settings' ? (
+          <React.Suspense fallback={<div style={{ padding: 16, color: '#6c7086' }}>加载中…</div>}>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              <APIKeyManager />
+              <AuditLogViewer />
+            </div>
+          </React.Suspense>
+        ) : (
+          <>
+            {!active && <div style={{ opacity: 0.5 }}>选择一个湖，或新建一个</div>}
         {active && (
           <>
             <h2 style={{ margin: '0 0 8px', fontWeight: 300 }}>{active.name}</h2>
@@ -751,6 +768,8 @@ export function Home({ onLogout }: Props) {
           </>
         )}
         {err && <div style={errBanner}>{err}</div>}
+          </>
+        )}
       </main>
       {membersDrawer && (
         <SpaceMembersDrawer space={membersDrawer} onClose={() => setMembersDrawer(null)} />

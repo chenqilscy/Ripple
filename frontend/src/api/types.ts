@@ -149,3 +149,28 @@ export interface PermaNode {
   llm_cost_tokens?: number
   created_at: string
 }
+
+// ---- API Keys (P10-A) ----
+export interface APIKeyItem {
+  id: string
+  name: string
+  key_prefix: string   // "rpl_XXXXXXXXXXXXXXXX..." (掩码)
+  scopes: string[]
+  last_used_at?: string | null
+  created_at: string
+}
+
+export interface APIKeyCreated extends APIKeyItem {
+  raw_key: string      // 仅在创建响应中返回一次，请立即保存
+}
+
+// ---- Audit Logs (P10-B) ----
+export interface AuditLogItem {
+  id: string
+  actor_id: string
+  action: string
+  resource_type: string
+  resource_id: string
+  detail: Record<string, unknown>
+  created_at: string
+}

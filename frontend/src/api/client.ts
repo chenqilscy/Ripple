@@ -3,6 +3,7 @@
 // 401 时清除 token 并触发 onUnauthorized 回调（由上层 UI 路由到登录页）。
 
 import type {
+  APIKeyCreated, APIKeyItem, AuditLogItem,
   ApiError, AuthTokens, CloudTask, EdgeItem, EdgeKind, InviteItem, InvitePreview,
   Lake, NodeItem, NodeRevision, NodeType, PermaNode, Space, SpaceMember, User,
 } from './types'
@@ -202,6 +203,23 @@ export const api = {
   },
   attachmentURL(id: string): string {
     return `${BASE}/api/v1/attachments/${id}`
+  },
+
+  // ---- API Keys (P10-A) ----
+  createAPIKey(name: string, scopes?: string[]): Promise<APIKeyCreated> {
+    return request('POST', '/api/v1/api_keys', { name, scopes: scopes ?? ['read_lake', 'read_node'] })
+  },
+  listAPIKeys(): Promise<{ keys: APIKeyItem[] }> {
+    return request('GET', '/api/v1/api_keys')
+  },
+  revokeAPIKey(id: string): Promise<void> {
+    return request('DELETE', `/api/v1/api_keys/${id}`)
+  },
+
+  // ---- Audit Logs (P10-B) ----
+  listAuditLogs(resourceType: string, resourceId: string, limit = 50): Promise<{ logs: AuditLogItem[]; total: number }> {
+    const q = new URLSearchParams({ resource_type: resourceType, resource_id: resourceId, limit: String(limit) })
+    return request('GET', `/api/v1/audit_logs?${q}`)
   },
 
   // ---- Weave Stream (SSE / M3 T4) ----
