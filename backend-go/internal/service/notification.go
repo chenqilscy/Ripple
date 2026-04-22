@@ -5,21 +5,22 @@ import (
 	"encoding/json"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 )
 
-// NotificationService P13-B：通知服务。
+// NotificationService P13-B/P14-A：通知服务。
 type NotificationService struct {
-	repo store.NotificationRepository
+	repo   store.NotificationRepository
+	broker realtime.Broker // P14-A：可空；非空时实时推送
 }
 
-// NewNotificationService 构造。
-func NewNotificationService(repo store.NotificationRepository) *NotificationService {
-	return &NotificationService{repo: repo}
+// NewNotificationService 构造。broker 可为 nil（降级为纯轮询模式）。
+func NewNotificationService(repo store.NotificationRepository, broker realtime.Broker) *NotificationService {
+	return &NotificationService{repo: repo, broker: broker}
 }
 
-// Notify 内部 API：为 userID 创建一条通知（供其他 service 调用）。
-// notifType 示例："lake_invite", "member_removed"
+// Notify 内部 API：为 userID 创建一条通知，并通过 Broker 实时推送（P14-A）。
 func (s *NotificationService) Notify(ctx context.Context, userID, notifType string, payload map[string]any) error {
 	var raw json.RawMessage
 	if payload != nil {
@@ -31,8 +32,24 @@ func (s *NotificationService) Notify(ctx context.Context, userID, notifType stri
 	} else {
 		raw = json.RawMessage("{}")
 	}
-	_, err := s.repo.Create(ctx, userID, notifType, raw)
-	return err
+	n, err := s.repo.Create(ctx, userID, notifType, raw)
+	if err != nil {
+		return err
+	}
+	// P14-A：非阻塞推送；Broker 失败不影响通知持久化。
+	if s.broker != nil {
+		msg := realtime.Message{
+			Type: "notification.new",
+			Payload: map[string]any{
+				"id":         n.ID,
+				"type":       n.Type,
+				"payload":    payload,
+				"created_at": n.CreatedAt,
+			},
+		}
+		_ = s.broker.Publish(ctx, realtime.UserTopic(userID), msg)
+	}
+	return nil
 }
 
 // List 返回 actor 自己的通知列表（分页）。

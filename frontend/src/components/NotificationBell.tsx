@@ -19,7 +19,19 @@ export default function NotificationBell() {
     } catch { /* 静默 */ }
   }, [])
 
-  // 轮询未读数（每 30s）
+  // P14-A：监听 WS 实时推送通知事件，角标 +1 并追加到列表
+  useEffect(() => {
+    function onWsNotif(e: Event) {
+      const payload = (e as CustomEvent).detail as Notification | null
+      if (!payload) return
+      setCount(c => c + 1)
+      setItems(prev => [payload, ...prev])
+    }
+    window.addEventListener('ripple:notification', onWsNotif)
+    return () => window.removeEventListener('ripple:notification', onWsNotif)
+  }, [])
+
+  // 轮询未读数（每 30s，降级保障）
   useEffect(() => {
     void refreshCount()
     const id = setInterval(() => void refreshCount(), POLL_MS)

@@ -77,9 +77,39 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 写出 goroutine：从 broker 推到客户端。
+	// P14-A：同时订阅用户个人通知 topic，实现实时推送。
+	userTopic := realtime.UserTopic(user.ID)
+	notifCh, err := h.Broker.Subscribe(ctx, userTopic)
+	if err != nil {
+		// 通知订阅失败不影响主流程，降级为空 channel。
+		notifCh = make(chan realtime.Message)
+	}
+
+	// 合并两个 channel 到一个 send goroutine。
+	merged := make(chan realtime.Message, 32)
 	go func() {
-		for msg := range ch {
+		defer close(merged)
+		for {
+			select {
+			case msg, ok := <-ch:
+				if !ok {
+					return
+				}
+				merged <- msg
+			case msg, ok := <-notifCh:
+				if !ok {
+					return
+				}
+				merged <- msg
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// 写出 goroutine：从 merged channel 推到客户端。
+	go func() {
+		for msg := range merged {
 			b, err := json.Marshal(msg)
 			if err != nil {
 				continue

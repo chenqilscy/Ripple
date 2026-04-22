@@ -138,6 +138,10 @@ export function Home({ onLogout }: Props) {
             .then(t => setTasks(prev => prev.map(x => x.id === t.id ? t : x)))
             .catch(() => { /* ignore */ })
         }
+        // P14-A：通知实时推送 → 转发给 NotificationBell
+        if (msg.type === 'notification.new') {
+          window.dispatchEvent(new CustomEvent('ripple:notification', { detail: msg.payload }))
+        }
       },
       online => setWsOnline(online),
     )

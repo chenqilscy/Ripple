@@ -119,10 +119,11 @@ func main() {
 	spaceSvc := service.NewSpaceService(spaceRepo)
 	orgSvc := service.NewOrgService(orgRepo)               // P12-C
 	notifRepo := store.NewNotificationRepository(pg)        // P13-B
-	notifSvc := service.NewNotificationService(notifRepo)   // P13-B
 
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
+
+	notifSvc := service.NewNotificationService(notifRepo, broker) // P13-B / P14-A
 
 	presenceSvc := presence.NewService(rds, broker, 0)
 
