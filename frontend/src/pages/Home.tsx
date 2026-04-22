@@ -46,6 +46,10 @@ export function Home({ onLogout }: Props) {
   const [meId, setMeId] = useState<string>('')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
+  // P13-C：标签过滤
+  const [tagFilter, setTagFilter] = useState<string>('')
+  const [lakeTags, setLakeTags] = useState<string[]>([])
+  const [nodeTags, setNodeTags] = useState<Record<string, string[]>>({})
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -111,6 +115,9 @@ export function Home({ onLogout }: Props) {
     void loadPresence(active.id)
     setLinkSrc(null)
     setViewMode('list')
+    setTagFilter('')
+    // P13-C：加载湖标签列表
+    api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => setLakeTags([]))
 
     const token = localStorage.getItem('ripple.token') ?? ''
     if (!token) return
@@ -497,6 +504,28 @@ export function Home({ onLogout }: Props) {
     return { outDeg, inDeg, nodeContentById }
   }, [edges, nodes])
 
+  // P13-C：按标签过滤节点
+  const filteredNodes = useMemo(() => {
+    if (!tagFilter) return nodes
+    // 找出 nodeTags 中包含该 tag 的节点
+    return nodes.filter(n => (nodeTags[n.id] ?? []).includes(tagFilter))
+  }, [nodes, nodeTags, tagFilter])
+
+  // P13-C：懒加载节点标签（节点列表变化时批量获取）
+  useEffect(() => {
+    if (!active || nodes.length === 0) return
+    const unloaded = nodes.filter(n => nodeTags[n.id] === undefined).map(n => n.id)
+    if (unloaded.length === 0) return
+    Promise.all(unloaded.map(id => api.getNodeTags(id).then(r => ({ id, tags: r.tags })).catch(() => ({ id, tags: [] as string[] }))))
+      .then(results => {
+        setNodeTags(prev => {
+          const next = { ...prev }
+          for (const { id, tags } of results) next[id] = tags
+          return next
+        })
+      })
+  }, [nodes, active]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div style={layout}>
       <OfflineBar />
@@ -599,6 +628,19 @@ export function Home({ onLogout }: Props) {
               <button onClick={() => void exportLakeUI('markdown')} disabled={exportBusy} style={miniBtn}>
                 {exportBusy ? '…' : 'Markdown'}
               </button>
+              {lakeTags.length > 0 && (
+                <>
+                  <span style={{ fontSize: 11, opacity: 0.5, marginLeft: 8 }}>标签筛选：</span>
+                  {tagFilter && (
+                    <button onClick={() => setTagFilter('')} style={{ ...miniBtn, color: '#89dceb' }}>
+                      ✕ {tagFilter}
+                    </button>
+                  )}
+                  {lakeTags.filter(t => t !== tagFilter).map(t => (
+                    <button key={t} onClick={() => setTagFilter(t)} style={miniBtn}>{t}</button>
+                  ))}
+                </>
+              )}
             </div>
             {onlineUsers.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, opacity: 0.8 }}>
@@ -718,13 +760,17 @@ export function Home({ onLogout }: Props) {
                     </div>
                   )}
                   {nodes.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>此处风平浪静</div>}
+                  {nodes.length > 0 && filteredNodes.length === 0 && (
+                    <div style={{ opacity: 0.4, fontSize: 12 }}>没有带「{tagFilter}」标签的节点</div>
+                  )}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-                    {nodes.map(n => {
+                    {filteredNodes.map(n => {
                       const out = outDeg.get(n.id) ?? 0
                       const inc = inDeg.get(n.id) ?? 0
                       const isLinkSrc = linkSrc === n.id
                       const canCrystal = n.state === 'DROP' || n.state === 'FROZEN'
                       const isSelected = crystalSel.has(n.id)
+                      const tags = nodeTags[n.id] ?? []
                       return (
                         <div key={n.id} style={{
                           ...nodeCard,
@@ -740,6 +786,16 @@ export function Home({ onLogout }: Props) {
                         </span>
                       </div>
                       <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5 }}>{n.content}</div>
+                      {/* P13-C 标签 */}
+                      <NodeTagEditor
+                        nodeId={n.id}
+                        tags={tags}
+                        onChanged={newTags => {
+                          setNodeTags(prev => ({ ...prev, [n.id]: newTags }))
+                          // 刷新湖标签
+                          if (active) api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => undefined)
+                        }}
+                      />
                       <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {n.state === 'MIST' && (
                           <button onClick={() => condense(n.id)} style={miniBtn}>凝露 ↓</button>
@@ -904,6 +960,74 @@ export function Home({ onLogout }: Props) {
       )}
     </div>
   )
+}
+
+// P13-C：节点标签编辑器组件
+function NodeTagEditor({ nodeId, tags, onChanged }: {
+  nodeId: string
+  tags: string[]
+  onChanged: (tags: string[]) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function openEditor() {
+    setDraft(tags.join(', '))
+    setEditing(true)
+  }
+
+  async function save() {
+    const next = draft.split(',').map(t => t.trim()).filter(Boolean)
+    setSaving(true)
+    try {
+      const res = await api.setNodeTags(nodeId, next)
+      onChanged(res.tags)
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') void save(); if (e.key === 'Escape') setEditing(false) }}
+          placeholder="逗号分隔标签"
+          style={{ flex: 1, minWidth: 100, fontSize: 11, padding: '2px 6px', background: '#2a2d3a', border: '1px solid #555', borderRadius: 4, color: '#cdd6f4' }}
+        />
+        <button onClick={() => void save()} disabled={saving} style={tagChipBtn}>{saving ? '…' : '✓'}</button>
+        <button onClick={() => setEditing(false)} style={tagChipBtn}>✕</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+      {tags.map(t => (
+        <span key={t} style={tagChip}>{t}</span>
+      ))}
+      <button onClick={openEditor} style={tagChipBtn} title="编辑标签">+标签</button>
+    </div>
+  )
+}
+
+const tagChip: React.CSSProperties = {
+  display: 'inline-block', fontSize: 10, padding: '1px 7px',
+  background: 'rgba(137,220,235,0.15)', color: '#89dceb',
+  borderRadius: 10, border: '1px solid rgba(137,220,235,0.3)',
+}
+
+const tagChipBtn: React.CSSProperties = {
+  fontSize: 10, padding: '1px 6px', cursor: 'pointer',
+  background: 'rgba(255,255,255,0.05)', color: '#cdd6f4',
+  border: '1px solid #555', borderRadius: 10,
 }
 
 function statusColor(s: string) {

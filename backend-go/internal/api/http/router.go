@@ -43,6 +43,8 @@ type Deps struct {
 	Orgs        *service.OrgService
 	// Notifications 非 nil 时挂载 /notifications 端点（P13-B）。
 	Notifications *service.NotificationService
+	// Tags 非 nil 时挂载节点标签端点（P13-C）。
+	Tags        *service.TagService
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
 	LLMRouter   llm.StreamProvider
 	CORSOrigins []string
@@ -250,6 +252,15 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/notifications/unread_count", notifH.UnreadCount)
 				r.Post("/notifications/{id}/read", notifH.MarkRead)
 				r.Post("/notifications/read_all", notifH.MarkAllRead)
+			}
+
+			// P13-C：节点标签系统
+			if d.Tags != nil {
+				tagH := &TagHandlers{Svc: d.Tags}
+				r.Get("/lakes/{id}/tags", tagH.ListLakeTags)
+				r.Get("/lakes/{id}/nodes/by_tag", tagH.ListNodesByTag)
+				r.Get("/nodes/{id}/tags", tagH.GetNodeTags)
+				r.Put("/nodes/{id}/tags", tagH.SetNodeTags)
 			}
 		})
 	})

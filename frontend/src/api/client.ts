@@ -274,6 +274,20 @@ export const api = {
     return request('GET', `/api/v1/organizations/${orgId}/lakes`)
   },
 
+  // P13-C：标签系统
+  getLakeTags(lakeId: string): Promise<{ tags: string[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/tags`)
+  },
+  getNodeTags(nodeId: string): Promise<{ tags: string[] }> {
+    return request('GET', `/api/v1/nodes/${nodeId}/tags`)
+  },
+  setNodeTags(nodeId: string, tags: string[]): Promise<{ tags: string[] }> {
+    return request('PUT', `/api/v1/nodes/${nodeId}/tags`, { tags })
+  },
+  listNodesByTag(lakeId: string, tag: string): Promise<{ node_ids: string[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/nodes/by_tag?tag=${encodeURIComponent(tag)}`)
+  },
+
   // P13-D：内容导出
   async exportLake(lakeId: string, format: 'json' | 'markdown'): Promise<void> {
     const tok = getToken()

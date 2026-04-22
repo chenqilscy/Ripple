@@ -119,6 +119,7 @@ func main() {
 	spaceSvc := service.NewSpaceService(spaceRepo)
 	orgSvc := service.NewOrgService(orgRepo)               // P12-C
 	notifRepo := store.NewNotificationRepository(pg)        // P13-B
+	tagRepo := store.NewTagRepository(pg)                   // P13-C
 
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
@@ -131,6 +132,7 @@ func main() {
 	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
 	inviteSvc := service.NewInviteService(invites, memberships, lakes)
 	cloudSvc := service.NewCloudService(cloudTasks, nodes, lakes)
+	tagSvc := service.NewTagService(tagRepo, memberships, nodes) // P13-C
 
 	// Outbox dispatcher 在单独 goroutine 中运行
 	dispatcher := service.NewOutboxDispatcher(outbox, lakes, logger)
@@ -244,6 +246,7 @@ func main() {
 		AuditLogs:      auditLogRepo,
 		Orgs:           orgSvc,
 		Notifications:  notifSvc,
+		Tags:           tagSvc,
 		LLMRouter:      llmRouter,
 		CORSOrigins:    cfg.CORSOriginList(),
 		MetricsEnabled: cfg.MetricsEnabled,
