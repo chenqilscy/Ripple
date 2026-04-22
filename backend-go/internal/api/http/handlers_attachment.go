@@ -84,6 +84,16 @@ func (h *AttachmentHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// M5-T3 安全加固：嗅探前 512 字节 magic bytes，拒绝伪造的 Content-Type
+	sniffBuf := make([]byte, 512)
+	nSniff, _ := io.ReadFull(file, sniffBuf)
+	sniffed := http.DetectContentType(sniffBuf[:nSniff])
+	if !mimeMatches(mime, sniffed) {
+		writeError(w, http.StatusUnsupportedMediaType,
+			"content-type mismatch: header="+mime+" sniffed="+sniffed)
+		return
+	}
+
 	// 流式 sha256 + 写入临时文件
 	tmpName := uuid.NewString()
 	userDir := filepath.Join(h.UploadDir, u.ID)
@@ -101,6 +111,14 @@ func (h *AttachmentHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasher := sha256.New()
+	// 把 sniff 缓冲先写出（不能 Seek，因为 multipart.File 不一定支持）
+	if _, err := dst.Write(sniffBuf[:nSniff]); err != nil {
+		_ = dst.Close()
+		_ = os.Remove(absPath)
+		writeError(w, http.StatusInternalServerError, "write head failed")
+		return
+	}
+	hasher.Write(sniffBuf[:nSniff])
 	written, err := io.Copy(io.MultiWriter(dst, hasher), file)
 	_ = dst.Close()
 	if err != nil {
@@ -108,6 +126,7 @@ func (h *AttachmentHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "write failed")
 		return
 	}
+	written += int64(nSniff)
 	sha := hex.EncodeToString(hasher.Sum(nil))
 
 	// 去重：同 user 同 sha 已存在 → 删新文件，返回旧记录
@@ -167,6 +186,18 @@ func (h *AttachmentHandlers) Download(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", a.MIME)
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeFile(w, r, abs)
+}
+
+// mimeMatches 判断 header 声明的 MIME 与 sniffed MIME 是否兼容。
+// 仅比较主类型/子类型，忽略 charset；JPEG 别名兼容。
+func mimeMatches(declared, sniffed string) bool {
+	d := strings.SplitN(strings.ToLower(declared), ";", 2)[0]
+	s := strings.SplitN(strings.ToLower(sniffed), ";", 2)[0]
+	if d == s {
+		return true
+	}
+	jpegAlias := map[string]bool{"image/jpeg": true, "image/jpg": true, "image/pjpeg": true}
+	return jpegAlias[d] && jpegAlias[s]
 }
 
 func safeExt(name, mime string) string {
