@@ -158,6 +158,17 @@ func main() {
 	feedbackRepo := store.NewFeedbackRepository(pg)
 	recommenderSvc := service.NewRecommenderService(feedbackRepo)
 
+	// M4-B：本地 FS 附件（UploadDir 非空时启用）
+	var attachmentH *httpapi.AttachmentHandlers
+	if cfg.UploadDir != "" {
+		attachRepo := store.NewAttachmentRepository(pg)
+		ah, err := httpapi.NewAttachmentHandlers(attachRepo, cfg.UploadDir, cfg.UploadMaxMB, cfg.UploadAllowMIME)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("attachment handlers init failed")
+		}
+		attachmentH = ah
+	}
+
 	wsH := &httpapi.WSHandlers{
 		Lakes:    lakeSvc,
 		Broker:   broker,
@@ -176,6 +187,7 @@ func main() {
 		Crystallize:    crystallizeSvc,
 		Recommender:    recommenderSvc,
 		Feedback:       feedbackRepo,
+		Attachments:    attachmentH,
 		Presence:       presenceSvc,
 		WS:             wsH,
 		LLMRouter:      llmRouter,

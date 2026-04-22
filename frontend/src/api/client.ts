@@ -186,6 +186,24 @@ export const api = {
     return request('POST', '/api/v1/feedback', { target_type, target_id, event_type, payload })
   },
 
+  // ---- Attachments (M4-B 本地 FS) ----
+  async uploadAttachment(file: File, nodeId?: string): Promise<{ id: string; url: string; mime: string; size_bytes: number }> {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (nodeId) fd.append('node_id', nodeId)
+    const tok = getToken()
+    const resp = await fetch(`${BASE}/api/v1/attachments`, {
+      method: 'POST',
+      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+      body: fd,
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`)
+    return resp.json()
+  },
+  attachmentURL(id: string): string {
+    return `${BASE}/api/v1/attachments/${id}`
+  },
+
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
   streamWeave(

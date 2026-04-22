@@ -94,6 +94,12 @@ type Config struct {
 	PProfAddr string `envconfig:"PPROF_ADDR" default:""`
 	// MetricsEnabled true 时在主 HTTP server 注册 GET /metrics（Prometheus 文本格式）。
 	MetricsEnabled bool `envconfig:"METRICS_ENABLED" default:"true"`
+
+	// 附件本地文件存储（M4-B：先不上 MinIO）
+	// UploadDir 非空时启用 /api/v1/attachments；目录会自动创建。
+	UploadDir       string `envconfig:"UPLOAD_DIR" default:"./data/uploads"`
+	UploadMaxMB     int    `envconfig:"UPLOAD_MAX_MB" default:"5"`
+	UploadAllowMIME string `envconfig:"UPLOAD_ALLOW_MIME" default:"image/png,image/jpeg,image/gif,image/webp"`
 }
 
 // Load 从环境变量加载配置。

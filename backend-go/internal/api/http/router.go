@@ -27,6 +27,8 @@ type Deps struct {
 	Recommender *service.RecommenderService
 	// Feedback 仓库（与 Recommender 配套；为 nil 则不挂载 /feedback /recommendations）
 	Feedback    store.FeedbackRepository
+	// Attachments M4-B：本地 FS 附件；为 nil 则不挂载 /attachments
+	Attachments *AttachmentHandlers
 	Presence    *presence.Service
 	WS          *WSHandlers
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
@@ -166,6 +168,11 @@ func NewRouter(d Deps) http.Handler {
 				rh := &RecommenderHandlers{Svc: d.Recommender, Feedback: d.Feedback}
 				r.Get("/recommendations", rh.Recommend)
 				r.Post("/feedback", rh.AddFeedback)
+			}
+
+			if d.Attachments != nil {
+				r.Post("/attachments", d.Attachments.Upload)
+				r.Get("/attachments/{id}", d.Attachments.Download)
 			}
 
 			if d.WS != nil {
