@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
 import type { NodeRevision } from '../api/types'
 import { NodeDiffViewer } from '../components/NodeDiffViewer'
+import NodeVersionHistory from '../components/NodeVersionHistory'
 
 const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
 const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
@@ -56,6 +57,10 @@ export function Home({ onLogout }: Props) {
   const [batchBusy, setBatchBusy] = useState(false)
   // P15-B：版本 diff 视图
   const [diffModal, setDiffModal] = useState<{ nodeId: string; revisions: NodeRevision[] } | null>(null)
+  // P17-A：版本历史时间线
+  const [historyModal, setHistoryModal] = useState<{ node: NodeItem; revisions: NodeRevision[] } | null>(null)
+  // P17-B：图谱节点搜索高亮
+  const [nodeSearch, setNodeSearch] = useState('')
   // P16-B：AI 摘要
   const [aiSummary, setAiSummary] = useState<Record<string, string>>({})
   const [aiSummaryBusy, setAiSummaryBusy] = useState<Set<string>>(new Set())
@@ -272,24 +277,23 @@ export function Home({ onLogout }: Props) {
   async function showHistory(node: NodeItem) {
     try {
       const { revisions } = await api.listNodeRevisions(node.id, 50)
-      if (revisions.length === 0) { await modalAlert('暂无历史'); return }
-      const lines = revisions.map(r =>
-        `rev ${r.rev_number} | ${new Date(r.created_at).toLocaleString()} | ${r.edit_reason || '(无说明)'}\n  ${r.content.slice(0, 80)}`
-      ).join('\n\n')
-      const input = await modalPrompt({
-        title: `${node.id.slice(0, 8)} 历史`,
-        label: `输入 rev 号回滚（取消即放弃）：\n\n${lines}`,
-        validate: (v) => {
-          const n = parseInt(v.trim(), 10)
-          return !Number.isFinite(n) || n <= 0 ? '无效 rev 号' : null
-        },
-      })
-      if (input === null) return
-      const target = parseInt(input.trim(), 10)
-      if (!(await modalConfirm(`回滚到 rev ${target}？`, { danger: true }))) return
-      await api.rollbackNode(node.id, target)
-      if (active) await loadNodes(active.id)
+      setHistoryModal({ node, revisions })
     } catch (e) { setErr((e as Error).message) }
+  }
+
+  // P17-D：节点导出下载
+  function exportNode(node: NodeItem, format: 'md' | 'json') {
+    const content = format === 'md'
+      ? `# ${node.id}\n\n**状态**: ${node.state}  \n**创建**: ${new Date(node.created_at).toLocaleString('zh-CN')}\n\n${node.content}`
+      : JSON.stringify(node, null, 2)
+    const blob = new Blob([content], { type: format === 'md' ? 'text/markdown' : 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `node-${node.id.slice(0, 8)}.${format}`
+    a.click()
+    // Revoke after a tick to ensure download triggers before cleanup
+    setTimeout(() => URL.revokeObjectURL(url), 100)
   }
 
   async function showDiff(node: NodeItem) {
@@ -860,8 +864,17 @@ export function Home({ onLogout }: Props) {
 
               {viewMode === 'graph' ? (
                 <div style={{ marginTop: 12 }}>
+                  {/* P17-B：图谱节点搜索 */}
+                  <div style={{ marginBottom: 8 }}>
+                    <input
+                      value={nodeSearch}
+                      onChange={e => setNodeSearch(e.target.value)}
+                      placeholder="搜索节点高亮…"
+                      style={{ width: '100%', padding: '4px 8px', fontSize: 12, background: '#0d1e2e', border: '1px solid #1e3a5a', borderRadius: 4, color: '#c8dff0', boxSizing: 'border-box' }}
+                    />
+                  </div>
                   <React.Suspense fallback={<div style={{ height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a6a8e', fontSize: 13 }}>加载图谱中…</div>}>
-                    <LakeGraph nodes={nodes} edges={edges} />
+                    <LakeGraph nodes={nodes} edges={edges} searchQuery={nodeSearch} />
                   </React.Suspense>
                 </div>
               ) : (
@@ -957,6 +970,15 @@ export function Home({ onLogout }: Props) {
                         <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容">✎</button>
                         <button onClick={() => showHistory(n)} style={miniBtn} title="历史版本">⟲</button>
                         <button onClick={() => void showDiff(n)} style={miniBtn} title="版本对比 diff">⇄</button>
+                        {/* P17-D 节点导出 */}
+                        <button
+                          onClick={() => {
+                            const fmt = window.confirm('确认导出格式？\n确定 = Markdown，取消 = JSON') ? 'md' : 'json'
+                            exportNode(n, fmt)
+                          }}
+                          style={miniBtn}
+                          title="导出节点"
+                        >⬇</button>
                         {/* P16-B AI 摘要 */}
                         <button
                           onClick={() => void requestAiSummary(n)}
@@ -1119,6 +1141,18 @@ export function Home({ onLogout }: Props) {
           nodeId={diffModal.nodeId}
           revisions={diffModal.revisions}
           onClose={() => setDiffModal(null)}
+        />
+      )}
+      {/* P17-A：版本历史时间线 */}
+      {historyModal && (
+        <NodeVersionHistory
+          node={historyModal.node}
+          revisions={historyModal.revisions}
+          onClose={() => setHistoryModal(null)}
+          onRolledBack={updatedNode => {
+            setNodes(prev => prev.map(n => n.id === updatedNode.id ? updatedNode : n))
+            setHistoryModal(null)
+          }}
         />
       )}
     </div>

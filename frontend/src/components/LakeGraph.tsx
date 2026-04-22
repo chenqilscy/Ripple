@@ -111,6 +111,7 @@ interface AnimNodeProps {
   onDragStart: (nodeId: string) => void
   onDragEnd: (nodeId: string, x: number, y: number) => void
   simNode: SimNode
+  highlighted?: boolean
 }
 
 const STATE_LABEL: Record<NodeState, string> = {
@@ -129,7 +130,7 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
-function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, onDragEnd, simNode }: AnimNodeProps) {
+function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, onDragEnd, simNode, highlighted }: AnimNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const scaleRef = useRef(isNew ? 0 : 1)
   const color = STATE_COLOR[node.state] ?? '#888888'
@@ -183,11 +184,18 @@ function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, o
       <sphereGeometry args={selected ? [7, 14, 14] : [5, 12, 12]} />
       <meshStandardMaterial
         color={color}
-        emissive={selected ? color : (hovered ? color : '#000000')}
-        emissiveIntensity={selected ? 0.6 : (hovered ? 0.25 : 0)}
+        emissive={selected ? color : (highlighted ? '#ffd700' : (hovered ? color : '#000000'))}
+        emissiveIntensity={selected ? 0.6 : (highlighted ? 0.8 : (hovered ? 0.25 : 0))}
         roughness={0.4}
         metalness={selected ? 0.3 : 0.1}
       />
+      {/* P17-B: search highlight ring */}
+      {highlighted && (
+        <mesh scale={1.6}>
+          <torusGeometry args={[5, 0.8, 8, 24]} />
+          <meshBasicMaterial color="#ffd700" transparent opacity={0.55} />
+        </mesh>
+      )}
       {/* P16-A: 悬停详情 tooltip */}
       {hovered && !selected && (
         <Html
@@ -327,9 +335,10 @@ interface SceneProps {
   onNodeSelect?: (node: NodeItem | null) => void
   newNodeIds?: Set<string>
   resetToken?: number
+  searchQuery?: string
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, resetToken }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, resetToken, searchQuery }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
@@ -398,6 +407,12 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, rese
     if (sn) { sn.x = x; sn.y = y; sn.fx = x; sn.fy = y }
   }, [simNodeMap])
 
+  const highlightedIds = useMemo(() => {
+    if (!searchQuery) return new Set<string>()
+    const q = searchQuery.toLowerCase()
+    return new Set(displayNodes.filter(n => n.content.toLowerCase().includes(q)).map(n => n.id))
+  }, [searchQuery, displayNodes])
+
   return (
     <>
       <ambientLight intensity={0.5} />
@@ -422,6 +437,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, rese
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             simNode={sn}
+            highlighted={highlightedIds.has(node.id)}
           />
         )
       })}
@@ -438,9 +454,10 @@ export interface LakeGraphProps {
   nodes: NodeItem[]
   edges: EdgeItem[]
   onNodeSelect?: (node: NodeItem | null) => void
+  searchQuery?: string
 }
 
-export default function LakeGraph({ nodes, edges, onNodeSelect }: LakeGraphProps) {
+export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery }: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
     [nodes],
@@ -535,6 +552,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect }: LakeGraphProps
             onNodeSelect={onNodeSelect}
             newNodeIds={newNodeIds}
             resetToken={resetToken}
+            searchQuery={searchQuery}
           />
         </React.Suspense>
       </Canvas>
