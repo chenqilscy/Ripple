@@ -1,0 +1,6 @@
+GET http://localhost:8000/healthz
+
+GET http://localhost:8000/metrics
+
+GET http://localhost:8000/api/v1/lakes
+Authorization: Bearer __REPLACE_WITH_JWT__
