@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
 
 const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
@@ -46,8 +46,14 @@ export function Home({ onLogout }: Props) {
   const [meId, setMeId] = useState<string>('')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
   // P13-C：标签过滤
   const [tagFilter, setTagFilter] = useState<string>('')
+  const [tagFilteredIds, setTagFilteredIds] = useState<Set<string> | null>(null)
+  const [tagLoading, setTagLoading] = useState(false)
+  const tagAbortRef = useRef<AbortController | null>(null)
   const [lakeTags, setLakeTags] = useState<string[]>([])
   const [nodeTags, setNodeTags] = useState<Record<string, string[]>>({})
 
@@ -116,6 +122,9 @@ export function Home({ onLogout }: Props) {
     setLinkSrc(null)
     setViewMode('list')
     setTagFilter('')
+    setTagFilteredIds(null)
+    tagAbortRef.current?.abort()
+    setImportResult(null)
     // P13-C：加载湖标签列表
     api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => setLakeTags([]))
 
@@ -468,6 +477,19 @@ export function Home({ onLogout }: Props) {
     finally { setExportBusy(false) }
   }
 
+  // P13-E：导入
+  async function importLakeUI(file: File) {
+    if (!active) return
+    setImportBusy(true)
+    setImportResult(null)
+    try {
+      const r = await api.importLake(active.id, file)
+      setImportResult(r)
+      void loadNodes(active.id)
+    } catch (e) { setErr((e as Error).message) }
+    finally { setImportBusy(false) }
+  }
+
   // M3 T7：移动湖到其他空间
   async function moveLakeUI(lake: Lake) {
     try {
@@ -504,12 +526,31 @@ export function Home({ onLogout }: Props) {
     return { outDeg, inDeg, nodeContentById }
   }, [edges, nodes])
 
+  // P13-C：点击标签时服务端查询（带 AbortController 防竞态）
+  const applyTagFilter = useCallback((tag: string) => {
+    setTagFilter(tag)
+    if (!tag || !active) {
+      setTagFilteredIds(null)
+      return
+    }
+    tagAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    tagAbortRef.current = ctrl
+    setTagLoading(true)
+    api.listNodesByTag(active.id, tag)
+      .then(r => {
+        if (ctrl.signal.aborted) return
+        setTagFilteredIds(new Set(r.node_ids))
+      })
+      .catch(() => { if (!ctrl.signal.aborted) setTagFilteredIds(new Set()) })
+      .finally(() => { if (!ctrl.signal.aborted) setTagLoading(false) })
+  }, [active])
+
   // P13-C：按标签过滤节点
   const filteredNodes = useMemo(() => {
-    if (!tagFilter) return nodes
-    // 找出 nodeTags 中包含该 tag 的节点
-    return nodes.filter(n => (nodeTags[n.id] ?? []).includes(tagFilter))
-  }, [nodes, nodeTags, tagFilter])
+    if (!tagFilter || tagFilteredIds === null) return nodes
+    return nodes.filter(n => tagFilteredIds.has(n.id))
+  }, [nodes, tagFilter, tagFilteredIds])
 
   // P13-C：懒加载节点标签（节点列表变化时批量获取）
   useEffect(() => {
@@ -628,16 +669,41 @@ export function Home({ onLogout }: Props) {
               <button onClick={() => void exportLakeUI('markdown')} disabled={exportBusy} style={miniBtn}>
                 {exportBusy ? '…' : 'Markdown'}
               </button>
+              {/* P13-E 导入 */}
+              <span style={{ fontSize: 11, opacity: 0.5, marginLeft: 8 }}>导入：</span>
+              <button
+                onClick={() => importInputRef.current?.click()}
+                disabled={importBusy}
+                style={miniBtn}
+              >
+                {importBusy ? '…' : '📂 文件'}
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,.md,.markdown"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) void importLakeUI(f)
+                  e.target.value = ''
+                }}
+              />
+              {importResult && (
+                <span style={{ fontSize: 11, color: '#a6e3a1' }}>
+                  ✓ 导入 {importResult.imported} 条{importResult.skipped > 0 ? `，跳过 ${importResult.skipped}` : ''}
+                </span>
+              )}
               {lakeTags.length > 0 && (
                 <>
                   <span style={{ fontSize: 11, opacity: 0.5, marginLeft: 8 }}>标签筛选：</span>
                   {tagFilter && (
-                    <button onClick={() => setTagFilter('')} style={{ ...miniBtn, color: '#89dceb' }}>
-                      ✕ {tagFilter}
+                    <button onClick={() => applyTagFilter('')} style={{ ...miniBtn, color: '#89dceb' }}>
+                      {tagLoading ? '…' : `✕ ${tagFilter}`}
                     </button>
                   )}
                   {lakeTags.filter(t => t !== tagFilter).map(t => (
-                    <button key={t} onClick={() => setTagFilter(t)} style={miniBtn}>{t}</button>
+                    <button key={t} onClick={() => applyTagFilter(t)} style={miniBtn}>{t}</button>
                   ))}
                 </>
               )}

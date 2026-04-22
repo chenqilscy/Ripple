@@ -306,6 +306,23 @@ export const api = {
     URL.revokeObjectURL(url)
   },
 
+  // P13-E：导入外部内容
+  async importLake(lakeId: string, file: File): Promise<{ imported: number; skipped: number }> {
+    const tok = getToken()
+    const form = new FormData()
+    form.append('file', file)
+    const resp = await fetch(`${BASE}/api/v1/lakes/${lakeId}/import`, {
+      method: 'POST',
+      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+      body: form,
+    })
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '')
+      throw new Error(`HTTP ${resp.status}: ${text}`)
+    }
+    return resp.json() as Promise<{ imported: number; skipped: number }>
+  },
+
   // P13-B：通知系统
   listNotifications(limit = 20, before?: number): Promise<{ notifications: import('./types').Notification[] }> {
     const q = new URLSearchParams({ limit: String(limit) })

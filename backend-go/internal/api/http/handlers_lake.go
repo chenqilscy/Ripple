@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -353,4 +354,129 @@ func (h *LakeHandlers) Export(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(sb.String()))
 	}
+}
+
+// Import POST /api/v1/lakes/{id}/import  P13-E：导入外部内容。
+// 支持 .json（与 P13-D 导出格式相同）和 .md（Markdown，按 ## 标题分割为节点）。
+// 最大文件 10 MB；最多创建 importMaxNodes 个节点。
+const importMaxNodes = exportMaxNodes
+
+func (h *LakeHandlers) Import(w http.ResponseWriter, r *http.Request) {
+	actor, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	lakeID := chi.URLParam(r, "id")
+
+	// 文件大小限制 10 MB
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "file too large or invalid form: "+err.Error())
+		return
+	}
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "file field required")
+		return
+	}
+	defer f.Close()
+
+	// 检测格式：按文件名后缀
+	name := strings.ToLower(hdr.Filename)
+	var format string
+	switch {
+	case strings.HasSuffix(name, ".json"):
+		format = "json"
+	case strings.HasSuffix(name, ".md"), strings.HasSuffix(name, ".markdown"):
+		format = "markdown"
+	default:
+		writeError(w, http.StatusBadRequest, "unsupported file type, must be .json or .md")
+		return
+	}
+
+	var contents []string // 每条为一个节点的 content
+	switch format {
+	case "json":
+		type nodeImport struct {
+			Content string `json:"content"`
+			Type    string `json:"type"`
+		}
+		type importPayload struct {
+			Nodes []nodeImport `json:"nodes"`
+		}
+		var payload importPayload
+		if err := json.NewDecoder(f).Decode(&payload); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+			return
+		}
+		for _, n := range payload.Nodes {
+			c := strings.TrimSpace(n.Content)
+			if c != "" {
+				contents = append(contents, c)
+			}
+		}
+	case "markdown":
+		data, err := io.ReadAll(f)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "failed to read file: "+err.Error())
+			return
+		}
+		sections := splitMarkdownSections(string(data))
+		contents = append(contents, sections...)
+	}
+
+	if len(contents) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"imported": 0, "skipped": 0})
+		return
+	}
+	if len(contents) > importMaxNodes {
+		writeError(w, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("too many nodes to import (%d), limit is %d", len(contents), importMaxNodes))
+		return
+	}
+
+	imported, skipped := 0, 0
+	for _, c := range contents {
+		_, err := h.Nodes.Create(r.Context(), actor, service.CreateNodeInput{
+			LakeID:  lakeID,
+			Content: c,
+			Type:    domain.NodeTypeText,
+		})
+		if err != nil {
+			skipped++
+		} else {
+			imported++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"imported": imported, "skipped": skipped})
+}
+
+// splitMarkdownSections 按 ## 二级标题将 Markdown 文本分割为段落。
+// 无标题时将整个文本作为一个节点。
+func splitMarkdownSections(md string) []string {
+	lines := strings.Split(md, "\n")
+	var sections []string
+	var cur strings.Builder
+
+	flush := func() {
+		s := strings.TrimSpace(cur.String())
+		if s != "" {
+			sections = append(sections, s)
+		}
+		cur.Reset()
+	}
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "## ") {
+			flush()
+			// 把标题行本身也纳入段落内容（用作节点内容的第一行）
+			cur.WriteString(line)
+			cur.WriteString("\n")
+		} else {
+			cur.WriteString(line)
+			cur.WriteString("\n")
+		}
+	}
+	flush()
+	return sections
 }

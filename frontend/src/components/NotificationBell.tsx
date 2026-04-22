@@ -4,12 +4,15 @@ import { api } from '../api/client'
 import type { Notification } from '../api/types'
 
 const POLL_MS = 30_000
+const PAGE = 20
 
 export default function NotificationBell() {
   const [count, setCount] = useState(0)
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<Notification[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const dropRef = useRef<HTMLDivElement>(null)
 
   const refreshCount = useCallback(async () => {
@@ -55,12 +58,25 @@ export default function NotificationBell() {
     setOpen(true)
     setLoading(true)
     try {
-      const { notifications } = await api.listNotifications(20)
+      const { notifications } = await api.listNotifications(PAGE)
       setItems(notifications)
+      setHasMore(notifications.length === PAGE)
       // 打开后刷新一次未读数
       void refreshCount()
     } catch { /* 静默 */ }
     finally { setLoading(false) }
+  }
+
+  async function loadMore() {
+    if (items.length === 0) return
+    const before = items[items.length - 1].id
+    setLoadingMore(true)
+    try {
+      const { notifications } = await api.listNotifications(PAGE, before)
+      setItems(prev => [...prev, ...notifications])
+      setHasMore(notifications.length === PAGE)
+    } catch { /* 静默 */ }
+    finally { setLoadingMore(false) }
   }
 
   async function markRead(id: number) {
@@ -157,6 +173,17 @@ export default function NotificationBell() {
               </div>
             </div>
           ))}
+          {!loading && hasMore && (
+            <div style={{ padding: '8px 12px', textAlign: 'center' }}>
+              <button
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#89dceb', fontSize: 12 }}
+              >
+                {loadingMore ? '加载中…' : '加载更多'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

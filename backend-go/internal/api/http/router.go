@@ -242,8 +242,9 @@ func NewRouter(d Deps) http.Handler {
 			}
 			// P13-A：设置湖组织归属
 			r.Patch("/lakes/{id}/org", lakeH.SetLakeOrg)
-			// P13-D：内容导出
+			// P13-D：内容导出；P13-E：内容导入
 			r.Get("/lakes/{id}/export", lakeH.Export)
+			r.Post("/lakes/{id}/import", lakeH.Import)
 
 			// P13-B：通知系统
 			if d.Notifications != nil {
