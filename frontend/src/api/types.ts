@@ -20,7 +20,7 @@ export interface Lake {
   is_public: boolean
   owner_id: string
   space_id?: string
-  role?: 'OWNER' | 'EDITOR' | 'PASSENGER' | 'OBSERVER'
+  role?: 'OWNER' | 'NAVIGATOR' | 'PASSENGER' | 'OBSERVER'
 }
 
 export type NodeState = 'MIST' | 'DROP' | 'FROZEN' | 'VAPOR' | 'ERASED' | 'GHOST'
@@ -173,4 +173,12 @@ export interface AuditLogItem {
   resource_id: string
   detail: Record<string, unknown>
   created_at: string
+}
+
+// ---- Lake Members (P11-C) ----
+export type LakeRole = 'OWNER' | 'NAVIGATOR' | 'PASSENGER' | 'OBSERVER'
+
+export interface LakeMember {
+  user_id: string
+  role: LakeRole
 }

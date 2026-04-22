@@ -222,6 +222,14 @@ export const api = {
     return request('GET', `/api/v1/audit_logs?${q}`)
   },
 
+  // ---- Lake Members (P11-C) ----
+  listLakeMembers(lakeId: string): Promise<{ members: import('./types').LakeMember[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/members`)
+  },
+  updateMemberRole(lakeId: string, userId: string, role: import('./types').LakeRole): Promise<void> {
+    return request('PUT', `/api/v1/lakes/${lakeId}/members/${userId}/role`, { role })
+  },
+
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
   streamWeave(

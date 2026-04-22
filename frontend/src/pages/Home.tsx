@@ -4,6 +4,7 @@ import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type Node
 const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
 const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
 const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
+const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManager'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -705,6 +706,18 @@ export function Home({ onLogout }: Props) {
             {active && (
               <section style={card}>
                 <CollabDemo lakeId={active.id} token={localStorage.getItem('ripple.token') ?? ''} />
+              </section>
+            )}
+
+            {active?.role === 'OWNER' && (
+              <section style={card}>
+                <React.Suspense fallback={<div style={{ color: '#6c7086', fontSize: 12 }}>Loading members...</div>}>
+                  <LakeMemberManager
+                    lakeId={active.id}
+                    currentUserId={active.owner_id}
+                    currentRole="OWNER"
+                  />
+                </React.Suspense>
               </section>
             )}
 

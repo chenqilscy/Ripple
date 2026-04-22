@@ -235,3 +235,11 @@ func (s *LakeService) UpdateMemberRole(ctx context.Context, actor *domain.User, 
 	}
 	return s.memberships.UpdateRole(ctx, targetUserID, lakeID, newRole)
 }
+
+// ListMembers returns all members of a lake. Caller must be at least OBSERVER.
+func (s *LakeService) ListMembers(ctx context.Context, actor *domain.User, lakeID string) ([]domain.LakeMembership, error) {
+	if _, err := s.requireRole(ctx, actor, lakeID, domain.RoleObserver); err != nil {
+		return nil, err
+	}
+	return s.memberships.ListMembers(ctx, lakeID)
+}

@@ -215,6 +215,8 @@ func NewRouter(d Deps) http.Handler {
 
 			// P10-C：湖成员角色变更
 			r.Put("/lakes/{id}/members/{userID}/role", lakeH.UpdateMemberRole)
+			// P11-C：湖成员列表（VIEWER+）
+			r.Get("/lakes/{id}/members", lakeH.ListMembers)
 		})
 	})
 

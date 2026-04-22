@@ -156,3 +156,32 @@ func (h *LakeHandlers) UpdateMemberRole(w http.ResponseWriter, r *http.Request) 
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// ListMembers GET /api/v1/lakes/{id}/members
+// P11-C：返回湖成员列表，调用方须至少是 OBSERVER。
+func (h *LakeHandlers) ListMembers(w http.ResponseWriter, r *http.Request) {
+	actor, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	lakeID := chi.URLParam(r, "id")
+	if lakeID == "" {
+		writeError(w, http.StatusBadRequest, "lake id required")
+		return
+	}
+	members, err := h.Lakes.ListMembers(r.Context(), actor, lakeID)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	type memberView struct {
+		UserID string `json:"user_id"`
+		Role   string `json:"role"`
+	}
+	out := make([]memberView, 0, len(members))
+	for _, m := range members {
+		out = append(out, memberView{UserID: m.UserID, Role: string(m.Role)})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"members": out})
+}
