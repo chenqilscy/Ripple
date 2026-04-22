@@ -155,6 +155,9 @@ func main() {
 
 	crystallizeSvc := service.NewCrystallizeService(permaRepo, nodes, memberships, llmRouter)
 
+	feedbackRepo := store.NewFeedbackRepository(pg)
+	recommenderSvc := service.NewRecommenderService(feedbackRepo)
+
 	wsH := &httpapi.WSHandlers{
 		Lakes:    lakeSvc,
 		Broker:   broker,
@@ -171,6 +174,8 @@ func main() {
 		Clouds:      cloudSvc,
 		Spaces:      spaceSvc,
 		Crystallize:    crystallizeSvc,
+		Recommender:    recommenderSvc,
+		Feedback:       feedbackRepo,
 		Presence:       presenceSvc,
 		WS:             wsH,
 		LLMRouter:      llmRouter,

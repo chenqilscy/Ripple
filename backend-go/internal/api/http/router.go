@@ -8,6 +8,7 @@ import (
 	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
+	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -23,6 +24,9 @@ type Deps struct {
 	Clouds      *service.CloudService
 	Spaces      *service.SpaceService
 	Crystallize *service.CrystallizeService
+	Recommender *service.RecommenderService
+	// Feedback 仓库（与 Recommender 配套；为 nil 则不挂载 /feedback /recommendations）
+	Feedback    store.FeedbackRepository
 	Presence    *presence.Service
 	WS          *WSHandlers
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
@@ -156,6 +160,12 @@ func NewRouter(d Deps) http.Handler {
 			if d.LLMRouter != nil {
 				weaveH := &WeaveStreamHandlers{Lakes: d.Lakes, Router: d.LLMRouter}
 				r.Get("/lakes/{id}/weave/stream", weaveH.Stream)
+			}
+
+			if d.Recommender != nil && d.Feedback != nil {
+				rh := &RecommenderHandlers{Svc: d.Recommender, Feedback: d.Feedback}
+				r.Get("/recommendations", rh.Recommend)
+				r.Post("/feedback", rh.AddFeedback)
 			}
 
 			if d.WS != nil {
