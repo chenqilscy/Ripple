@@ -57,7 +57,7 @@ func (s *RecommenderService) Recommend(ctx context.Context, actor *domain.User, 
 		in.Limit = 20
 	}
 
-	cacheKey := "reco:" + actor.ID + ":" + in.TargetType + ":" + strconv.Itoa(in.Limit)
+	cacheKey := "reco:v2:" + actor.ID + ":" + in.TargetType + ":" + strconv.Itoa(in.Limit)
 	if s.rdb != nil {
 		if raw, err := s.rdb.Get(ctx, cacheKey).Result(); err == nil && raw != "" {
 			var out []Recommendation
@@ -148,7 +148,7 @@ func (s *RecommenderService) InvalidateUser(ctx context.Context, userID string) 
 	if s.rdb == nil || userID == "" {
 		return
 	}
-	pattern := "reco:" + userID + ":*"
+	pattern := "reco:v2:" + userID + ":*"
 	iter := s.rdb.Scan(ctx, 0, pattern, 100).Iterator()
 	for iter.Next(ctx) {
 		_ = s.rdb.Del(ctx, iter.Val()).Err()
