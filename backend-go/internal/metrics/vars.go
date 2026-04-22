@@ -58,6 +58,12 @@ var WSConnections = Default.GaugeVec("ripple_ws_connections", "Active WebSocket 
 var WSMessagesIn = Default.CounterVec("ripple_ws_messages_in_total", "WebSocket messages received from clients.", nil)
 var WSMessagesOut = Default.CounterVec("ripple_ws_messages_out_total", "WebSocket messages sent to clients.", nil)
 
+// DBPoolAcquired 当前已获取（使用中）的 pgx 连接数。
+var DBPoolAcquired = Default.GaugeVec("ripple_db_pool_acquired_conns", "Currently acquired pgxpool connections.", nil)
+
+// DBPoolTotal pgx 连接池总连接数（idle + acquired）。
+var DBPoolTotal = Default.GaugeVec("ripple_db_pool_total_conns", "Total pgxpool connections (idle + acquired).", nil)
+
 // OutboxProcessed outbox 事件成功处理数。
 var OutboxProcessed = Default.CounterVec("ripple_outbox_processed_total", "Outbox events processed successfully.", nil)
 

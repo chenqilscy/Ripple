@@ -25,6 +25,7 @@ import (
 
 	httpapi "github.com/chenqilscy/ripple/backend-go/internal/api/http"
 	"github.com/chenqilscy/ripple/backend-go/internal/config"
+	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
 	"github.com/chenqilscy/ripple/backend-go/internal/presence"
@@ -98,6 +99,17 @@ func main() {
 			logger.Warn().Err(err).Msg("audit_log prune failed")
 		} else if n > 0 {
 			logger.Info().Int64("pruned", n).Msg("audit_logs pruned")
+		}
+	}()
+
+	// P11-D：DB 连接池指标采集（每 30s 刷新一次）
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			stat := pg.Stat()
+			metrics.DBPoolAcquired.Set(int64(stat.AcquiredConns()))
+			metrics.DBPoolTotal.Set(int64(stat.TotalConns()))
 		}
 	}()
 
