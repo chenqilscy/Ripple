@@ -108,6 +108,9 @@ interface AnimNodeProps {
   selected: boolean
   onClick: () => void
   isNew: boolean
+  onDragStart: (nodeId: string) => void
+  onDragEnd: (nodeId: string, x: number, y: number) => void
+  simNode: SimNode
 }
 
 /** easeOutBack: slight overshoot then settle at 1.0 (spring weave effect) */
@@ -117,10 +120,12 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
-function AnimatedNode({ node, position, selected, onClick, isNew }: AnimNodeProps) {
+function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, onDragEnd, simNode }: AnimNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const scaleRef = useRef(isNew ? 0 : 1)
   const color = STATE_COLOR[node.state] ?? '#888888'
+  const isDraggingRef = useRef(false)
+  const dragOffsetRef = useRef({ x: 0, y: 0 })
 
   useFrame((_state, delta) => {
     if (!meshRef.current) return
@@ -129,6 +134,10 @@ function AnimatedNode({ node, position, selected, onClick, isNew }: AnimNodeProp
       const s = easeOutBack(scaleRef.current)
       meshRef.current.scale.setScalar(Math.max(0, s))
     }
+    // Follow live simulation position during non-drag
+    if (!isDraggingRef.current) {
+      meshRef.current.position.set(simNode.x ?? 0, simNode.y ?? 0, 0)
+    }
   })
 
   return (
@@ -136,7 +145,28 @@ function AnimatedNode({ node, position, selected, onClick, isNew }: AnimNodeProp
       ref={meshRef}
       position={position}
       scale={isNew ? 0 : 1}
-      onClick={e => { e.stopPropagation(); onClick() }}
+      onClick={e => { if (!isDraggingRef.current) { e.stopPropagation(); onClick() } }}
+      onPointerDown={e => {
+        e.stopPropagation()
+        isDraggingRef.current = true
+        dragOffsetRef.current = { x: e.point.x - (simNode.x ?? 0), y: e.point.y - (simNode.y ?? 0) }
+        onDragStart(node.id)
+      }}
+      onPointerMove={e => {
+        if (!isDraggingRef.current || !meshRef.current) return
+        const nx = e.point.x - dragOffsetRef.current.x
+        const ny = e.point.y - dragOffsetRef.current.y
+        simNode.x = nx; simNode.y = ny
+        simNode.fx = nx; simNode.fy = ny
+        meshRef.current.position.set(nx, ny, 0)
+      }}
+      onPointerUp={e => {
+        if (!isDraggingRef.current) return
+        isDraggingRef.current = false
+        const nx = e.point.x - dragOffsetRef.current.x
+        const ny = e.point.y - dragOffsetRef.current.y
+        onDragEnd(node.id, nx, ny)
+      }}
     >
       <sphereGeometry args={selected ? [7, 14, 14] : [5, 12, 12]} />
       <meshStandardMaterial
@@ -256,14 +286,15 @@ interface SceneProps {
   displayEdges: EdgeItem[]
   onNodeSelect?: (node: NodeItem | null) => void
   newNodeIds?: Set<string>
+  resetToken?: number
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, resetToken }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
 
-  const { sim, simLinks, positions } = useMemo(() => {
+  const { sim, simLinks, positions, simNodes } = useMemo(() => {
     const simNodes: SimNode[] = displayNodes.map(n => ({ id: n.id, item: n }))
     const idSet = new Set(simNodes.map(n => n.id))
 
@@ -297,8 +328,15 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds }: Sc
     // Reset alpha so SimTicker continues spring animation
     sim.alpha(0.3).restart().stop()
 
-    return { sim, simLinks, positions }
-  }, [displayNodes, displayEdges])
+    return { sim, simLinks, positions, simNodes }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayNodes, displayEdges, resetToken])
+
+  const simNodeMap = useMemo(() => {
+    const m = new Map<string, SimNode>()
+    for (const n of simNodes) m.set(n.id, n)
+    return m
+  }, [simNodes])
 
   const handleNodeClick = useCallback(
     (node: NodeItem) => {
@@ -308,6 +346,17 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds }: Sc
     },
     [onNodeSelect],
   )
+
+  const handleDragStart = useCallback((nodeId: string) => {
+    const sn = simNodeMap.get(nodeId)
+    if (sn) { sn.fx = sn.x; sn.fy = sn.y }
+    sim.alphaTarget(0.1)
+  }, [sim, simNodeMap])
+
+  const handleDragEnd = useCallback((nodeId: string, x: number, y: number) => {
+    const sn = simNodeMap.get(nodeId)
+    if (sn) { sn.x = x; sn.y = y; sn.fx = x; sn.fy = y }
+  }, [simNodeMap])
 
   return (
     <>
@@ -321,6 +370,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds }: Sc
 
       {displayNodes.map(node => {
         const pos3 = positions.get(node.id) ?? new THREE.Vector3()
+        const sn = simNodeMap.get(node.id)!
         return (
           <AnimatedNode
             key={node.id}
@@ -329,6 +379,9 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds }: Sc
             selected={selectedId === node.id}
             onClick={() => handleNodeClick(node)}
             isNew={newNodeIds?.has(node.id) ?? false}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            simNode={sn}
           />
         )
       })}
@@ -355,6 +408,9 @@ export default function LakeGraph({ nodes, edges, onNodeSelect }: LakeGraphProps
   const tooMany =
     nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').length > MAX_NODES
 
+  // P15-C: reset layout token — incrementing re-randomizes force simulation
+  const [resetToken, setResetToken] = useState(0)
+
   // Track newly added node IDs for weave animation
   const prevNodeIdsRef = useRef(new Set<string>())
   const [newNodeIds, setNewNodeIds] = useState<Set<string>>(new Set())
@@ -362,7 +418,6 @@ export default function LakeGraph({ nodes, edges, onNodeSelect }: LakeGraphProps
     const prev = prevNodeIdsRef.current
     const currentIds = new Set(displayNodes.map(n => n.id))
     const incoming = new Set([...currentIds].filter(id => !prev.has(id)))
-    // Always update ref so the same nodes are never flagged twice
     prevNodeIdsRef.current = currentIds
     if (incoming.size > 0) {
       setNewNodeIds(incoming)
@@ -386,7 +441,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect }: LakeGraphProps
           fontSize: 13,
         }}
       >
-        No nodes in this lake
+        此湖暂无节点
       </div>
     )
   }
@@ -416,9 +471,22 @@ export default function LakeGraph({ nodes, edges, onNodeSelect }: LakeGraphProps
             borderRadius: 4,
           }}
         >
-          Showing first {MAX_NODES} nodes
+          仅展示前 {MAX_NODES} 个节点
         </div>
       )}
+      {/* P15-C: 重置布局按钞 */}
+      <button
+        onClick={() => setResetToken(t => t + 1)}
+        title="重置布局"
+        style={{
+          position: 'absolute', bottom: 12, right: 12, zIndex: 10,
+          background: 'rgba(0,0,0,0.6)', border: '1px solid #2a4a7e',
+          color: '#9ec5ee', borderRadius: 4, padding: '3px 10px',
+          fontSize: 12, cursor: 'pointer',
+        }}
+      >
+        重排布局 ↻
+      </button>
       <Canvas camera={{ position: [0, 0, 600], fov: 50 }} gl={{ antialias: true }}>
         <React.Suspense fallback={null}>
           <GraphScene
@@ -426,6 +494,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect }: LakeGraphProps
             displayEdges={edges}
             onNodeSelect={onNodeSelect}
             newNodeIds={newNodeIds}
+            resetToken={resetToken}
           />
         </React.Suspense>
       </Canvas>

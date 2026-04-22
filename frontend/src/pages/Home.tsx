@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
+import type { NodeRevision } from '../api/types'
+import { NodeDiffViewer } from '../components/NodeDiffViewer'
 
 const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
 const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
@@ -52,6 +54,8 @@ export function Home({ onLogout }: Props) {
   // P14-C：批量操作
   const [batchSel, setBatchSel] = useState<Set<string>>(new Set())
   const [batchBusy, setBatchBusy] = useState(false)
+  // P15-B：版本 diff 视图
+  const [diffModal, setDiffModal] = useState<{ nodeId: string; revisions: NodeRevision[] } | null>(null)
   // P13-C：标签过滤
   const [tagFilter, setTagFilter] = useState<string>('')
   const [tagFilteredIds, setTagFilteredIds] = useState<Set<string> | null>(null)
@@ -282,6 +286,14 @@ export function Home({ onLogout }: Props) {
       if (!(await modalConfirm(`回滚到 rev ${target}？`, { danger: true }))) return
       await api.rollbackNode(node.id, target)
       if (active) await loadNodes(active.id)
+    } catch (e) { setErr((e as Error).message) }
+  }
+
+  async function showDiff(node: NodeItem) {
+    try {
+      const { revisions } = await api.listNodeRevisions(node.id, 50)
+      if (revisions.length < 2) { await modalAlert('至少需要 2 个版本才能对比'); return }
+      setDiffModal({ nodeId: node.id, revisions })
     } catch (e) { setErr((e as Error).message) }
   }
 
@@ -916,6 +928,7 @@ export function Home({ onLogout }: Props) {
                         </button>
                         <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容">✎</button>
                         <button onClick={() => showHistory(n)} style={miniBtn} title="历史版本">⟲</button>
+                        <button onClick={() => void showDiff(n)} style={miniBtn} title="版本对比 diff">⇄</button>
                         {canCrystal && (
                           <button
                             onClick={() => toggleCrystalSel(n.id)}
@@ -1064,6 +1077,14 @@ export function Home({ onLogout }: Props) {
             <OrgPanel currentUserId={meId} onClose={() => setOrgOpen(false)} />
           </React.Suspense>
         </div>
+      )}
+      {/* P15-B：版本 diff 对比视图 */}
+      {diffModal && (
+        <NodeDiffViewer
+          nodeId={diffModal.nodeId}
+          revisions={diffModal.revisions}
+          onClose={() => setDiffModal(null)}
+        />
       )}
     </div>
   )
