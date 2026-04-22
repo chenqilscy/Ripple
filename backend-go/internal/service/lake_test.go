@@ -125,6 +125,15 @@ func (r *memMembershipRepo) UpdateRole(_ context.Context, userID, lakeID string,
 	}
 	return domain.ErrNotFound
 }
+func (r *memMembershipRepo) Delete(_ context.Context, userID, lakeID string) error {
+	if u, ok := r.data[userID]; ok {
+		if _, ok := u[lakeID]; ok {
+			delete(u, lakeID)
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
 
 // Outbox 桩：直接记录事件，不真正走 tx。
 type memOutboxRepo struct {

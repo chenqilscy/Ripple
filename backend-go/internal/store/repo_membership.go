@@ -23,6 +23,8 @@ type MembershipRepository interface {
 	ListMembers(ctx context.Context, lakeID string) ([]domain.LakeMembership, error)
 	// UpdateRole P10-C：变更成员角色（不能升级为 OWNER）。
 	UpdateRole(ctx context.Context, userID, lakeID string, role domain.Role) error
+	// Delete P16-C：移除成员（OWNER 不可移除）。
+	Delete(ctx context.Context, userID, lakeID string) error
 }
 
 type membershipRepoPG struct{ pool *pgxpool.Pool }
@@ -165,3 +167,17 @@ func (r *membershipRepoPG) UpdateRole(ctx context.Context, userID, lakeID string
 	return nil
 }
 
+const sqlDeleteMember = `
+DELETE FROM lake_memberships WHERE user_id = $1 AND lake_id = $2
+`
+
+func (r *membershipRepoPG) Delete(ctx context.Context, userID, lakeID string) error {
+	tag, err := r.pool.Exec(ctx, sqlDeleteMember, userID, lakeID)
+	if err != nil {
+		return fmt.Errorf("membership delete: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}

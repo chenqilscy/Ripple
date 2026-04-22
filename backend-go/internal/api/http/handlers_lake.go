@@ -221,6 +221,27 @@ func (h *LakeHandlers) ListMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"members": out})
 }
 
+// RemoveMember DELETE /api/v1/lakes/{id}/members/{userID}
+// P16-C：从湖中移除成员（仅 OWNER 可操作；不能移除自身或另一个 OWNER）。
+func (h *LakeHandlers) RemoveMember(w http.ResponseWriter, r *http.Request) {
+	actor, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	lakeID := chi.URLParam(r, "id")
+	targetUserID := chi.URLParam(r, "userID")
+	if lakeID == "" || targetUserID == "" {
+		writeError(w, http.StatusBadRequest, "lake id and user id required")
+		return
+	}
+	if err := h.Lakes.RemoveMember(r.Context(), actor, lakeID, targetUserID); err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Export GET /api/v1/lakes/{id}/export?format=json|markdown  P13-D：内容导出。
 // 调用方须至少是 OBSERVER；最多导出 10000 节点。
 const exportMaxNodes = 10_000

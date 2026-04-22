@@ -113,6 +113,15 @@ interface AnimNodeProps {
   simNode: SimNode
 }
 
+const STATE_LABEL: Record<NodeState, string> = {
+  MIST:   '雾态',
+  DROP:   '水滴',
+  FROZEN: '冻结',
+  VAPOR:  '蒸发',
+  ERASED: '已消除',
+  GHOST:  '幽灵',
+}
+
 /** easeOutBack: slight overshoot then settle at 1.0 (spring weave effect) */
 function easeOutBack(x: number): number {
   const c1 = 1.70158
@@ -126,6 +135,7 @@ function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, o
   const color = STATE_COLOR[node.state] ?? '#888888'
   const isDraggingRef = useRef(false)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
+  const [hovered, setHovered] = useState(false)
 
   useFrame((_state, delta) => {
     if (!meshRef.current) return
@@ -167,15 +177,45 @@ function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, o
         const ny = e.point.y - dragOffsetRef.current.y
         onDragEnd(node.id, nx, ny)
       }}
+      onPointerEnter={e => { e.stopPropagation(); if (!isDraggingRef.current) setHovered(true) }}
+      onPointerLeave={() => setHovered(false)}
     >
       <sphereGeometry args={selected ? [7, 14, 14] : [5, 12, 12]} />
       <meshStandardMaterial
         color={color}
-        emissive={selected ? color : '#000000'}
-        emissiveIntensity={selected ? 0.6 : 0}
+        emissive={selected ? color : (hovered ? color : '#000000')}
+        emissiveIntensity={selected ? 0.6 : (hovered ? 0.25 : 0)}
         roughness={0.4}
         metalness={selected ? 0.3 : 0.1}
       />
+      {/* P16-A: 悬停详情 tooltip */}
+      {hovered && !selected && (
+        <Html
+          position={[0, 14, 0]}
+          style={{
+            pointerEvents: 'none',
+            background: 'rgba(4,10,22,0.95)',
+            border: '1px solid rgba(74,144,226,0.5)',
+            borderRadius: 6,
+            padding: '6px 10px',
+            fontSize: 11,
+            color: '#c0d8f0',
+            minWidth: 140,
+            maxWidth: 240,
+            lineHeight: '1.6',
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 3, color: '#9ec5ee' }}>
+            {STATE_LABEL[node.state] ?? node.state}
+          </div>
+          <div style={{ wordBreak: 'break-all', opacity: 0.9 }}>
+            {node.content.slice(0, 80)}{node.content.length > 80 ? '…' : ''}
+          </div>
+          <div style={{ marginTop: 4, opacity: 0.55, fontSize: 10 }}>
+            {new Date(node.created_at).toLocaleDateString('zh-CN')}
+          </div>
+        </Html>
+      )}
       {selected && (
         <Html
           position={[0, 12, 0]}

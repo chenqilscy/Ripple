@@ -232,6 +232,9 @@ export const api = {
   updateMemberRole(lakeId: string, userId: string, role: import('./types').LakeRole): Promise<void> {
     return request('PUT', `/api/v1/lakes/${lakeId}/members/${userId}/role`, { role })
   },
+  removeLakeMember(lakeId: string, userId: string): Promise<void> {
+    return request('DELETE', `/api/v1/lakes/${lakeId}/members/${userId}`)
+  },
 
   // ---- Full-text Search (P12-D) ----
   searchNodes(q: string, lakeId: string, limit = 20): Promise<{ results: import('./types').SearchHit[] }> {
@@ -326,6 +329,11 @@ export const api = {
   // P14-C：节点批量操作
   batchOperateNodes(lakeId: string, action: 'evaporate' | 'condense' | 'erase', nodeIds: string[]): Promise<{ succeeded: number; failed: number }> {
     return request('POST', `/api/v1/lakes/${lakeId}/nodes/batch_op`, { action, node_ids: nodeIds })
+  },
+
+  // P16-B：AI 节点摘要
+  aiSummaryNode(nodeId: string): Promise<{ node_id: string; summary: string; created_at: string }> {
+    return request('POST', `/api/v1/nodes/${nodeId}/ai_summary`)
   },
 
   // P13-B：通知系统

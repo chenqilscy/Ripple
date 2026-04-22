@@ -135,6 +135,11 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/nodes/{id}/revisions", nodeH.ListRevisions)
 			r.Get("/nodes/{id}/revisions/{rev}", nodeH.GetRevision)
 			r.Post("/nodes/{id}/rollback", nodeH.Rollback)
+			// P16-B: AI 节点摘要
+			if d.LLMRouter != nil {
+				aiH := &NodeAIHandlers{Nodes: d.Nodes, Router: d.LLMRouter}
+				r.Post("/nodes/{id}/ai_summary", aiH.AISummary)
+			}
 
 			r.Get("/search", nodeH.Search)
 
@@ -227,6 +232,8 @@ func NewRouter(d Deps) http.Handler {
 			r.Put("/lakes/{id}/members/{userID}/role", lakeH.UpdateMemberRole)
 			// P11-C：湖成员列表（VIEWER+）
 			r.Get("/lakes/{id}/members", lakeH.ListMembers)
+			// P16-C：移除湖成员（OWNER only）
+			r.Delete("/lakes/{id}/members/{userID}", lakeH.RemoveMember)
 
 			// P12-C：组织
 			if d.Orgs != nil {

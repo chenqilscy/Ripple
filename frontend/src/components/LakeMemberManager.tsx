@@ -27,6 +27,7 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -42,6 +43,20 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
   }, [lakeId])
 
   useEffect(() => { void load() }, [load])
+
+  const handleRemove = useCallback(async (userId: string) => {
+    if (!window.confirm('确认移除该成员？')) return
+    setRemoving(userId)
+    setError(null)
+    try {
+      await api.removeLakeMember(lakeId, userId)
+      setMembers(prev => prev.filter(m => m.user_id !== userId))
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '移除失败')
+    } finally {
+      setRemoving(null)
+    }
+  }, [lakeId])
 
   const handleRoleChange = useCallback(async (userId: string, newRole: LakeRole) => {
     setUpdating(userId)
@@ -78,7 +93,7 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
         }}
       >
         <span style={{ color: '#c0d8f0', fontWeight: 600, fontSize: 14 }}>
-          Lake Members
+          湖成员管理
         </span>
         <button
           onClick={() => void load()}
@@ -93,7 +108,7 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
             fontSize: 11,
           }}
         >
-          {loading ? '...' : 'Refresh'}
+          {loading ? '…' : '刷新'}
         </button>
       </div>
 
@@ -114,17 +129,20 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
 
       {members.length === 0 && !loading && (
         <div style={{ color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 16 }}>
-          No members found
+          暂无成员
         </div>
       )}
 
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ borderBottom: '1px solid #1e3050' }}>
-            <th style={{ textAlign: 'left', padding: '4px 6px', color: '#4a6a8e', fontWeight: 500 }}>User ID</th>
-            <th style={{ textAlign: 'left', padding: '4px 6px', color: '#4a6a8e', fontWeight: 500 }}>Role</th>
+            <th style={{ textAlign: 'left', padding: '4px 6px', color: '#4a6a8e', fontWeight: 500 }}>用户 ID</th>
+            <th style={{ textAlign: 'left', padding: '4px 6px', color: '#4a6a8e', fontWeight: 500 }}>角色</th>
             {isOwner && (
-              <th style={{ textAlign: 'left', padding: '4px 6px', color: '#4a6a8e', fontWeight: 500 }}>Change</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px', color: '#4a6a8e', fontWeight: 500 }}>变更</th>
+            )}
+            {isOwner && (
+              <th style={{ padding: '4px 6px' }} />
             )}
           </tr>
         </thead>
@@ -146,7 +164,7 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
               >
                 {m.user_id.slice(0, 8)}&hellip;
                 {m.user_id === currentUserId && (
-                  <span style={{ color: '#89dceb', marginLeft: 4, fontSize: 10 }}>(you)</span>
+                  <span style={{ color: '#89dceb', marginLeft: 4, fontSize: 10 }}>（你）</span>
                 )}
               </td>
               <td style={{ padding: '6px 6px' }}>
@@ -184,6 +202,24 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
                         <option key={r} value={r}>{r}</option>
                       ))}
                     </select>
+                  )}
+                </td>
+              )}
+              {isOwner && (
+                <td style={{ padding: '6px 6px' }}>
+                  {m.role !== 'OWNER' && m.user_id !== currentUserId && (
+                    <button
+                      disabled={removing === m.user_id}
+                      onClick={() => void handleRemove(m.user_id)}
+                      style={{
+                        background: 'rgba(220,53,69,0.12)',
+                        border: '1px solid rgba(220,53,69,0.3)',
+                        borderRadius: 3, color: '#ff6b7a',
+                        cursor: 'pointer', padding: '1px 6px', fontSize: 11,
+                      }}
+                    >
+                      {removing === m.user_id ? '…' : '移除'}
+                    </button>
                   )}
                 </td>
               )}

@@ -275,3 +275,25 @@ func (s *LakeService) ListMembers(ctx context.Context, actor *domain.User, lakeI
 	}
 	return s.memberships.ListMembers(ctx, lakeID)
 }
+
+// RemoveMember P16-C：从湖中移除成员。
+// 规则：
+//   - actor 必须是该湖的 OWNER。
+//   - OWNER 不能移除自己（湖必须有且仅有一个 OWNER）。
+//   - 不能移除另一个 OWNER（角色保护）。
+func (s *LakeService) RemoveMember(ctx context.Context, actor *domain.User, lakeID, targetUserID string) error {
+	if _, err := s.requireRole(ctx, actor, lakeID, domain.RoleOwner); err != nil {
+		return err
+	}
+	if actor.ID == targetUserID {
+		return fmt.Errorf("%w: OWNER 不能移除自己", domain.ErrPermissionDenied)
+	}
+	targetRole, err := s.memberships.GetRole(ctx, targetUserID, lakeID)
+	if err != nil {
+		return err
+	}
+	if targetRole == domain.RoleOwner {
+		return fmt.Errorf("%w: 不能移除另一个 OWNER", domain.ErrPermissionDenied)
+	}
+	return s.memberships.Delete(ctx, targetUserID, lakeID)
+}

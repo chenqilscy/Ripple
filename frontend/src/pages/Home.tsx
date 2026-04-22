@@ -56,6 +56,9 @@ export function Home({ onLogout }: Props) {
   const [batchBusy, setBatchBusy] = useState(false)
   // P15-B：版本 diff 视图
   const [diffModal, setDiffModal] = useState<{ nodeId: string; revisions: NodeRevision[] } | null>(null)
+  // P16-B：AI 摘要
+  const [aiSummary, setAiSummary] = useState<Record<string, string>>({})
+  const [aiSummaryBusy, setAiSummaryBusy] = useState<Set<string>>(new Set())
   // P13-C：标签过滤
   const [tagFilter, setTagFilter] = useState<string>('')
   const [tagFilteredIds, setTagFilteredIds] = useState<Set<string> | null>(null)
@@ -295,6 +298,20 @@ export function Home({ onLogout }: Props) {
       if (revisions.length < 2) { await modalAlert('至少需要 2 个版本才能对比'); return }
       setDiffModal({ nodeId: node.id, revisions })
     } catch (e) { setErr((e as Error).message) }
+  }
+
+  // P16-B：AI 节点摘要
+  async function requestAiSummary(node: NodeItem) {
+    if (aiSummaryBusy.has(node.id)) return
+    setAiSummaryBusy(prev => new Set([...prev, node.id]))
+    try {
+      const r = await api.aiSummaryNode(node.id)
+      setAiSummary(prev => ({ ...prev, [node.id]: r.summary }))
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setAiSummaryBusy(prev => { const next = new Set(prev); next.delete(node.id); return next })
+    }
   }
 
   async function copyText(text: string): Promise<boolean> {
@@ -859,6 +876,7 @@ export function Home({ onLogout }: Props) {
                   {batchSel.size > 0 && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, padding: '6px 10px', background: 'rgba(74,144,226,0.1)', borderRadius: 6 }}>
                       <span style={{ fontSize: 12, color: '#9ec5ee' }}>已选 {batchSel.size} 个节点</span>
+                      <button onClick={() => setBatchSel(new Set(filteredNodes.map(n => n.id)))} style={{ ...miniBtn, opacity: 0.7 }}>全选</button>
                       <button onClick={() => void batchOperate('condense')} disabled={batchBusy} style={miniBtn}>凝露 ↓</button>
                       <button onClick={() => void batchOperate('evaporate')} disabled={batchBusy} style={miniBtn}>蒸发 ↑</button>
                       <button onClick={() => { if (window.confirm(`确认彻底删除已选 ${batchSel.size} 个节点？此操作不可恢复。`)) { void batchOperate('erase') } }} disabled={batchBusy} style={{ ...miniBtn, background: 'rgba(220,53,69,0.15)', color: '#ff6b7a' }}>删除 ✕</button>
@@ -905,6 +923,16 @@ export function Home({ onLogout }: Props) {
                         </span>
                       </div>
                       <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5 }}>{n.content}</div>
+                      {/* P16-B AI 摘要展示 */}
+                      {aiSummary[n.id] && (
+                        <div style={{
+                          marginTop: 6, padding: '4px 8px',
+                          background: 'rgba(74,144,226,0.08)', borderLeft: '2px solid #4a8eff',
+                          borderRadius: 3, fontSize: 11, color: '#9ec5ee', lineHeight: 1.5,
+                        }}>
+                          ✦ {aiSummary[n.id]}
+                        </div>
+                      )}
                       {/* P13-C 标签 */}
                       <NodeTagEditor
                         nodeId={n.id}
@@ -929,6 +957,13 @@ export function Home({ onLogout }: Props) {
                         <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容">✎</button>
                         <button onClick={() => showHistory(n)} style={miniBtn} title="历史版本">⟲</button>
                         <button onClick={() => void showDiff(n)} style={miniBtn} title="版本对比 diff">⇄</button>
+                        {/* P16-B AI 摘要 */}
+                        <button
+                          onClick={() => void requestAiSummary(n)}
+                          disabled={aiSummaryBusy.has(n.id)}
+                          style={miniBtn}
+                          title="AI 摘要"
+                        >{aiSummaryBusy.has(n.id) ? '…' : '✦'}</button>
                         {canCrystal && (
                           <button
                             onClick={() => toggleCrystalSel(n.id)}
