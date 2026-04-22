@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
@@ -378,4 +379,34 @@ func (s *NodeService) assertCanMutateNode(ctx context.Context, actor *domain.Use
 		return domain.ErrPermissionDenied
 	}
 	return nil
+}
+
+// SearchNodes 在指定湖内全文搜索节点（P12-D）。
+// 调用方至少是 OBSERVER，或湖为公开湖。
+func (s *NodeService) SearchNodes(ctx context.Context, actor *domain.User, lakeID, q string, limit int) ([]domain.NodeSearchResult, error) {
+	if err := s.assertReadable(ctx, actor, lakeID); err != nil {
+		return nil, err
+	}
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, nil
+	}
+	// Escape Lucene special characters to prevent query parse errors.
+	q = escapeLuceneQuery(q)
+	return s.nodes.Search(ctx, lakeID, q, limit)
+}
+
+// escapeLuceneQuery 转义 Lucene 查询特殊字符，防止解析错误。
+// 受影响字符：+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /
+func escapeLuceneQuery(q string) string {
+	const special = `+-&|!(){}[]^"~*?:/\`
+	var buf strings.Builder
+	buf.Grow(len(q) * 2)
+	for _, c := range q {
+		if strings.ContainsRune(special, c) {
+			buf.WriteByte('\\')
+		}
+		buf.WriteRune(c)
+	}
+	return buf.String()
 }

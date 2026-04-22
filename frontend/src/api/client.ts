@@ -230,6 +230,12 @@ export const api = {
     return request('PUT', `/api/v1/lakes/${lakeId}/members/${userId}/role`, { role })
   },
 
+  // ---- Full-text Search (P12-D) ----
+  searchNodes(q: string, lakeId: string, limit = 20): Promise<{ results: import('./types').SearchHit[] }> {
+    const params = new URLSearchParams({ q, lake_id: lakeId, limit: String(limit) })
+    return request('GET', `/api/v1/search?${params}`)
+  },
+
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
   streamWeave(

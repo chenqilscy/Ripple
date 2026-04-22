@@ -17,6 +17,8 @@ type NodeRepository interface {
 	UpdateState(ctx context.Context, n *domain.Node) error
 	// UpdateContent 更新节点 content 与 updated_at。不改状态、不动软删字段。
 	UpdateContent(ctx context.Context, n *domain.Node) error
+	// Search 在指定湖内全文搜索节点（P12-D）。
+	Search(ctx context.Context, lakeID, q string, limit int) ([]domain.NodeSearchResult, error)
 }
 
 type nodeRepoNeo struct {
@@ -231,4 +233,55 @@ func scanNode(v []any) *domain.Node {
 		n.TTLAt = &t
 	}
 	return n
+}
+
+// Search 全文搜索（P12-D）。
+// 先用 Lucene FTS 索引命中，再按 lake_id 和 state 过滤。limit 最大 50。
+const cypherSearchNodes = `
+CALL db.index.fulltext.queryNodes("node_content_fts", $q)
+YIELD node AS n, score
+WHERE n.lake_id = $lake_id AND n.state <> 'ERASED'
+RETURN n.id, n.lake_id, n.content, score
+ORDER BY score DESC
+LIMIT $limit
+`
+
+func (r *nodeRepoNeo) Search(ctx context.Context, lakeID, q string, limit int) ([]domain.NodeSearchResult, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	out, err := sess.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		rec, err := tx.Run(ctx, cypherSearchNodes, map[string]any{
+			"q":       q,
+			"lake_id": lakeID,
+			"limit":   int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		results := make([]domain.NodeSearchResult, 0)
+		for rec.Next(ctx) {
+			v := rec.Record().Values
+			content := asString(v[2])
+			snippet := content
+			if len([]rune(snippet)) > 150 {
+				runes := []rune(snippet)
+				snippet = string(runes[:150]) + "…"
+			}
+			results = append(results, domain.NodeSearchResult{
+				NodeID:  asString(v[0]),
+				LakeID:  asString(v[1]),
+				Snippet: snippet,
+				Score:   asFloat(v[3]),
+			})
+		}
+		return results, rec.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out.([]domain.NodeSearchResult), nil
 }

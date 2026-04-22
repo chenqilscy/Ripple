@@ -86,7 +86,14 @@ type Node struct {
 	TTLAt     *time.Time // MIST/VAPOR 到期时间
 }
 
-// Evaporate 把节点切换到 VAPOR 态。
+// NodeSearchResult 全文搜索命中（P12-D）。
+type NodeSearchResult struct {
+	NodeID  string
+	LakeID  string
+	Snippet string  // content 前 150 字符
+	Score   float64 // Lucene 相关性得分
+}
+
 // 调用前必须由 service 层校验权限。
 func (n *Node) Evaporate(now time.Time, ttl time.Duration) error {
 	if !n.State.CanEvaporate() {

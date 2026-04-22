@@ -128,6 +128,8 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/nodes/{id}/revisions/{rev}", nodeH.GetRevision)
 			r.Post("/nodes/{id}/rollback", nodeH.Rollback)
 
+			r.Get("/search", nodeH.Search)
+
 			if d.Clouds != nil {
 				r.Post("/clouds", cloudH.Create)
 				r.Get("/clouds", cloudH.ListMine)

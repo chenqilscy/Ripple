@@ -182,3 +182,11 @@ export interface LakeMember {
   user_id: string
   role: LakeRole
 }
+
+// ---- Full-text Search (P12-D) ----
+export interface SearchHit {
+  node_id: string
+  lake_id: string
+  snippet: string
+  score: number
+}

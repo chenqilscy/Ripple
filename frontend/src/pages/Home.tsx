@@ -5,6 +5,7 @@ const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
 const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
 const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
 const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManager'))
+const SearchModal = React.lazy(() => import('../components/SearchModal'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -35,6 +36,7 @@ export function Home({ onLogout }: Props) {
   const [currentSpaceId, setCurrentSpaceId] = useState<string>('')
   // 成员管理抽屉
   const [membersDrawer, setMembersDrawer] = useState<Space | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   // M3-S2：凝结多选（DROP/FROZEN 节点 id 集合）
   const [crystalSel, setCrystalSel] = useState<Set<string>>(new Set())
   // 凝结结果（最近一次）
@@ -52,6 +54,18 @@ export function Home({ onLogout }: Props) {
   const wsRef = useRef<LakeWS | null>(null)
 
   useEffect(() => { void refresh() }, [currentSpaceId])
+
+  // P12-D：Cmd+K / Ctrl+K 打开搜索浮层
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        if (active) setSearchOpen(o => !o)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [active])
 
   // M3-S3：拉取推荐位（异步，失败静默）
   useEffect(() => {
@@ -458,6 +472,13 @@ export function Home({ onLogout }: Props) {
             }} />
           </strong>
           <button onClick={onLogout} style={ghostBtn}>退出</button>
+          {active && (
+            <button
+              onClick={() => setSearchOpen(true)}
+              title="搜索节点 (Cmd+K)"
+              style={ghostBtn}
+            >🔍</button>
+          )}
           <button
             onClick={() => setMainTab(t => t === 'settings' ? 'lakes' : 'settings')}
             style={{ ...ghostBtn, color: mainTab === 'settings' ? '#89b4fa' : undefined }}
@@ -786,6 +807,15 @@ export function Home({ onLogout }: Props) {
       </main>
       {membersDrawer && (
         <SpaceMembersDrawer space={membersDrawer} onClose={() => setMembersDrawer(null)} />
+      )}
+      {searchOpen && active && (
+        <React.Suspense fallback={null}>
+          <SearchModal
+            lakeId={active.id}
+            lakeName={active.name}
+            onClose={() => setSearchOpen(false)}
+          />
+        </React.Suspense>
       )}
     </div>
   )

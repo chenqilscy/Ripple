@@ -252,3 +252,49 @@ func (h *NodeHandlers) Rollback(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, toNodeResp(n))
 }
+
+// Search GET /api/v1/search?q=TEXT&lake_id=UUID&limit=N
+// P12-D：湖内节点全文搜索，调用方须是湖成员（或湖为公开湖）。
+func (h *NodeHandlers) Search(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeError(w, http.StatusBadRequest, "q is required")
+		return
+	}
+	if len(q) > 500 {
+		writeError(w, http.StatusBadRequest, "q too long (max 500 chars)")
+		return
+	}
+	lakeID := r.URL.Query().Get("lake_id")
+	if lakeID == "" {
+		writeError(w, http.StatusBadRequest, "lake_id is required")
+		return
+	}
+	limit := 20
+	if ls := r.URL.Query().Get("limit"); ls != "" {
+		if n, err := strconv.Atoi(ls); err == nil && n > 0 && n <= 50 {
+			limit = n
+		}
+	}
+	results, err := h.Nodes.SearchNodes(r.Context(), u, lakeID, q, limit)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	type searchHit struct {
+		NodeID  string  `json:"node_id"`
+		LakeID  string  `json:"lake_id"`
+		Snippet string  `json:"snippet"`
+		Score   float64 `json:"score"`
+	}
+	out := make([]searchHit, 0, len(results))
+	for _, r := range results {
+		out = append(out, searchHit{NodeID: r.NodeID, LakeID: r.LakeID, Snippet: r.Snippet, Score: r.Score})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": out})
+}
