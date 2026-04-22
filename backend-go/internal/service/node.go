@@ -410,3 +410,80 @@ func escapeLuceneQuery(q string) string {
 	}
 	return buf.String()
 }
+
+// --- 批量导入（P12-A）---
+
+const maxBatchImport = 100
+const maxNodeContentRunes = 10000
+
+// BatchImportItem 单个批量导入项。
+type BatchImportItem struct {
+	Content string
+	Type    domain.NodeType
+}
+
+// BatchImportResult 批量导入结果。
+type BatchImportResult struct {
+	Created int
+	Nodes   []*domain.Node
+}
+
+// BatchImportNodes 批量创建节点到指定湖（P12-A）。
+// 权限：至少 NAVIGATOR（批量写操作不对 PASSENGER 开放）。
+// 空 content 节点自动跳过；content 超长时截断至 10000 字符。
+func (s *NodeService) BatchImportNodes(ctx context.Context, actor *domain.User, lakeID string, items []BatchImportItem) (*BatchImportResult, error) {
+	if lakeID == "" {
+		return nil, fmt.Errorf("%w: lake_id required", domain.ErrInvalidInput)
+	}
+	role, err := s.memberships.GetRole(ctx, actor.ID, lakeID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, domain.ErrPermissionDenied
+		}
+		return nil, err
+	}
+	if !role.AtLeast(domain.RoleNavigator) {
+		return nil, domain.ErrPermissionDenied
+	}
+	if len(items) == 0 {
+		return &BatchImportResult{}, nil
+	}
+	if len(items) > maxBatchImport {
+		return nil, fmt.Errorf("%w: too many nodes (max %d)", domain.ErrInvalidInput, maxBatchImport)
+	}
+
+	now := time.Now().UTC()
+	nodes := make([]*domain.Node, 0, len(items))
+	for _, item := range items {
+		content := strings.TrimSpace(item.Content)
+		if content == "" {
+			continue
+		}
+		runes := []rune(content)
+		if len(runes) > maxNodeContentRunes {
+			content = string(runes[:maxNodeContentRunes])
+		}
+		nodeType := item.Type
+		if !nodeType.IsValid() {
+			nodeType = domain.NodeTypeText
+		}
+		nodes = append(nodes, &domain.Node{
+			ID:        platform.NewID(),
+			LakeID:    lakeID,
+			OwnerID:   actor.ID,
+			Content:   content,
+			Type:      nodeType,
+			State:     domain.StateDrop,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+
+	if len(nodes) == 0 {
+		return &BatchImportResult{}, nil
+	}
+	if err := s.nodes.BatchCreate(ctx, nodes); err != nil {
+		return nil, err
+	}
+	return &BatchImportResult{Created: len(nodes), Nodes: nodes}, nil
+}

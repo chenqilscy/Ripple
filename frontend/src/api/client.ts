@@ -236,6 +236,11 @@ export const api = {
     return request('GET', `/api/v1/search?${params}`)
   },
 
+  // ---- Batch Import (P12-A) ----
+  batchImportNodes(lakeId: string, nodes: { content: string; type?: string }[]): Promise<{ created: number; nodes: NodeItem[] }> {
+    return request('POST', `/api/v1/lakes/${lakeId}/nodes/batch`, { nodes })
+  },
+
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
   streamWeave(

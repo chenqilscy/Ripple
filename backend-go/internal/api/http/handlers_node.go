@@ -298,3 +298,49 @@ func (h *NodeHandlers) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": out})
 }
+
+// BatchImport POST /api/v1/lakes/{id}/nodes/batch
+// P12-A：批量导入节点（最多 100 个），权限 NAVIGATOR+。
+func (h *NodeHandlers) BatchImport(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	lakeID := chi.URLParam(r, "id")
+	r.Body = http.MaxBytesReader(w, r.Body, 4*1024*1024) // 4 MB
+
+	var body struct {
+		Nodes []struct {
+			Content string `json:"content"`
+			Type    string `json:"type"`
+		} `json:"nodes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	items := make([]service.BatchImportItem, 0, len(body.Nodes))
+	for _, n := range body.Nodes {
+		items = append(items, service.BatchImportItem{
+			Content: n.Content,
+			Type:    domain.NodeType(n.Type),
+		})
+	}
+
+	result, err := h.Nodes.BatchImportNodes(r.Context(), u, lakeID, items)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+
+	out := make([]nodeResp, 0, len(result.Nodes))
+	for _, n := range result.Nodes {
+		out = append(out, toNodeResp(n))
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"created": result.Created,
+		"nodes":   out,
+	})
+}

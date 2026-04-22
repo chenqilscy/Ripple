@@ -19,6 +19,8 @@ type NodeRepository interface {
 	UpdateContent(ctx context.Context, n *domain.Node) error
 	// Search 在指定湖内全文搜索节点（P12-D）。
 	Search(ctx context.Context, lakeID, q string, limit int) ([]domain.NodeSearchResult, error)
+	// BatchCreate 批量创建节点（单事务 UNWIND），P12-A。
+	BatchCreate(ctx context.Context, nodes []*domain.Node) error
 }
 
 type nodeRepoNeo struct {
@@ -284,4 +286,50 @@ func (r *nodeRepoNeo) Search(ctx context.Context, lakeID, q string, limit int) (
 		return nil, err
 	}
 	return out.([]domain.NodeSearchResult), nil
+}
+
+// cypherBatchCreateNodes 单事务批量创建节点（P12-A）。
+const cypherBatchCreateNodes = `
+UNWIND $nodes AS item
+CREATE (n:Node {
+  id: item.id, lake_id: item.lake_id, owner_id: item.owner_id,
+  content: item.content, type: item.type, state: item.state,
+  x: 0.0, y: 0.0, z: 0.0,
+  created_at: item.created_at, updated_at: item.updated_at
+})
+WITH n
+OPTIONAL MATCH (l:Lake {id: n.lake_id})
+FOREACH (_ IN CASE WHEN l IS NOT NULL THEN [1] ELSE [] END |
+  MERGE (l)-[:CONTAINS]->(n)
+)
+RETURN n.id
+`
+
+// BatchCreate 批量创建节点，单事务 UNWIND（P12-A）。
+func (r *nodeRepoNeo) BatchCreate(ctx context.Context, nodes []*domain.Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	items := make([]map[string]any, len(nodes))
+	for i, n := range nodes {
+		items[i] = map[string]any{
+			"id":         n.ID,
+			"lake_id":    n.LakeID,
+			"owner_id":   n.OwnerID,
+			"content":    n.Content,
+			"type":       string(n.Type),
+			"state":      string(n.State),
+			"created_at": n.CreatedAt,
+			"updated_at": n.UpdatedAt,
+		}
+	}
+
+	_, err := sess.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		_, err := tx.Run(ctx, cypherBatchCreateNodes, map[string]any{"nodes": items})
+		return nil, err
+	})
+	return err
 }

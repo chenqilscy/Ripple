@@ -6,6 +6,7 @@ const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
 const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
 const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManager'))
 const SearchModal = React.lazy(() => import('../components/SearchModal'))
+const ImportModal = React.lazy(() => import('../components/ImportModal'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -37,6 +38,7 @@ export function Home({ onLogout }: Props) {
   // 成员管理抽屉
   const [membersDrawer, setMembersDrawer] = useState<Space | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   // M3-S2：凝结多选（DROP/FROZEN 节点 id 集合）
   const [crystalSel, setCrystalSel] = useState<Set<string>>(new Set())
   // 凝结结果（最近一次）
@@ -479,6 +481,13 @@ export function Home({ onLogout }: Props) {
               style={ghostBtn}
             >🔍</button>
           )}
+          {active && (
+            <button
+              onClick={() => setImportOpen(true)}
+              title="批量导入节点"
+              style={ghostBtn}
+            >📥</button>
+          )}
           <button
             onClick={() => setMainTab(t => t === 'settings' ? 'lakes' : 'settings')}
             style={{ ...ghostBtn, color: mainTab === 'settings' ? '#89b4fa' : undefined }}
@@ -814,6 +823,16 @@ export function Home({ onLogout }: Props) {
             lakeId={active.id}
             lakeName={active.name}
             onClose={() => setSearchOpen(false)}
+          />
+        </React.Suspense>
+      )}
+      {importOpen && active && (
+        <React.Suspense fallback={null}>
+          <ImportModal
+            lakeId={active.id}
+            lakeName={active.name}
+            onClose={() => setImportOpen(false)}
+            onImported={() => api.listNodes(active.id).then(r => setNodes(r.nodes))}
           />
         </React.Suspense>
       )}
