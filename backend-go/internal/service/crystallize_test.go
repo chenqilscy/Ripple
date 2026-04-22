@@ -44,6 +44,21 @@ func (r *memPermaRepo) ListByLake(_ context.Context, lakeID string, limit int) (
 	}
 	return out, nil
 }
+func (r *memPermaRepo) ListIDsByLakes(_ context.Context, lakeIDs []string, limit int) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	set := map[string]struct{}{}
+	for _, id := range lakeIDs {
+		set[id] = struct{}{}
+	}
+	out := []string{}
+	for _, p := range r.data {
+		if _, ok := set[p.LakeID]; ok {
+			out = append(out, p.ID)
+		}
+	}
+	return out, nil
+}
 
 // memMembers
 type memMembers struct {

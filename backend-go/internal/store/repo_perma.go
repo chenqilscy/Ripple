@@ -16,6 +16,8 @@ type PermaNodeRepository interface {
 	Create(ctx context.Context, p *domain.PermaNode) error
 	GetByID(ctx context.Context, id string) (*domain.PermaNode, error)
 	ListByLake(ctx context.Context, lakeID string, limit int) ([]domain.PermaNode, error)
+	// ListIDsByLakes 返回这些 lake 下最近的 perma_node id（推荐"同空间信号"用）。
+	ListIDsByLakes(ctx context.Context, lakeIDs []string, limit int) ([]string, error)
 }
 
 type permaRepoPG struct{ pool *pgxpool.Pool }
@@ -89,6 +91,34 @@ func (r *permaRepoPG) ListByLake(ctx context.Context, lakeID string, limit int) 
 			return nil, fmt.Errorf("perma list scan: %w", err)
 		}
 		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+const sqlListPermaIDsByLakes = `
+SELECT id FROM perma_nodes WHERE lake_id = ANY($1)
+ORDER BY created_at DESC LIMIT $2
+`
+
+func (r *permaRepoPG) ListIDsByLakes(ctx context.Context, lakeIDs []string, limit int) ([]string, error) {
+	if len(lakeIDs) == 0 {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := r.pool.Query(ctx, sqlListPermaIDsByLakes, lakeIDs, limit)
+	if err != nil {
+		return nil, fmt.Errorf("perma list-ids-by-lakes: %w", err)
+	}
+	defer rows.Close()
+	out := make([]string, 0, limit)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
 	}
 	return out, rows.Err()
 }

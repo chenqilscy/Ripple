@@ -162,7 +162,8 @@ func main() {
 	crystallizeSvc := service.NewCrystallizeService(permaRepo, nodes, memberships, llmRouter)
 
 	feedbackRepo := store.NewFeedbackRepository(pg)
-	recommenderSvc := service.NewRecommenderService(feedbackRepo, rds)
+	recommenderSvc := service.NewRecommenderService(feedbackRepo, rds).
+		WithSpaceSignal(permaRepo, memberships)
 
 	// M4-B：本地 FS 附件（UploadDir 非空时启用）
 	var attachmentH *httpapi.AttachmentHandlers

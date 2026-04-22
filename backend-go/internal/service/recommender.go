@@ -23,14 +23,23 @@ import (
 
 // RecommenderService 推荐服务。
 type RecommenderService struct {
-	feedback store.FeedbackRepository
-	rdb      *redis.Client
-	cacheTTL time.Duration
+	feedback   store.FeedbackRepository
+	perma      store.PermaNodeRepository  // P5-T4 同空间信号源（可为 nil）
+	memberRepo store.MembershipRepository // P5-T4 取用户所在 lake（可为 nil）
+	rdb        *redis.Client
+	cacheTTL   time.Duration
 }
 
-// NewRecommenderService 装配；rdb 可为 nil，nil 时跳过缓存。
+// NewRecommenderService 装配；rdb / perma / memberRepo 均可为 nil（按可用性降级）。
 func NewRecommenderService(feedback store.FeedbackRepository, rdb *redis.Client) *RecommenderService {
 	return &RecommenderService{feedback: feedback, rdb: rdb, cacheTTL: 5 * time.Minute}
+}
+
+// WithSpaceSignal 注入同空间（同 lake）信号依赖。
+func (s *RecommenderService) WithSpaceSignal(perma store.PermaNodeRepository, member store.MembershipRepository) *RecommenderService {
+	s.perma = perma
+	s.memberRepo = member
+	return s
 }
 
 // Recommendation 单条推荐结果。
@@ -111,12 +120,34 @@ func (s *RecommenderService) Recommend(ctx context.Context, actor *domain.User, 
 		hotScores[tc.TargetID] = tc.Count
 	}
 
+	// P5-T4 同空间信号：取用户参与的 lake 下的 perma_node id 集合
+	sameSpace := map[string]struct{}{}
+	if in.TargetType == "perma_node" && s.perma != nil && s.memberRepo != nil {
+		if lakeIDs, err := s.memberRepo.ListLakesByUser(ctx, actor.ID); err == nil && len(lakeIDs) > 0 {
+			if ids, err := s.perma.ListIDsByLakes(ctx, lakeIDs, 200); err == nil {
+				mineSet := map[string]struct{}{}
+				for _, m := range mine {
+					mineSet[m] = struct{}{}
+				}
+				for _, id := range ids {
+					if _, dup := mineSet[id]; dup {
+						continue
+					}
+					sameSpace[id] = struct{}{}
+				}
+			}
+		}
+	}
+
 	merged := map[string]int64{}
 	for tid, c := range collabScores {
 		merged[tid] += 2 * c
 	}
 	for tid, h := range hotScores {
 		merged[tid] += h
+	}
+	for tid := range sameSpace {
+		merged[tid] += 3 // 同空间高权重
 	}
 	if len(merged) == 0 {
 		return nil, nil
