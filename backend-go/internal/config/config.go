@@ -94,6 +94,9 @@ type Config struct {
 	LLMFake        bool `envconfig:"LLM_FAKE" default:"false"`
 	LLMFakeSleepMS int  `envconfig:"LLM_FAKE_SLEEP_MS" default:"0"`
 	LLMFakeTextLen int  `envconfig:"LLM_FAKE_TEXT_LEN" default:"200"`
+	// M4-S2 占位图片 provider（开关 + 模拟延迟）
+	LLMImageStub        bool `envconfig:"LLM_IMAGE_STUB" default:"false"`
+	LLMImageStubSleepMS int  `envconfig:"LLM_IMAGE_STUB_SLEEP_MS" default:"0"`
 
 	// 可观测性
 	// PProfAddr 非空时，在该地址单独启动 net/http/pprof（如 ":6060"）。生产建议绑内网地址。

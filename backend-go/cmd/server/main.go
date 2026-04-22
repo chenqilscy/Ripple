@@ -132,6 +132,12 @@ func main() {
 		providers = append([]llm.Provider{fp}, providers...) // 放最前，优先命中
 		logger.Warn().Msg("LLM_FAKE=true：fake provider 已启用，所有 TEXT 生成不会调用真实厂商")
 	}
+	// M4-S2：占位图片 provider（多模态 IMAGE 通路）
+	if cfg.LLMImageStub {
+		ip := llm.NewPlaceholderImageProvider("image-stub", cfg.LLMImageStubSleepMS)
+		providers = append(providers, ip)
+		logger.Warn().Msg("LLM_IMAGE_STUB=true：image-stub provider 已启用（IMAGE 模态）")
+	}
 	if len(providers) == 0 {
 		logger.Warn().Msg("no LLM provider configured; cloud generation will fail")
 	} else {
