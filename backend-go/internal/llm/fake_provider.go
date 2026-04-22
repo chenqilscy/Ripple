@@ -48,9 +48,10 @@ func (p *FakeProvider) Generate(ctx context.Context, req GenerateRequest) ([]Can
 	if n <= 0 {
 		n = 1
 	}
+	// 注意：必须按 rune 截断，否则会切断 UTF-8 多字节字符导致下游 PG 报 0xe9 0x9d 错。
 	body := strings.Repeat("青萍涟漪压测占位文本。", p.TextLength/12+1)
-	if len(body) > p.TextLength {
-		body = body[:p.TextLength]
+	if r := []rune(body); len(r) > p.TextLength {
+		body = string(r[:p.TextLength])
 	}
 	out := make([]Candidate, n)
 	for i := range out {

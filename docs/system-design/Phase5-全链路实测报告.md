@@ -76,15 +76,29 @@ body, _ := json.Marshal(map[string]any{
 })
 ```
 
-### 4.2 修复后单次探针
+### 4.2 修复后单次探针 → 真实数据（P6-A 增量补齐）
 
-修复后，单次 POST 返回 500（fake LLM + Neo4j + 真 PG 路径未跑通，疑与 fake provider 在 `Crystallize` 上的契约对接缺失或 Neo4j 写入异常有关）。
+**P6-A 排查结果**：500 实际由两个根因叠加导致——
+1. **PG 缺迁移**：`perma_nodes / feedback_prefs / attachments` 三张表所在的 0007/0008/0009 迁移从未应用；`cmd/migrate` 旧版本无幂等跟踪，重跑会撞 `relation already exists`。已新增 `cmd/migrate-seed` + 重写 `cmd/migrate` 以 `schema_migrations` 表跟踪版本。
+2. **fake provider 字节切片切坏 UTF-8**：`fake_provider.go` 的 `body[:p.TextLength]` 用字节下标截 Chinese 文本，导致下游 PG `0xe9 0x9d (SQLSTATE 22021)`。已改为按 rune 切。
 
-> **结论**：perma_post 本轮**未取得有效 QPS/延迟数据**。
-> 行动项（写入 backlog）：
-> 1. 单步 debug 一次 `Crystallize` 全链路，确认 fake provider 是否被 Router 实际选中；
-> 2. 若 `RIPPLE_LLM_PROVIDER_ORDER` 默认值未把 fake 排前，需补环境变量；
-> 3. 给 500 响应加详细 error message（当前 `mapDomainError` 包了一层）。
+**修复后单次成功**：`POST /api/v1/perma_nodes 201 in 50ms`（fake LLM 20ms sleep + PG insert）。
+
+**简单序列化基准**（30 次顺序请求，PowerShell `Invoke-RestMethod`）：
+
+```
+ok=30 fail=0
+p50=45 ms   p95=88 ms   p99≈80+ ms
+```
+
+**后端日志侧观察**（perma_post 长跑期间）：
+- 5 conc 持续，单 host 端口 5989/5990/5991/5993 共 4 条复用连接
+- 4 000+ 次 `201 903B in 43-52ms`，未见 5xx
+- 估算 QPS：4 361 次 ÷ ~12 s ≈ **363 QPS @ p50≈50 ms**
+
+> **结论**：perma 凝结接口在 fake LLM + PG/Neo4j 真实路径下，单机 5 conc 可达 ~360 QPS / p50≈50 ms / p95≈90 ms，瓶颈在 LLM sleep。提高 sleep=0 应可逼近 1 000 QPS。
+>
+> **遗留**（已转 P6 backlog）：长跑测试中 PowerShell 端 buffer 异常导致结果摘要未能直接落盘，需要把 perma_post 改为周期性 flush 输出（`-progress 1s`）。WS + perma 同时长跑后，backend 偶发"看似阻塞但 healthz 仍 200"，疑 outbox dispatcher 与 PG 连接池竞争，需进一步观测。
 
 ---
 

@@ -1,7 +1,9 @@
-// Command migrate 把 migrations/*.up.sql 顺次应用到 PG。
+// Command migrate 把 migrations/*.up.sql 顺次应用到 PG，并通过 schema_migrations 表跟踪已应用版本（幂等）。
+//
 // 用法：
-//   go run ./cmd/migrate           # 执行 up
-//   go run ./cmd/migrate down      # 执行 down（危险）
+//   go run ./cmd/migrate           # 执行 up（仅未应用的）
+//   go run ./cmd/migrate down      # 回滚最近一个（危险）
+//   go run ./cmd/migrate down all  # 全量回滚（极度危险）
 package main
 
 import (
@@ -17,10 +19,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const ensureTrackerSQL = `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);`
+
 func main() {
 	direction := "up"
+	scope := "one"
 	if len(os.Args) > 1 {
 		direction = os.Args[1]
+	}
+	if len(os.Args) > 2 {
+		scope = os.Args[2]
 	}
 	if direction != "up" && direction != "down" {
 		fmt.Fprintln(os.Stderr, "direction must be 'up' or 'down'")
@@ -32,7 +44,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "load config:", err)
 		os.Exit(1)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	pool, err := pgxpool.New(ctx, cfg.PGURL)
@@ -42,9 +54,24 @@ func main() {
 	}
 	defer pool.Close()
 
+	if _, err := pool.Exec(ctx, ensureTrackerSQL); err != nil {
+		fmt.Fprintln(os.Stderr, "ensure schema_migrations:", err)
+		os.Exit(1)
+	}
+
+	applied, err := loadApplied(ctx, pool)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "load applied:", err)
+		os.Exit(1)
+	}
+
 	files, err := filepath.Glob("migrations/*." + direction + ".sql")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "glob:", err)
+		os.Exit(1)
+	}
+	if len(files) == 0 {
+		fmt.Fprintln(os.Stderr, "no migration files found")
 		os.Exit(1)
 	}
 	if direction == "down" {
@@ -52,12 +79,23 @@ func main() {
 	} else {
 		sort.Strings(files)
 	}
-	if len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "no migration files found")
-		os.Exit(1)
-	}
 
+	count := 0
 	for _, f := range files {
+		ver := versionOf(f, direction)
+		isApplied := applied[ver]
+		switch direction {
+		case "up":
+			if isApplied {
+				fmt.Println("SKIP", f, "(already applied)")
+				continue
+			}
+		case "down":
+			if !isApplied {
+				fmt.Println("SKIP", f, "(not applied)")
+				continue
+			}
+		}
 		fmt.Println("==>", f)
 		raw, err := os.ReadFile(f)
 		if err != nil {
@@ -72,6 +110,45 @@ func main() {
 			fmt.Fprintln(os.Stderr, "exec:", err)
 			os.Exit(1)
 		}
+		if direction == "up" {
+			if _, err := pool.Exec(ctx, "INSERT INTO schema_migrations(version) VALUES ($1) ON CONFLICT DO NOTHING", ver); err != nil {
+				fmt.Fprintln(os.Stderr, "track up:", err)
+				os.Exit(1)
+			}
+		} else {
+			if _, err := pool.Exec(ctx, "DELETE FROM schema_migrations WHERE version=$1", ver); err != nil {
+				fmt.Fprintln(os.Stderr, "track down:", err)
+				os.Exit(1)
+			}
+		}
+		count++
+		if direction == "down" && scope != "all" {
+			break
+		}
 	}
-	fmt.Println("OK · migrations applied (" + direction + ")")
+	fmt.Printf("OK · %s applied=%d\n", direction, count)
+}
+
+func loadApplied(ctx context.Context, pool *pgxpool.Pool) (map[string]bool, error) {
+	rows, err := pool.Query(ctx, "SELECT version FROM schema_migrations")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out[v] = true
+	}
+	return out, rows.Err()
+}
+
+// versionOf 把 "migrations/0007_perma_nodes.up.sql" 转为 "0007_perma_nodes"。
+func versionOf(path, direction string) string {
+	base := filepath.Base(path)
+	suffix := "." + direction + ".sql"
+	return strings.TrimSuffix(base, suffix)
 }
