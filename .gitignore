@@ -42,3 +42,7 @@ yarn-debug.log*
 # Local data
 data/
 logs/
+
+# Go binaries
+backend-go/server.exe
+backend-go/*.exe

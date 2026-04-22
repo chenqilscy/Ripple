@@ -88,6 +88,12 @@ type Config struct {
 	// 全局 LLM provider 速率限制（每秒次数 + burst）；rps<=0 不限
 	LLMRPS   float64 `envconfig:"LLM_RPS" default:"5"`
 	LLMBurst int     `envconfig:"LLM_BURST" default:"10"`
+
+	// 可观测性
+	// PProfAddr 非空时，在该地址单独启动 net/http/pprof（如 ":6060"）。生产建议绑内网地址。
+	PProfAddr string `envconfig:"PPROF_ADDR" default:""`
+	// MetricsEnabled true 时在主 HTTP server 注册 GET /metrics（Prometheus 文本格式）。
+	MetricsEnabled bool `envconfig:"METRICS_ENABLED" default:"true"`
 }
 
 // Load 从环境变量加载配置。

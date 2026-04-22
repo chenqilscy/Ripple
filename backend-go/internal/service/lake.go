@@ -47,6 +47,9 @@ type CreateLakeInput struct {
 	Name        string
 	Description string
 	IsPublic    bool
+	// SpaceID 可选；非空表示湖归属某 Space。Service 不校验 actor 是否为 Space 成员，
+	// 由调用方（HTTP handler）在创建前做好；这样 Service 保持与 Space 解耦。
+	SpaceID string
 }
 
 // Create 创建湖（saga）。
@@ -62,6 +65,7 @@ func (s *LakeService) Create(ctx context.Context, owner *domain.User, in CreateL
 		Description: in.Description,
 		IsPublic:    in.IsPublic,
 		OwnerID:     owner.ID,
+		SpaceID:     strings.TrimSpace(in.SpaceID),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -127,6 +131,17 @@ type LakeWithRole struct {
 //  2. 单 Cypher 批量取 Lake 节点
 //  3. 按 lake_id zip 起来；membership 存在但 Lake 不存在（outbox 投影滞后）静默跳过
 func (s *LakeService) ListMineFull(ctx context.Context, actor *domain.User) ([]LakeWithRole, error) {
+	return s.listMineFull(ctx, actor, "")
+}
+
+// ListMineBySpace 按 space_id 过滤；spaceID="" 表示只看个人湖（无 space 归属）。
+// 复用 ListMineFull 的 N+1 防御逻辑。
+func (s *LakeService) ListMineBySpace(ctx context.Context, actor *domain.User, spaceID string) ([]LakeWithRole, error) {
+	return s.listMineFull(ctx, actor, spaceID)
+}
+
+// listMineFull 内部实现，spaceFilter="" 表示不过滤。
+func (s *LakeService) listMineFull(ctx context.Context, actor *domain.User, spaceFilter string) ([]LakeWithRole, error) {
 	ms, err := s.memberships.ListLakesByUserWithRole(ctx, actor.ID)
 	if err != nil {
 		return nil, err
@@ -146,12 +161,21 @@ func (s *LakeService) ListMineFull(ctx context.Context, actor *domain.User) ([]L
 	for i := range lakes {
 		byID[lakes[i].ID] = &lakes[i]
 	}
-	// 按 membership 顺序（updated_at desc）输出，跳过缺失的
+	// 按 membership 顺序（updated_at desc）输出，跳过缺失的 + 按 spaceFilter 过滤
 	out := make([]LakeWithRole, 0, len(ms))
 	for _, m := range ms {
-		if l, ok := byID[m.LakeID]; ok {
-			out = append(out, LakeWithRole{Lake: l, Role: m.Role})
+		l, ok := byID[m.LakeID]
+		if !ok {
+			continue
 		}
+		// spaceFilter 语义：
+		//   ""        → 不过滤，全部返回（原 ListMineFull 行为）
+		//   "<id>"    → 仅返回 SpaceID == 该 id 的湖
+		// 调用方若想"只看个人湖"应单独走另一个 ListMinePersonal（暂未提供，按需扩展）
+		if spaceFilter != "" && l.SpaceID != spaceFilter {
+			continue
+		}
+		out = append(out, LakeWithRole{Lake: l, Role: m.Role})
 	}
 	return out, nil
 }

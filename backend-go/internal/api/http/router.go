@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -20,6 +21,7 @@ type Deps struct {
 	Invites     *service.InviteService
 	Clouds      *service.CloudService
 	Spaces      *service.SpaceService
+	Crystallize *service.CrystallizeService
 	Presence    *presence.Service
 	WS          *WSHandlers
 	CORSOrigins []string
@@ -34,6 +36,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(metricsMiddleware)
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   d.CORSOrigins,
@@ -47,8 +50,14 @@ func NewRouter(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
+	// Prometheus 文本格式指标。无鉴权（生产建议 IP 白名单 / 反代过滤）。
+	r.Get("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_ = metrics.Default.WriteText(w)
+	})
+
 	authH := &AuthHandlers{Auth: d.Auth}
-	lakeH := &LakeHandlers{Lakes: d.Lakes}
+	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces}
 	nodeH := &NodeHandlers{Nodes: d.Nodes}
 	cloudH := &CloudHandlers{Clouds: d.Clouds}
 	var edgeH *EdgeHandlers
@@ -66,6 +75,10 @@ func NewRouter(d Deps) http.Handler {
 	var spaceH *SpaceHandlers
 	if d.Spaces != nil {
 		spaceH = &SpaceHandlers{Spaces: d.Spaces}
+	}
+	var crysH *CrystallizeHandlers
+	if d.Crystallize != nil {
+		crysH = &CrystallizeHandlers{Svc: d.Crystallize}
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -126,6 +139,10 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/spaces/{id}/members", spaceH.ListMembers)
 				r.Post("/spaces/{id}/members", spaceH.AddMember)
 				r.Delete("/spaces/{id}/members/{userID}", spaceH.RemoveMember)
+			}
+
+			if crysH != nil {
+				r.Post("/perma_nodes", crysH.Create)
 			}
 
 			if d.WS != nil {

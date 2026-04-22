@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 )
 
 // Policy 决定 Router 行为。
@@ -51,6 +53,8 @@ func (r *DefaultRouter) Generate(ctx context.Context, req GenerateRequest) ([]Ca
 		started := time.Now()
 		out, err := p.Generate(ctx, req)
 		latency := int(time.Since(started).Milliseconds())
+		metrics.LLMCallsBy(p.Name()).Inc()
+		metrics.LLMDurationBy(p.Name()).Observe(float64(latency))
 		rec := CallRecord{
 			Provider:    p.Name(),
 			Modality:    req.Modality,
@@ -63,6 +67,7 @@ func (r *DefaultRouter) Generate(ctx context.Context, req GenerateRequest) ([]Ca
 			r.recorder.Record(rec)
 			return out, nil
 		}
+		metrics.LLMErrorsBy(p.Name()).Inc()
 		rec.Status = "error"
 		rec.ErrorMessage = err.Error()
 		r.recorder.Record(rec)

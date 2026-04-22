@@ -31,7 +31,7 @@ func NewLakeRepository(driver neo4j.DriverWithContext, dbName string) LakeReposi
 const cypherCreateLake = `
 CREATE (l:Lake {
   id: $id, name: $name, description: $desc, is_public: $is_public,
-  owner_id: $owner_id, created_at: $created_at, updated_at: $updated_at
+  owner_id: $owner_id, space_id: $space_id, created_at: $created_at, updated_at: $updated_at
 })
 RETURN l.id AS id
 `
@@ -47,6 +47,7 @@ func (r *lakeRepoNeo) Create(ctx context.Context, l *domain.Lake) error {
 			"desc":       l.Description,
 			"is_public":  l.IsPublic,
 			"owner_id":   l.OwnerID,
+			"space_id":   l.SpaceID,
 			"created_at": l.CreatedAt.UTC().Format(time.RFC3339Nano),
 			"updated_at": l.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		})
@@ -60,7 +61,7 @@ func (r *lakeRepoNeo) Create(ctx context.Context, l *domain.Lake) error {
 
 const cypherGetLake = `
 MATCH (l:Lake {id: $id})
-RETURN l.id, l.name, l.description, l.is_public, l.owner_id, l.created_at, l.updated_at
+RETURN l.id, l.name, l.description, l.is_public, l.owner_id, coalesce(l.space_id, '') AS space_id, l.created_at, l.updated_at
 `
 
 func (r *lakeRepoNeo) GetByID(ctx context.Context, id string) (*domain.Lake, error) {
@@ -82,8 +83,9 @@ func (r *lakeRepoNeo) GetByID(ctx context.Context, id string) (*domain.Lake, err
 			Description: asString(vals[2]),
 			IsPublic:    asBool(vals[3]),
 			OwnerID:     asString(vals[4]),
-			CreatedAt:   parseTime(asString(vals[5])),
-			UpdatedAt:   parseTime(asString(vals[6])),
+			SpaceID:     asString(vals[5]),
+			CreatedAt:   parseTime(asString(vals[6])),
+			UpdatedAt:   parseTime(asString(vals[7])),
 		}
 		return l, nil
 	})
@@ -95,7 +97,7 @@ func (r *lakeRepoNeo) GetByID(ctx context.Context, id string) (*domain.Lake, err
 
 const cypherGetManyLakes = `
 MATCH (l:Lake) WHERE l.id IN $ids
-RETURN l.id, l.name, l.description, l.is_public, l.owner_id, l.created_at, l.updated_at
+RETURN l.id, l.name, l.description, l.is_public, l.owner_id, coalesce(l.space_id, '') AS space_id, l.created_at, l.updated_at
 `
 
 // GetManyByIDs 单次 Cypher 查询。结果顺序由 Neo4j 决定；调用方若需固定顺序可自行排序。
@@ -120,8 +122,9 @@ func (r *lakeRepoNeo) GetManyByIDs(ctx context.Context, ids []string) ([]domain.
 				Description: asString(vals[2]),
 				IsPublic:    asBool(vals[3]),
 				OwnerID:     asString(vals[4]),
-				CreatedAt:   parseTime(asString(vals[5])),
-				UpdatedAt:   parseTime(asString(vals[6])),
+				SpaceID:     asString(vals[5]),
+				CreatedAt:   parseTime(asString(vals[6])),
+				UpdatedAt:   parseTime(asString(vals[7])),
 			})
 		}
 		return list, rec.Err()

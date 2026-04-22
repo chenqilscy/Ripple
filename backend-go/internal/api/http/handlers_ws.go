@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
@@ -51,6 +52,9 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(websocket.StatusInternalError, "server closed")
 
+	metrics.WSConnections.Inc()
+	defer metrics.WSConnections.Dec()
+
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
@@ -87,6 +91,7 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 				cancel()
 				return
 			}
+			metrics.WSMessagesOut.Inc()
 		}
 	}()
 
@@ -106,6 +111,7 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 			conn.Close(websocket.StatusNormalClosure, "client gone")
 			return
 		}
+		metrics.WSMessagesIn.Inc()
 		// 客户端任意消息都视为心跳；刷新 presence score。
 		if h.Presence != nil {
 			_ = h.Presence.Heartbeat(ctx, lakeID, user.ID)

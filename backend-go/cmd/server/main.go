@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof" // 副作用：注册 /debug/pprof/* 到 http.DefaultServeMux（仅当启用 pprof 监听时暴露）
 	"os"
 	"os/signal"
 	"strings"
@@ -83,6 +84,7 @@ func main() {
 	invites := store.NewInviteRepository(pg)
 	nodeRevs := store.NewNodeRevisionRepository(pg)
 	spaceRepo := store.NewSpaceRepository(pg)
+	permaRepo := store.NewPermaNodeRepository(pg)
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
@@ -151,6 +153,8 @@ func main() {
 	defer weaverCancel()
 	go weaver.Run(weaverCtx)
 
+	crystallizeSvc := service.NewCrystallizeService(permaRepo, nodes, memberships, llmRouter)
+
 	wsH := &httpapi.WSHandlers{
 		Lakes:    lakeSvc,
 		Broker:   broker,
@@ -166,6 +170,7 @@ func main() {
 		Invites:     inviteSvc,
 		Clouds:      cloudSvc,
 		Spaces:      spaceSvc,
+		Crystallize: crystallizeSvc,
 		Presence:    presenceSvc,
 		WS:          wsH,
 		CORSOrigins: cfg.CORSOriginList(),
@@ -175,6 +180,19 @@ func main() {
 		Addr:              cfg.HTTPAddr,
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	// pprof 独立监听（生产建议绑内网）。配置为空则不启动。
+	if cfg.PProfAddr != "" {
+		go func() {
+			logger.Info().Str("addr", cfg.PProfAddr).Msg("pprof listening")
+			pprofMux := http.NewServeMux()
+			// net/http/pprof 在 init 时注册到 http.DefaultServeMux；这里用 default 即可
+			pprofMux.Handle("/", http.DefaultServeMux)
+			if err := http.ListenAndServe(cfg.PProfAddr, pprofMux); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error().Err(err).Msg("pprof server error")
+			}
+		}()
 	}
 
 	sigCh := make(chan os.Signal, 1)
