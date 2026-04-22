@@ -1,0 +1,24 @@
+{
+  "name": "青萍 Ripple — 创意系统",
+  "short_name": "Ripple",
+  "description": "可凝结、可分享、可流动的创意湖。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#001e2b",
+  "theme_color": "#001e2b",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

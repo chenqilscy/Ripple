@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#001e2b" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <title>青萍 Ripple</title>
     <style>
       html, body, #root { margin: 0; padding: 0; height: 100%; background: #001e2b; color: #e6f2ee; font-family: -apple-system, 'PingFang SC', sans-serif; }
@@ -11,5 +14,13 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // PWA · M4-T4
+      if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW register failed:', e));
+        });
+      }
+    </script>
   </body>
 </html>
