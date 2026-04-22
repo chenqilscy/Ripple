@@ -124,6 +124,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/lakes/{id}/space", lakeH.Move)
 			r.Get("/lakes/{id}/nodes", nodeH.ListByLake)
 			r.Post("/lakes/{id}/nodes/batch", nodeH.BatchImport)
+				r.Post("/lakes/{id}/nodes/batch_op", nodeH.BatchOperate) // P14-C
 
 			r.Post("/nodes", nodeH.Create)
 			r.Get("/nodes/{id}", nodeH.Get)

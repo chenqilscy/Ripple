@@ -323,6 +323,11 @@ export const api = {
     return resp.json() as Promise<{ imported: number; skipped: number }>
   },
 
+  // P14-C：节点批量操作
+  batchOperateNodes(lakeId: string, action: 'evaporate' | 'condense', nodeIds: string[]): Promise<{ succeeded: number; failed: number }> {
+    return request('POST', `/api/v1/lakes/${lakeId}/nodes/batch_op`, { action, node_ids: nodeIds })
+  },
+
   // P13-B：通知系统
   listNotifications(limit = 20, before?: number): Promise<{ notifications: import('./types').Notification[] }> {
     const q = new URLSearchParams({ limit: String(limit) })

@@ -467,7 +467,7 @@ func splitMarkdownSections(md string) []string {
 	}
 
 	for _, line := range lines {
-		if strings.HasPrefix(line, "## ") {
+		if strings.HasPrefix(line, "## ") || strings.HasPrefix(line, "# ") {
 			flush()
 			// 把标题行本身也纳入段落内容（用作节点内容的第一行）
 			cur.WriteString(line)

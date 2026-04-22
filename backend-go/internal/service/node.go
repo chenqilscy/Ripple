@@ -487,3 +487,42 @@ func (s *NodeService) BatchImportNodes(ctx context.Context, actor *domain.User, 
 	}
 	return &BatchImportResult{Created: len(nodes), Nodes: nodes}, nil
 }
+
+// BatchOperate P14-C：对多个节点执行同一操作（evaporate / condense）。
+// node_ids 最多 200 个，且必须全部属于 lakeID（由每个单节点操作内部校验）。
+const batchOperateMaxNodes = 200
+
+// BatchOperateResult 批量操作结果。
+type BatchOperateResult struct {
+	Succeeded int `json:"succeeded"`
+	Failed    int `json:"failed"`
+}
+
+// BatchOperate 对节点列表执行批量操作。支持 "evaporate" 和 "condense"。
+func (s *NodeService) BatchOperate(ctx context.Context, actor *domain.User, lakeID, action string, nodeIDs []string) (*BatchOperateResult, error) {
+	if len(nodeIDs) == 0 {
+		return &BatchOperateResult{}, nil
+	}
+	if len(nodeIDs) > batchOperateMaxNodes {
+		return nil, fmt.Errorf("%w: too many nodes in batch (max %d)", domain.ErrInvalidInput, batchOperateMaxNodes)
+	}
+	if action != "evaporate" && action != "condense" {
+		return nil, fmt.Errorf("%w: action must be evaporate or condense", domain.ErrInvalidInput)
+	}
+	res := &BatchOperateResult{}
+	for _, id := range nodeIDs {
+		var err error
+		switch action {
+		case "evaporate":
+			_, err = s.Evaporate(ctx, actor, id)
+		case "condense":
+			_, err = s.Condense(ctx, actor, id, lakeID)
+		}
+		if err != nil {
+			res.Failed++
+		} else {
+			res.Succeeded++
+		}
+	}
+	return res, nil
+}

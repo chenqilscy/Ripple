@@ -49,6 +49,9 @@ export function Home({ onLogout }: Props) {
   const [importBusy, setImportBusy] = useState(false)
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  // P14-C：批量操作
+  const [batchSel, setBatchSel] = useState<Set<string>>(new Set())
+  const [batchBusy, setBatchBusy] = useState(false)
   // P13-C：标签过滤
   const [tagFilter, setTagFilter] = useState<string>('')
   const [tagFilteredIds, setTagFilteredIds] = useState<Set<string> | null>(null)
@@ -125,6 +128,7 @@ export function Home({ onLogout }: Props) {
     setTagFilteredIds(null)
     tagAbortRef.current?.abort()
     setImportResult(null)
+    setBatchSel(new Set())
     // P13-C：加载湖标签列表
     api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => setLakeTags([]))
 
@@ -490,6 +494,19 @@ export function Home({ onLogout }: Props) {
     finally { setImportBusy(false) }
   }
 
+  // P14-C：批量操作
+  async function batchOperate(action: 'evaporate' | 'condense') {
+    if (!active || batchSel.size === 0) return
+    setBatchBusy(true)
+    try {
+      const ids = Array.from(batchSel)
+      await api.batchOperateNodes(active.id, action, ids)
+      setBatchSel(new Set())
+      void loadNodes(active.id)
+    } catch (e) { setErr((e as Error).message) }
+    finally { setBatchBusy(false) }
+  }
+
   // M3 T7：移动湖到其他空间
   async function moveLakeUI(lake: Lake) {
     try {
@@ -826,6 +843,15 @@ export function Home({ onLogout }: Props) {
                     </div>
                   )}
                   {nodes.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>此处风平浪静</div>}
+                  {/* P14-C：批量操作工具栏 */}
+                  {batchSel.size > 0 && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, padding: '6px 10px', background: 'rgba(74,144,226,0.1)', borderRadius: 6 }}>
+                      <span style={{ fontSize: 12, color: '#9ec5ee' }}>已选 {batchSel.size} 个节点</span>
+                      <button onClick={() => void batchOperate('condense')} disabled={batchBusy} style={miniBtn}>凝露 ↓</button>
+                      <button onClick={() => void batchOperate('evaporate')} disabled={batchBusy} style={miniBtn}>蒸发 ↑</button>
+                      <button onClick={() => setBatchSel(new Set())} style={{ ...miniBtn, opacity: 0.6 }}>取消选择</button>
+                    </div>
+                  )}
                   {nodes.length > 0 && filteredNodes.length === 0 && (
                     <div style={{ opacity: 0.4, fontSize: 12 }}>没有带「{tagFilter}」标签的节点</div>
                   )}
@@ -836,6 +862,7 @@ export function Home({ onLogout }: Props) {
                       const isLinkSrc = linkSrc === n.id
                       const canCrystal = n.state === 'DROP' || n.state === 'FROZEN'
                       const isSelected = crystalSel.has(n.id)
+                      const isBatchSel = batchSel.has(n.id)
                       const tags = nodeTags[n.id] ?? []
                       return (
                         <div key={n.id} style={{
@@ -843,12 +870,25 @@ export function Home({ onLogout }: Props) {
                           opacity: n.state === 'VAPOR' ? 0.4 : 1,
                           boxShadow: isLinkSrc
                             ? '0 0 0 2px #9ec5ee'
-                            : isSelected ? '0 0 0 2px #4a8eff' : undefined,
+                            : isSelected ? '0 0 0 2px #4a8eff'
+                            : isBatchSel ? '0 0 0 2px #f9e2af' : undefined,
                         }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ ...statePill, background: stateColor(n.state) }}>{n.state}</span>
-                        <span style={{ fontSize: 10, opacity: 0.6 }}>
+                        <span style={{ fontSize: 10, opacity: 0.6, display: 'flex', gap: 6, alignItems: 'center' }}>
                           →{out} ←{inc}
+                          {/* P14-C 批量选择 checkbox */}
+                          <input
+                            type="checkbox"
+                            checked={isBatchSel}
+                            onChange={e => setBatchSel(prev => {
+                              const next = new Set(prev)
+                              if (e.target.checked) next.add(n.id); else next.delete(n.id)
+                              return next
+                            })}
+                            title="选入批量操作"
+                            style={{ cursor: 'pointer' }}
+                          />
                         </span>
                       </div>
                       <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5 }}>{n.content}</div>

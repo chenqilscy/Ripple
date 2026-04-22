@@ -344,3 +344,37 @@ func (h *NodeHandlers) BatchImport(w http.ResponseWriter, r *http.Request) {
 		"nodes":   out,
 	})
 }
+
+// BatchOperate POST /api/v1/lakes/{id}/nodes/batch_op  P14-C：批量节点操作。
+// 支持 action=evaporate（蒸发）和 action=condense（凝露）。最多 200 个节点。
+func (h *NodeHandlers) BatchOperate(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	lakeID := chi.URLParam(r, "id")
+
+	var body struct {
+		Action  string   `json:"action"`
+		NodeIDs []string `json:"node_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if len(body.NodeIDs) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"succeeded": 0, "failed": 0})
+		return
+	}
+
+	result, err := h.Nodes.BatchOperate(r.Context(), u, lakeID, body.Action, body.NodeIDs)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"succeeded": result.Succeeded,
+		"failed":    result.Failed,
+	})
+}
