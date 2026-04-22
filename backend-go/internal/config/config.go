@@ -89,6 +89,12 @@ type Config struct {
 	LLMRPS   float64 `envconfig:"LLM_RPS" default:"5"`
 	LLMBurst int     `envconfig:"LLM_BURST" default:"10"`
 
+	// LLM Fake provider（M4-T5 压测专用，避免真付费）
+	// 启用后 fake 优先注册（在 LLMProviderOrder 中加入 "fake" 即可控制位置）
+	LLMFake        bool `envconfig:"LLM_FAKE" default:"false"`
+	LLMFakeSleepMS int  `envconfig:"LLM_FAKE_SLEEP_MS" default:"0"`
+	LLMFakeTextLen int  `envconfig:"LLM_FAKE_TEXT_LEN" default:"200"`
+
 	// 可观测性
 	// PProfAddr 非空时，在该地址单独启动 net/http/pprof（如 ":6060"）。生产建议绑内网地址。
 	PProfAddr string `envconfig:"PPROF_ADDR" default:""`

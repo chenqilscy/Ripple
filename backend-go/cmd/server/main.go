@@ -126,6 +126,12 @@ func main() {
 		Burst:                cfg.LLMBurst,
 		Order:                cfg.LLMProviderOrder,
 	})
+	// M4-T5：fake provider（压测专用，避免真付费）
+	if cfg.LLMFake {
+		fp := llm.NewFakeProvider(cfg.LLMFakeSleepMS, cfg.LLMFakeTextLen)
+		providers = append([]llm.Provider{fp}, providers...) // 放最前，优先命中
+		logger.Warn().Msg("LLM_FAKE=true：fake provider 已启用，所有 TEXT 生成不会调用真实厂商")
+	}
 	if len(providers) == 0 {
 		logger.Warn().Msg("no LLM provider configured; cloud generation will fail")
 	} else {

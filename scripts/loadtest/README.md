@@ -2,7 +2,9 @@
 
 ## 目录
 
-- `baseline.go` — Go 原生压测工具（无需安装 k6/vegeta）
+- `../../backend-go/cmd/loadtest/baseline/baseline.go` — Go 原生 HTTP GET 压测（基础端点 QPS/延迟）
+- `../../backend-go/cmd/loadtest/perma_post/perma_post.go` — 凝结接口（POST /api/v1/perma_nodes）压测，建议配合 `RIPPLE_LLM_FAKE=true`
+- `../../backend-go/cmd/loadtest/ws_connect/ws_connect.go` — WebSocket 仅建连+保持的并发连接压测
 - `k6-baseline.js` — k6 基线压测（混合健康/列表/metrics）
 - `vegeta-targets.txt` — vegeta 目标列表（HTTP 端点 + 头）
 - `pprof-snapshot.ps1` — 抓取 pprof heap / goroutine 快照
@@ -13,9 +15,24 @@
 
 ```pwsh
 # 后端启动后
-cd scripts/loadtest
-go run baseline.go -url http://localhost:8000/healthz -dur 30s -conc 50
-go run baseline.go -url http://localhost:8000/api/v1/lakes -token <jwt> -dur 30s -conc 30
+cd backend-go
+go run ./cmd/loadtest/baseline -url http://localhost:8000/healthz -dur 30s -conc 50
+go run ./cmd/loadtest/baseline -url http://localhost:8000/api/v1/lakes -token <jwt> -dur 30s -conc 30
+```
+
+### perma_post.go（凝结压测，需 fake LLM 避免计费）
+
+```pwsh
+# 启动后端时设 RIPPLE_LLM_FAKE=true RIPPLE_LLM_FAKE_SLEEP_MS=50
+go run ./cmd/loadtest/perma_post -base http://localhost:8000 -token <jwt> `
+    -lake <lake_id> -nodes "<id1>,<id2>" -dur 30s -conc 10
+```
+
+### ws_connect.go（WS 连接容量）
+
+```pwsh
+go run ./cmd/loadtest/ws_connect -url ws://localhost:8000/api/v1/lakes/<lakeID>/ws `
+    -token <jwt> -conc 1000 -hold 30s
 ```
 
 ### k6（推荐）
