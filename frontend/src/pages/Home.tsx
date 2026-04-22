@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem } from '../api/client'
-import { prompt as modalPrompt } from '../components/Modal'
+import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space } from '../api/client'
+import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
+import SpaceSwitcher from '../components/SpaceSwitcher'
+import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
 import { LakeWS } from '../api/wsClient'
 
 interface Props { onLogout: () => void }
@@ -22,9 +24,13 @@ export function Home({ onLogout }: Props) {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([])
   // 连线状态：null=普通 | source_id=已选起点，等待选终点
   const [linkSrc, setLinkSrc] = useState<string | null>(null)
+  // M3-S1：当前选中的空间。'' = 个人湖（无 space_id）
+  const [currentSpaceId, setCurrentSpaceId] = useState<string>('')
+  // 成员管理抽屉
+  const [membersDrawer, setMembersDrawer] = useState<Space | null>(null)
   const wsRef = useRef<LakeWS | null>(null)
 
-  useEffect(() => { void refresh() }, [])
+  useEffect(() => { void refresh() }, [currentSpaceId])
 
   // 切换 active 湖时：重建 WS 订阅，并加载节点。
   useEffect(() => {
@@ -75,9 +81,14 @@ export function Home({ onLogout }: Props) {
 
   async function refresh() {
     try {
-      const r = await api.listLakes()
+      const r = await api.listLakes(currentSpaceId || undefined)
       setLakes(r.lakes)
-      if (!active && r.lakes.length > 0) setActive(r.lakes[0])
+      // 切换空间后，若当前 active 不在新列表中，自动选第一个/置空
+      if (r.lakes.length === 0) {
+        setActive(null)
+      } else if (!active || !r.lakes.find(l => l.id === active.id)) {
+        setActive(r.lakes[0])
+      }
     } catch (e) { setErr((e as Error).message) }
   }
 
@@ -103,17 +114,21 @@ export function Home({ onLogout }: Props) {
       setLinkSrc(null) // 再次点同一个 = 取消
       return
     }
-    const kind = window.prompt(
-      `选择边的类型（${EDGE_KINDS.join(' / ')}）：`, 'relates',
-    )
-    if (!kind) { setLinkSrc(null); return }
-    if (!EDGE_KINDS.includes(kind as EdgeKind)) {
-      setErr(`无效的边类型：${kind}`); setLinkSrc(null); return
-    }
+    const kind = await modalPrompt({
+      title: '边类型',
+      label: `可选：${EDGE_KINDS.join(' / ')}`,
+      initial: 'relates',
+      validate: (v) => (!EDGE_KINDS.includes(v.trim() as EdgeKind) ? '无效的边类型' : null),
+    })
+    if (kind === null) { setLinkSrc(null); return }
     let label: string | undefined
-    if (kind === 'custom') {
-      label = window.prompt('自定义边的标签：') ?? undefined
-      if (!label) { setErr('custom 类型必须填标签'); setLinkSrc(null); return }
+    if (kind.trim() === 'custom') {
+      const labelIn = await modalPrompt({
+        title: '自定义边的标签',
+        validate: (v) => (!v.trim() ? '标签不能为空' : null),
+      })
+      if (labelIn === null) { setLinkSrc(null); return }
+      label = labelIn.trim()
     }
     try {
       await api.createEdge(linkSrc, nodeId, kind as EdgeKind, label)
@@ -123,7 +138,7 @@ export function Home({ onLogout }: Props) {
   }
 
   async function deleteEdge(id: string) {
-    if (!confirm('确定删除这条边？')) return
+    if (!(await modalConfirm('确定删除这条边？', { danger: true }))) return
     try {
       await api.deleteEdge(id)
       if (active) await loadEdges(active.id)
@@ -154,18 +169,21 @@ export function Home({ onLogout }: Props) {
   async function showHistory(node: NodeItem) {
     try {
       const { revisions } = await api.listNodeRevisions(node.id, 50)
-      if (revisions.length === 0) { alert('暂无历史'); return }
+      if (revisions.length === 0) { await modalAlert('暂无历史'); return }
       const lines = revisions.map(r =>
         `rev ${r.rev_number} | ${new Date(r.created_at).toLocaleString()} | ${r.edit_reason || '(无说明)'}\n  ${r.content.slice(0, 80)}`
       ).join('\n\n')
-      const input = window.prompt(
-        `${node.id.slice(0, 8)} 历史（输入 rev 号回滚，空取消）：\n\n${lines}`,
-        '',
-      )
-      if (!input) return
-      const target = parseInt(input, 10)
-      if (!Number.isFinite(target) || target <= 0) { setErr('无效 rev 号'); return }
-      if (!confirm(`回滚到 rev ${target}？`)) return
+      const input = await modalPrompt({
+        title: `${node.id.slice(0, 8)} 历史`,
+        label: `输入 rev 号回滚（取消即放弃）：\n\n${lines}`,
+        validate: (v) => {
+          const n = parseInt(v.trim(), 10)
+          return !Number.isFinite(n) || n <= 0 ? '无效 rev 号' : null
+        },
+      })
+      if (input === null) return
+      const target = parseInt(input.trim(), 10)
+      if (!(await modalConfirm(`回滚到 rev ${target}？`, { danger: true }))) return
       await api.rollbackNode(node.id, target)
       if (active) await loadNodes(active.id)
     } catch (e) { setErr((e as Error).message) }
@@ -182,33 +200,55 @@ export function Home({ onLogout }: Props) {
       const aliveLines = invites.length === 0
         ? '(无活跃邀请)'
         : invites.map(i => `${i.id.slice(0, 8)} | ${i.role} | ${i.used_count}/${i.max_uses} | 到期 ${new Date(i.expires_at).toLocaleString()}\n  token: ${i.token}`).join('\n\n')
-      const action = window.prompt(
-        `湖 ${active.name} 邀请：\n\n${aliveLines}\n\n输入：\nC = 创建新邀请\nR:<id前缀> = 撤销\n空取消`,
-        '',
-      )
-      if (!action) return
-      if (action.toUpperCase() === 'C') {
-        const roleIn = window.prompt('角色（NAVIGATOR/PASSENGER/OBSERVER）：', 'PASSENGER')
-        if (!roleIn) return
-        const role = roleIn.toUpperCase()
-        if (!['NAVIGATOR', 'PASSENGER', 'OBSERVER'].includes(role)) { setErr('无效角色'); return }
-        const maxUsesIn = window.prompt('最大使用次数（1-10000）：', '5')
-        const maxUses = parseInt(maxUsesIn ?? '', 10)
-        if (!Number.isFinite(maxUses) || maxUses < 1 || maxUses > 10000) { setErr('无效 max_uses'); return }
-        const ttlHoursIn = window.prompt('有效时长（小时，1-8760）：', '168')
-        const ttlHours = parseFloat(ttlHoursIn ?? '')
-        if (!Number.isFinite(ttlHours) || ttlHours < 1 || ttlHours > 8760) { setErr('无效 TTL'); return }
+      const action = await modalPrompt({
+        title: `湖 ${active.name} 邀请`,
+        label: `${aliveLines}\n\n输入：\nC = 创建新邀请\nR:<id前缀> = 撤销`,
+        placeholder: '例如：C 或 R:abcd1234',
+      })
+      if (action === null || !action.trim()) return
+      const cmd = action.trim()
+      if (cmd.toUpperCase() === 'C') {
+        const roleIn = await modalPrompt({
+          title: '邀请角色',
+          label: 'NAVIGATOR / PASSENGER / OBSERVER',
+          initial: 'PASSENGER',
+          validate: (v) => (!['NAVIGATOR', 'PASSENGER', 'OBSERVER'].includes(v.trim().toUpperCase()) ? '无效角色' : null),
+        })
+        if (roleIn === null) return
+        const role = roleIn.trim().toUpperCase()
+        const maxUsesIn = await modalPrompt({
+          title: '最大使用次数',
+          label: '1 - 10000',
+          initial: '5',
+          validate: (v) => {
+            const n = parseInt(v.trim(), 10)
+            return !Number.isFinite(n) || n < 1 || n > 10000 ? '无效 max_uses' : null
+          },
+        })
+        if (maxUsesIn === null) return
+        const maxUses = parseInt(maxUsesIn.trim(), 10)
+        const ttlHoursIn = await modalPrompt({
+          title: '有效时长（小时）',
+          label: '1 - 8760',
+          initial: '168',
+          validate: (v) => {
+            const n = parseFloat(v.trim())
+            return !Number.isFinite(n) || n < 1 || n > 8760 ? '无效 TTL' : null
+          },
+        })
+        if (ttlHoursIn === null) return
+        const ttlHours = parseFloat(ttlHoursIn.trim())
         const inv = await api.createInvite(active.id, role as 'NAVIGATOR' | 'PASSENGER' | 'OBSERVER', maxUses, Math.round(ttlHours * 3600))
         const link = `${window.location.origin}/?invite=${encodeURIComponent(inv.token)}`
         const copied = await copyText(link)
-        alert(`邀请已创建\n\nToken: ${inv.token}\n链接: ${link}\n\n${copied ? '（已复制链接到剪贴板）' : '（剪贴板复制失败，请手动复制）'}`)
-      } else if (action.toUpperCase().startsWith('R:')) {
-        const prefix = action.slice(2).trim()
+        await modalAlert(`邀请已创建\n\nToken: ${inv.token}\n链接: ${link}\n\n${copied ? '（已复制链接到剪贴板）' : '（剪贴板复制失败，请手动复制）'}`)
+      } else if (cmd.toUpperCase().startsWith('R:')) {
+        const prefix = cmd.slice(2).trim()
         const target = invites.find(i => i.id.startsWith(prefix))
         if (!target) { setErr('未找到匹配邀请'); return }
-        if (!confirm(`撤销 ${target.id.slice(0, 8)}？`)) return
+        if (!(await modalConfirm(`撤销 ${target.id.slice(0, 8)}？`, { danger: true }))) return
         await api.revokeInvite(target.id)
-        alert('已撤销')
+        await modalAlert('已撤销')
       }
     } catch (e) { setErr((e as Error).message) }
   }
@@ -221,7 +261,7 @@ export function Home({ onLogout }: Props) {
       try {
         const prev = await api.previewInvite(token)
         if (!prev.alive) { setErr(`邀请已失效（${prev.used_count}/${prev.max_uses}）`); return }
-        if (!confirm(`加入湖 "${prev.lake_name}" 作为 ${prev.role}？`)) return
+        if (!(await modalConfirm(`加入湖 "${prev.lake_name}" 作为 ${prev.role}？`))) return
         const r = await api.acceptInvite(token)
         window.history.replaceState({}, '', window.location.pathname)
         await refresh()
@@ -236,7 +276,7 @@ export function Home({ onLogout }: Props) {
     if (!newLakeName.trim()) return
     setBusy(true); setErr(null)
     try {
-      const lake = await api.createLake(newLakeName.trim(), '', false)
+      const lake = await api.createLake(newLakeName.trim(), '', false, currentSpaceId || undefined)
       setNewLakeName('')
       setLakes([lake, ...lakes])
       setActive(lake)
@@ -300,6 +340,11 @@ export function Home({ onLogout }: Props) {
   return (
     <div style={layout}>
       <aside style={sidebar}>
+        <SpaceSwitcher
+          currentSpaceId={currentSpaceId}
+          onChange={setCurrentSpaceId}
+          onManageMembers={setMembersDrawer}
+        />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <strong style={{ letterSpacing: 3 }}>
             青萍 · 我的湖
@@ -465,6 +510,9 @@ export function Home({ onLogout }: Props) {
         )}
         {err && <div style={errBanner}>{err}</div>}
       </main>
+      {membersDrawer && (
+        <SpaceMembersDrawer space={membersDrawer} onClose={() => setMembersDrawer(null)} />
+      )}
     </div>
   )
 }

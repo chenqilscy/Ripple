@@ -1,7 +1,9 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import { prompt as modalPrompt } from '../components/Modal';
+import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal';
+import SpaceSwitcher from '../components/SpaceSwitcher';
+import SpaceMembersDrawer from '../components/SpaceMembersDrawer';
 import { LakeWS } from '../api/wsClient';
 const EDGE_KINDS = ['relates', 'derives', 'opposes', 'refines', 'groups', 'custom'];
 export function Home({ onLogout }) {
@@ -19,8 +21,12 @@ export function Home({ onLogout }) {
     const [onlineUsers, setOnlineUsers] = useState([]);
     // 连线状态：null=普通 | source_id=已选起点，等待选终点
     const [linkSrc, setLinkSrc] = useState(null);
+    // M3-S1：当前选中的空间。'' = 个人湖（无 space_id）
+    const [currentSpaceId, setCurrentSpaceId] = useState('');
+    // 成员管理抽屉
+    const [membersDrawer, setMembersDrawer] = useState(null);
     const wsRef = useRef(null);
-    useEffect(() => { void refresh(); }, []);
+    useEffect(() => { void refresh(); }, [currentSpaceId]);
     // 切换 active 湖时：重建 WS 订阅，并加载节点。
     useEffect(() => {
         if (!active)
@@ -62,10 +68,15 @@ export function Home({ onLogout }) {
     }, [active]);
     async function refresh() {
         try {
-            const r = await api.listLakes();
+            const r = await api.listLakes(currentSpaceId || undefined);
             setLakes(r.lakes);
-            if (!active && r.lakes.length > 0)
+            // 切换空间后，若当前 active 不在新列表中，自动选第一个/置空
+            if (r.lakes.length === 0) {
+                setActive(null);
+            }
+            else if (!active || !r.lakes.find(l => l.id === active.id)) {
                 setActive(r.lakes[0]);
+            }
         }
         catch (e) {
             setErr(e.message);
@@ -103,24 +114,27 @@ export function Home({ onLogout }) {
             setLinkSrc(null); // 再次点同一个 = 取消
             return;
         }
-        const kind = window.prompt(`选择边的类型（${EDGE_KINDS.join(' / ')}）：`, 'relates');
-        if (!kind) {
-            setLinkSrc(null);
-            return;
-        }
-        if (!EDGE_KINDS.includes(kind)) {
-            setErr(`无效的边类型：${kind}`);
+        const kind = await modalPrompt({
+            title: '边类型',
+            label: `可选：${EDGE_KINDS.join(' / ')}`,
+            initial: 'relates',
+            validate: (v) => (!EDGE_KINDS.includes(v.trim()) ? '无效的边类型' : null),
+        });
+        if (kind === null) {
             setLinkSrc(null);
             return;
         }
         let label;
-        if (kind === 'custom') {
-            label = window.prompt('自定义边的标签：') ?? undefined;
-            if (!label) {
-                setErr('custom 类型必须填标签');
+        if (kind.trim() === 'custom') {
+            const labelIn = await modalPrompt({
+                title: '自定义边的标签',
+                validate: (v) => (!v.trim() ? '标签不能为空' : null),
+            });
+            if (labelIn === null) {
                 setLinkSrc(null);
                 return;
             }
+            label = labelIn.trim();
         }
         try {
             await api.createEdge(linkSrc, nodeId, kind, label);
@@ -135,7 +149,7 @@ export function Home({ onLogout }) {
         }
     }
     async function deleteEdge(id) {
-        if (!confirm('确定删除这条边？'))
+        if (!(await modalConfirm('确定删除这条边？', { danger: true })))
             return;
         try {
             await api.deleteEdge(id);
@@ -176,19 +190,22 @@ export function Home({ onLogout }) {
         try {
             const { revisions } = await api.listNodeRevisions(node.id, 50);
             if (revisions.length === 0) {
-                alert('暂无历史');
+                await modalAlert('暂无历史');
                 return;
             }
             const lines = revisions.map(r => `rev ${r.rev_number} | ${new Date(r.created_at).toLocaleString()} | ${r.edit_reason || '(无说明)'}\n  ${r.content.slice(0, 80)}`).join('\n\n');
-            const input = window.prompt(`${node.id.slice(0, 8)} 历史（输入 rev 号回滚，空取消）：\n\n${lines}`, '');
-            if (!input)
+            const input = await modalPrompt({
+                title: `${node.id.slice(0, 8)} 历史`,
+                label: `输入 rev 号回滚（取消即放弃）：\n\n${lines}`,
+                validate: (v) => {
+                    const n = parseInt(v.trim(), 10);
+                    return !Number.isFinite(n) || n <= 0 ? '无效 rev 号' : null;
+                },
+            });
+            if (input === null)
                 return;
-            const target = parseInt(input, 10);
-            if (!Number.isFinite(target) || target <= 0) {
-                setErr('无效 rev 号');
-                return;
-            }
-            if (!confirm(`回滚到 rev ${target}？`))
+            const target = parseInt(input.trim(), 10);
+            if (!(await modalConfirm(`回滚到 rev ${target}？`, { danger: true })))
                 return;
             await api.rollbackNode(node.id, target);
             if (active)
@@ -215,46 +232,64 @@ export function Home({ onLogout }) {
             const aliveLines = invites.length === 0
                 ? '(无活跃邀请)'
                 : invites.map(i => `${i.id.slice(0, 8)} | ${i.role} | ${i.used_count}/${i.max_uses} | 到期 ${new Date(i.expires_at).toLocaleString()}\n  token: ${i.token}`).join('\n\n');
-            const action = window.prompt(`湖 ${active.name} 邀请：\n\n${aliveLines}\n\n输入：\nC = 创建新邀请\nR:<id前缀> = 撤销\n空取消`, '');
-            if (!action)
+            const action = await modalPrompt({
+                title: `湖 ${active.name} 邀请`,
+                label: `${aliveLines}\n\n输入：\nC = 创建新邀请\nR:<id前缀> = 撤销`,
+                placeholder: '例如：C 或 R:abcd1234',
+            });
+            if (action === null || !action.trim())
                 return;
-            if (action.toUpperCase() === 'C') {
-                const roleIn = window.prompt('角色（NAVIGATOR/PASSENGER/OBSERVER）：', 'PASSENGER');
-                if (!roleIn)
+            const cmd = action.trim();
+            if (cmd.toUpperCase() === 'C') {
+                const roleIn = await modalPrompt({
+                    title: '邀请角色',
+                    label: 'NAVIGATOR / PASSENGER / OBSERVER',
+                    initial: 'PASSENGER',
+                    validate: (v) => (!['NAVIGATOR', 'PASSENGER', 'OBSERVER'].includes(v.trim().toUpperCase()) ? '无效角色' : null),
+                });
+                if (roleIn === null)
                     return;
-                const role = roleIn.toUpperCase();
-                if (!['NAVIGATOR', 'PASSENGER', 'OBSERVER'].includes(role)) {
-                    setErr('无效角色');
+                const role = roleIn.trim().toUpperCase();
+                const maxUsesIn = await modalPrompt({
+                    title: '最大使用次数',
+                    label: '1 - 10000',
+                    initial: '5',
+                    validate: (v) => {
+                        const n = parseInt(v.trim(), 10);
+                        return !Number.isFinite(n) || n < 1 || n > 10000 ? '无效 max_uses' : null;
+                    },
+                });
+                if (maxUsesIn === null)
                     return;
-                }
-                const maxUsesIn = window.prompt('最大使用次数（1-10000）：', '5');
-                const maxUses = parseInt(maxUsesIn ?? '', 10);
-                if (!Number.isFinite(maxUses) || maxUses < 1 || maxUses > 10000) {
-                    setErr('无效 max_uses');
+                const maxUses = parseInt(maxUsesIn.trim(), 10);
+                const ttlHoursIn = await modalPrompt({
+                    title: '有效时长（小时）',
+                    label: '1 - 8760',
+                    initial: '168',
+                    validate: (v) => {
+                        const n = parseFloat(v.trim());
+                        return !Number.isFinite(n) || n < 1 || n > 8760 ? '无效 TTL' : null;
+                    },
+                });
+                if (ttlHoursIn === null)
                     return;
-                }
-                const ttlHoursIn = window.prompt('有效时长（小时，1-8760）：', '168');
-                const ttlHours = parseFloat(ttlHoursIn ?? '');
-                if (!Number.isFinite(ttlHours) || ttlHours < 1 || ttlHours > 8760) {
-                    setErr('无效 TTL');
-                    return;
-                }
+                const ttlHours = parseFloat(ttlHoursIn.trim());
                 const inv = await api.createInvite(active.id, role, maxUses, Math.round(ttlHours * 3600));
                 const link = `${window.location.origin}/?invite=${encodeURIComponent(inv.token)}`;
                 const copied = await copyText(link);
-                alert(`邀请已创建\n\nToken: ${inv.token}\n链接: ${link}\n\n${copied ? '（已复制链接到剪贴板）' : '（剪贴板复制失败，请手动复制）'}`);
+                await modalAlert(`邀请已创建\n\nToken: ${inv.token}\n链接: ${link}\n\n${copied ? '（已复制链接到剪贴板）' : '（剪贴板复制失败，请手动复制）'}`);
             }
-            else if (action.toUpperCase().startsWith('R:')) {
-                const prefix = action.slice(2).trim();
+            else if (cmd.toUpperCase().startsWith('R:')) {
+                const prefix = cmd.slice(2).trim();
                 const target = invites.find(i => i.id.startsWith(prefix));
                 if (!target) {
                     setErr('未找到匹配邀请');
                     return;
                 }
-                if (!confirm(`撤销 ${target.id.slice(0, 8)}？`))
+                if (!(await modalConfirm(`撤销 ${target.id.slice(0, 8)}？`, { danger: true })))
                     return;
                 await api.revokeInvite(target.id);
-                alert('已撤销');
+                await modalAlert('已撤销');
             }
         }
         catch (e) {
@@ -273,7 +308,7 @@ export function Home({ onLogout }) {
                     setErr(`邀请已失效（${prev.used_count}/${prev.max_uses}）`);
                     return;
                 }
-                if (!confirm(`加入湖 "${prev.lake_name}" 作为 ${prev.role}？`))
+                if (!(await modalConfirm(`加入湖 "${prev.lake_name}" 作为 ${prev.role}？`)))
                     return;
                 const r = await api.acceptInvite(token);
                 window.history.replaceState({}, '', window.location.pathname);
@@ -293,7 +328,7 @@ export function Home({ onLogout }) {
         setBusy(true);
         setErr(null);
         try {
-            const lake = await api.createLake(newLakeName.trim(), '', false);
+            const lake = await api.createLake(newLakeName.trim(), '', false, currentSpaceId || undefined);
             setNewLakeName('');
             setLakes([lake, ...lakes]);
             setActive(lake);
@@ -371,7 +406,7 @@ export function Home({ onLogout }) {
             nodeContentById.set(n.id, n.content);
         return { outDeg, inDeg, nodeContentById };
     }, [edges, nodes]);
-    return (_jsxs("div", { style: layout, children: [_jsxs("aside", { style: sidebar, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsxs("strong", { style: { letterSpacing: 3 }, children: ["\u9752\u840D \u00B7 \u6211\u7684\u6E56", _jsx("span", { title: wsOnline ? '实时连接已建立' : '实时离线', style: {
+    return (_jsxs("div", { style: layout, children: [_jsxs("aside", { style: sidebar, children: [_jsx(SpaceSwitcher, { currentSpaceId: currentSpaceId, onChange: setCurrentSpaceId, onManageMembers: setMembersDrawer }), _jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsxs("strong", { style: { letterSpacing: 3 }, children: ["\u9752\u840D \u00B7 \u6211\u7684\u6E56", _jsx("span", { title: wsOnline ? '实时连接已建立' : '实时离线', style: {
                                             display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
                                             marginLeft: 8, background: wsOnline ? '#7fdbb6' : '#777',
                                             boxShadow: wsOnline ? '0 0 6px #7fdbb6' : 'none',
@@ -391,7 +426,7 @@ export function Home({ onLogout }) {
                                             const src = nodeContentById.get(e.src_node_id);
                                             const dst = nodeContentById.get(e.dst_node_id);
                                             return (_jsxs("div", { style: edgeRow, children: [_jsxs("span", { style: { ...edgeKindPill }, children: [e.kind, e.label ? `: ${e.label}` : ''] }), _jsxs("span", { style: { flex: 1, fontSize: 12, opacity: 0.85 }, children: [(src ?? e.src_node_id.slice(0, 8)).slice(0, 24), ' → ', (dst ?? e.dst_node_id.slice(0, 8)).slice(0, 24)] }), _jsx("button", { onClick: () => deleteEdge(e.id), style: miniBtn, children: "\u5220" })] }, e.id));
-                                        }) })] }))] })), err && _jsx("div", { style: errBanner, children: err })] })] }));
+                                        }) })] }))] })), err && _jsx("div", { style: errBanner, children: err })] }), membersDrawer && (_jsx(SpaceMembersDrawer, { space: membersDrawer, onClose: () => setMembersDrawer(null) }))] }));
 }
 function statusColor(s) {
     return { queued: '#888', running: '#4a90e2', done: '#52c41a', failed: '#ff4d4f' }[s] ?? '#888';

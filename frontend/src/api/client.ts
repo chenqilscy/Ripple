@@ -4,7 +4,7 @@
 
 import type {
   ApiError, AuthTokens, CloudTask, EdgeItem, EdgeKind, InviteItem, InvitePreview,
-  Lake, NodeItem, NodeRevision, NodeType, User,
+  Lake, NodeItem, NodeRevision, NodeType, PermaNode, Space, SpaceMember, User,
 } from './types'
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
@@ -56,11 +56,12 @@ export const api = {
   logout() { setToken(null) },
 
   // ---- Lakes ----
-  listLakes(): Promise<{ lakes: Lake[] }> {
-    return request('GET', '/api/v1/lakes')
+  listLakes(spaceId?: string): Promise<{ lakes: Lake[] }> {
+    const q = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : ''
+    return request('GET', `/api/v1/lakes${q}`)
   },
-  createLake(name: string, description: string, is_public = false): Promise<Lake> {
-    return request('POST', '/api/v1/lakes', { name, description, is_public })
+  createLake(name: string, description: string, is_public = false, space_id?: string): Promise<Lake> {
+    return request('POST', '/api/v1/lakes', { name, description, is_public, space_id })
   },
   getLake(id: string): Promise<Lake> {
     return request('GET', `/api/v1/lakes/${id}`)
@@ -139,6 +140,37 @@ export const api = {
   },
   rollbackNode(id: string, target_rev_number: number): Promise<NodeItem> {
     return request('POST', `/api/v1/nodes/${id}/rollback`, { target_rev_number })
+  },
+
+  // ---- Spaces (M3-S1) ----
+  listSpaces(): Promise<{ spaces: Space[] }> {
+    return request('GET', '/api/v1/spaces')
+  },
+  createSpace(name: string, description = ''): Promise<Space> {
+    return request('POST', '/api/v1/spaces', { name, description })
+  },
+  getSpace(id: string): Promise<Space> {
+    return request('GET', `/api/v1/spaces/${id}`)
+  },
+  updateSpace(id: string, name: string, description = ''): Promise<Space> {
+    return request('PATCH', `/api/v1/spaces/${id}`, { name, description })
+  },
+  deleteSpace(id: string): Promise<void> {
+    return request('DELETE', `/api/v1/spaces/${id}`)
+  },
+  listSpaceMembers(id: string): Promise<{ members: SpaceMember[] }> {
+    return request('GET', `/api/v1/spaces/${id}/members`)
+  },
+  addSpaceMember(id: string, user_id: string, role: 'EDITOR' | 'VIEWER'): Promise<void> {
+    return request('POST', `/api/v1/spaces/${id}/members`, { user_id, role })
+  },
+  removeSpaceMember(id: string, userId: string): Promise<void> {
+    return request('DELETE', `/api/v1/spaces/${id}/members/${userId}`)
+  },
+
+  // ---- Crystallize (M3-S2) ----
+  crystallize(lake_id: string, source_node_ids: string[], title_hint = ''): Promise<PermaNode> {
+    return request('POST', '/api/v1/perma_nodes', { lake_id, source_node_ids, title_hint })
   },
 }
 

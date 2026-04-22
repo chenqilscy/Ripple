@@ -19,6 +19,7 @@ export interface Lake {
   description: string
   is_public: boolean
   owner_id: string
+  space_id?: string
   role?: 'OWNER' | 'EDITOR' | 'PASSENGER' | 'OBSERVER'
 }
 
@@ -110,5 +111,41 @@ export interface NodeRevision {
   title: string
   editor_id: string
   edit_reason: string
+  created_at: string
+}
+
+// ---- Spaces (M3-S1) ----
+export type SpaceRole = 'OWNER' | 'EDITOR' | 'VIEWER'
+
+export interface Space {
+  id: string
+  owner_id: string
+  name: string
+  description: string
+  llm_quota_monthly: number
+  llm_used_current_month: number
+  created_at: string
+  updated_at: string
+  role?: SpaceRole
+}
+
+export interface SpaceMember {
+  space_id: string
+  user_id: string
+  role: SpaceRole
+  joined_at: string
+  updated_at: string
+}
+
+// ---- Perma Nodes (M3-S2) ----
+export interface PermaNode {
+  id: string
+  lake_id: string
+  owner_id: string
+  title: string
+  summary: string
+  source_node_ids: string[]
+  llm_provider?: string
+  llm_cost_tokens?: number
   created_at: string
 }

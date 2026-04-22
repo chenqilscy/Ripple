@@ -49,11 +49,12 @@ export const api = {
     },
     logout() { setToken(null); },
     // ---- Lakes ----
-    listLakes() {
-        return request('GET', '/api/v1/lakes');
+    listLakes(spaceId) {
+        const q = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : '';
+        return request('GET', `/api/v1/lakes${q}`);
     },
-    createLake(name, description, is_public = false) {
-        return request('POST', '/api/v1/lakes', { name, description, is_public });
+    createLake(name, description, is_public = false, space_id) {
+        return request('POST', '/api/v1/lakes', { name, description, is_public, space_id });
     },
     getLake(id) {
         return request('GET', `/api/v1/lakes/${id}`);
@@ -126,6 +127,35 @@ export const api = {
     },
     rollbackNode(id, target_rev_number) {
         return request('POST', `/api/v1/nodes/${id}/rollback`, { target_rev_number });
+    },
+    // ---- Spaces (M3-S1) ----
+    listSpaces() {
+        return request('GET', '/api/v1/spaces');
+    },
+    createSpace(name, description = '') {
+        return request('POST', '/api/v1/spaces', { name, description });
+    },
+    getSpace(id) {
+        return request('GET', `/api/v1/spaces/${id}`);
+    },
+    updateSpace(id, name, description = '') {
+        return request('PATCH', `/api/v1/spaces/${id}`, { name, description });
+    },
+    deleteSpace(id) {
+        return request('DELETE', `/api/v1/spaces/${id}`);
+    },
+    listSpaceMembers(id) {
+        return request('GET', `/api/v1/spaces/${id}/members`);
+    },
+    addSpaceMember(id, user_id, role) {
+        return request('POST', `/api/v1/spaces/${id}/members`, { user_id, role });
+    },
+    removeSpaceMember(id, userId) {
+        return request('DELETE', `/api/v1/spaces/${id}/members/${userId}`);
+    },
+    // ---- Crystallize (M3-S2) ----
+    crystallize(lake_id, source_node_ids, title_hint = '') {
+        return request('POST', '/api/v1/perma_nodes', { lake_id, source_node_ids, title_hint });
     },
 };
 // 重新导出 types
