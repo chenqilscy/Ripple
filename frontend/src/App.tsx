@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Login } from './pages/Login'
 import { Home } from './pages/Home'
+import { ModalHost } from './components/Modal'
 import { getToken, onUnauthorized, api } from './api/client'
 
 export function App() {
@@ -10,6 +11,12 @@ export function App() {
     onUnauthorized(() => setAuthed(false))
   }, [])
 
-  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
-  return <Home onLogout={() => { api.logout(); setAuthed(false) }} />
+  return (
+    <>
+      {!authed
+        ? <Login onSuccess={() => setAuthed(true)} />
+        : <Home onLogout={() => { api.logout(); setAuthed(false) }} />}
+      <ModalHost />
+    </>
+  )
 }

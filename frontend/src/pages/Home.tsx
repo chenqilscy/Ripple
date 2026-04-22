@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem } from '../api/client'
+import { prompt as modalPrompt } from '../components/Modal'
 import { LakeWS } from '../api/wsClient'
 
 interface Props { onLogout: () => void }
@@ -130,10 +131,20 @@ export function Home({ onLogout }: Props) {
   }
 
   async function editNodeContent(node: NodeItem) {
-    const next = window.prompt('编辑节点内容：', node.content)
+    const next = await modalPrompt({
+      title: '编辑节点内容',
+      label: '支持多行；Ctrl+Enter 提交，Esc 取消',
+      initial: node.content,
+      multiline: true,
+      validate: (v) => (!v.trim() ? '内容不能为空' : null),
+    })
     if (next === null || next === node.content) return
-    if (!next.trim()) { setErr('内容不能为空'); return }
-    const reason = window.prompt('变更说明（可选）：', '') ?? ''
+    const reason = await modalPrompt({
+      title: '变更说明（可选）',
+      placeholder: '例如：修正措辞 / 补充例子 …',
+      initial: '',
+    })
+    if (reason === null) return
     try {
       await api.updateNodeContent(node.id, next, reason)
       if (active) await loadNodes(active.id)

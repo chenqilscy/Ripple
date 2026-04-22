@@ -1,6 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { prompt as modalPrompt } from '../components/Modal';
 import { LakeWS } from '../api/wsClient';
 const EDGE_KINDS = ['relates', 'derives', 'opposes', 'refines', 'groups', 'custom'];
 export function Home({ onLogout }) {
@@ -146,14 +147,22 @@ export function Home({ onLogout }) {
         }
     }
     async function editNodeContent(node) {
-        const next = window.prompt('编辑节点内容：', node.content);
+        const next = await modalPrompt({
+            title: '编辑节点内容',
+            label: '支持多行；Ctrl+Enter 提交，Esc 取消',
+            initial: node.content,
+            multiline: true,
+            validate: (v) => (!v.trim() ? '内容不能为空' : null),
+        });
         if (next === null || next === node.content)
             return;
-        if (!next.trim()) {
-            setErr('内容不能为空');
+        const reason = await modalPrompt({
+            title: '变更说明（可选）',
+            placeholder: '例如：修正措辞 / 补充例子 …',
+            initial: '',
+        });
+        if (reason === null)
             return;
-        }
-        const reason = window.prompt('变更说明（可选）：', '') ?? '';
         try {
             await api.updateNodeContent(node.id, next, reason);
             if (active)
