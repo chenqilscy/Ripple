@@ -38,9 +38,9 @@ func main() {
 	}
 
 	body, _ := json.Marshal(map[string]any{
-		"lake_id":  *lake,
-		"node_ids": nodes,
-		"title":    "loadtest perma",
+		"lake_id":         *lake,
+		"source_node_ids": nodes,
+		"title_hint":      "loadtest perma",
 	})
 	tr := &http.Transport{
 		MaxIdleConns:        2048,
