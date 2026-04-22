@@ -7,6 +7,7 @@
   "background_color": "#001e2b",
   "theme_color": "#001e2b",
   "lang": "zh-CN",
+  "categories": ["productivity", "utilities"],
   "icons": [
     {
       "src": "/icon-192.svg",
@@ -19,6 +20,22 @@
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "搜索节点",
+      "short_name": "搜索",
+      "description": "打开全文搜索",
+      "url": "/?action=search",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "批量导入",
+      "short_name": "导入",
+      "description": "批量导入节点",
+      "url": "/?action=import",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
     }
   ]
 }

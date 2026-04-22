@@ -12,6 +12,7 @@ import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
 import AttachmentBar from '../components/AttachmentBar'
 import CollabDemo from '../components/CollabDemo'
+import OfflineBar from '../components/OfflineBar'
 import { LakeWS } from '../api/wsClient'
 
 interface Props { onLogout: () => void }
@@ -39,6 +40,22 @@ export function Home({ onLogout }: Props) {
   const [membersDrawer, setMembersDrawer] = useState<Space | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+
+  // P12-E：PWA shortcut 处理 — ?action=search|import（需等 active 湖加载完毕）
+  useEffect(() => {
+    const action = new URLSearchParams(window.location.search).get('action')
+    if (!action) return
+    window.history.replaceState({}, '', window.location.pathname)
+    setPendingAction(action)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingAction || !active) return
+    if (pendingAction === 'search') setSearchOpen(true)
+    if (pendingAction === 'import') setImportOpen(true)
+    setPendingAction(null)
+  }, [pendingAction, active])
   // M3-S2：凝结多选（DROP/FROZEN 节点 id 集合）
   const [crystalSel, setCrystalSel] = useState<Set<string>>(new Set())
   // 凝结结果（最近一次）
@@ -458,6 +475,7 @@ export function Home({ onLogout }: Props) {
 
   return (
     <div style={layout}>
+      <OfflineBar />
       <aside style={sidebar}>
         <SpaceSwitcher
           currentSpaceId={currentSpaceId}
