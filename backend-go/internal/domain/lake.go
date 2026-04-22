@@ -47,6 +47,7 @@ type Lake struct {
 	IsPublic    bool
 	OwnerID     string // user UUID 字符串
 	SpaceID     string // 可选；归属空间 ID（M3-S1.5）；空字符串 = 个人湖
+	OrgID       string // 可选；归属组织 ID（P13-A）；空字符串 = 无组织
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

@@ -136,6 +136,18 @@ func (s *OrgService) RemoveMember(ctx context.Context, actor *domain.User, orgID
 
 // --- 内部权限工具 ---
 
+// IsMember P13-A：检查 userID 是否是 orgID 的成员（任意角色）。返回 false 而非错误当不是成员时。
+func (s *OrgService) IsMember(ctx context.Context, userID, orgID string) (bool, error) {
+	_, err := s.orgs.GetMemberRole(ctx, orgID, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *OrgService) requireMember(ctx context.Context, userID, orgID string) error {
 	_, err := s.orgs.GetMemberRole(ctx, orgID, userID)
 	if err != nil {

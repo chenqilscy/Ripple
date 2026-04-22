@@ -215,6 +215,38 @@ func (s *LakeService) MoveToSpace(ctx context.Context, actor *domain.User, lakeI
 	return s.lakes.UpdateSpaceID(ctx, lakeID, targetSpaceID)
 }
 
+// SetLakeOrg P13-A：将湖归属到组织（orgID=""=清除归属）。
+// 仅湖 OWNER 可操作；若 orgID 非空，actor 必须是该组织成员。
+func (s *LakeService) SetLakeOrg(ctx context.Context, actor *domain.User, lakeID, orgID string, orgs *OrgService) (*domain.Lake, error) {
+	if _, err := s.requireRole(ctx, actor, lakeID, domain.RoleOwner); err != nil {
+		return nil, err
+	}
+	if orgID != "" && orgs != nil {
+		ok, err := orgs.IsMember(ctx, actor.ID, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, domain.ErrPermissionDenied
+		}
+	}
+	return s.lakes.UpdateOrgID(ctx, lakeID, orgID)
+}
+
+// ListLakesByOrg P13-A：列出组织下的所有湖。调用者需是该组织成员。
+func (s *LakeService) ListLakesByOrg(ctx context.Context, actor *domain.User, orgID string, orgs *OrgService) ([]domain.Lake, error) {
+	if orgs != nil {
+		ok, err := orgs.IsMember(ctx, actor.ID, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, domain.ErrPermissionDenied
+		}
+	}
+	return s.lakes.ListByOrg(ctx, orgID)
+}
+
 // UpdateMemberRole P10-C：变更湖成员角色。
 // 规则：
 //   - actor 必须是该湖的 OWNER。

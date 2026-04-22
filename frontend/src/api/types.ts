@@ -20,6 +20,7 @@ export interface Lake {
   is_public: boolean
   owner_id: string
   space_id?: string
+  org_id?: string
   role?: 'OWNER' | 'NAVIGATOR' | 'PASSENGER' | 'OBSERVER'
 }
 

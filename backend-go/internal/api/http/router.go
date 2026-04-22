@@ -80,7 +80,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	authH := &AuthHandlers{Auth: d.Auth}
-	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces}
+	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces, Orgs: d.Orgs}
 	nodeH := &NodeHandlers{Nodes: d.Nodes}
 	cloudH := &CloudHandlers{Clouds: d.Clouds}
 	var edgeH *EdgeHandlers
@@ -225,7 +225,7 @@ func NewRouter(d Deps) http.Handler {
 
 			// P12-C：组织
 			if d.Orgs != nil {
-				orgH := &OrgHandlers{Orgs: d.Orgs}
+				orgH := &OrgHandlers{Orgs: d.Orgs, Lakes: d.Lakes}
 				r.Post("/organizations", orgH.CreateOrg)
 				r.Get("/organizations", orgH.ListMyOrgs)
 				r.Get("/organizations/{id}", orgH.GetOrg)
@@ -233,7 +233,11 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/organizations/{id}/members", orgH.AddMember)
 				r.Patch("/organizations/{id}/members/{userId}/role", orgH.UpdateMemberRole)
 				r.Delete("/organizations/{id}/members/{userId}", orgH.RemoveMember)
+				// P13-A：组织下的湖
+				r.Get("/organizations/{id}/lakes", orgH.ListOrgLakes)
 			}
+			// P13-A：设置湖组织归属
+			r.Patch("/lakes/{id}/org", lakeH.SetLakeOrg)
 		})
 	})
 

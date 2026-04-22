@@ -1,9 +1,10 @@
 /**
  * P12-C: Organization list, creation form, and member management panel.
+ * P13-A: Lake ↔ Org binding tab added.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { OrgMember, OrgRole, Organization } from '../api/types'
+import type { Lake, OrgMember, OrgRole, Organization } from '../api/types'
 
 const ROLE_COLOR: Record<OrgRole, string> = {
   OWNER:  '#f5a623',
@@ -20,6 +21,7 @@ interface MemberListProps {
 }
 
 function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
+  const [tab, setTab] = useState<'members' | 'lakes'>('members')
   const [members, setMembers] = useState<OrgMember[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,6 +29,11 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
   const [addUserId, setAddUserId] = useState('')
   const [addRole, setAddRole] = useState<OrgRole>('MEMBER')
   const [adding, setAdding] = useState(false)
+
+  // Lakes tab state
+  const [lakes, setLakes] = useState<Lake[]>([])
+  const [lakesLoading, setLakesLoading] = useState(false)
+  const [lakesError, setLakesError] = useState<string | null>(null)
 
   const currentMember = members.find(m => m.user_id === currentUserId)
   const isAdmin = currentMember?.role === 'OWNER' || currentMember?.role === 'ADMIN'
@@ -44,7 +51,21 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
     }
   }, [org.id])
 
+  const loadLakes = useCallback(async () => {
+    setLakesLoading(true)
+    setLakesError(null)
+    try {
+      const res = await api.listOrgLakes(org.id)
+      setLakes(res.lakes)
+    } catch (e: unknown) {
+      setLakesError(e instanceof Error ? e.message : 'Failed to load lakes')
+    } finally {
+      setLakesLoading(false)
+    }
+  }, [org.id])
+
   useEffect(() => { void load() }, [load])
+  useEffect(() => { if (tab === 'lakes') void loadLakes() }, [tab, loadLakes])
 
   const handleRoleChange = useCallback(async (userId: string, newRole: OrgRole) => {
     setUpdating(userId)
@@ -93,73 +114,117 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button onClick={onBack} style={btnStyle}>← Back</button>
         <span style={{ color: '#c0d8f0', fontWeight: 600, fontSize: 14 }}>
-          {org.name} · Members
+          {org.name}
         </span>
-        <button onClick={() => void load()} disabled={loading}
+        <button onClick={() => tab === 'members' ? void load() : void loadLakes()} disabled={loading || lakesLoading}
           style={{ ...btnStyle, marginLeft: 'auto' }}>
-          {loading ? '...' : 'Refresh'}
+          {(loading || lakesLoading) ? '...' : 'Refresh'}
         </button>
       </div>
 
       {error && <ErrorMsg>{error}</ErrorMsg>}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {members.map(m => (
-          <div key={m.user_id} style={memberRowStyle}>
-            <span style={{ color: '#8ab0d0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {m.user_id}
-            </span>
-            {isAdmin && m.role !== 'OWNER' && m.user_id !== currentUserId ? (
-              <>
-                <select
-                  value={m.role}
-                  disabled={updating === m.user_id}
-                  onChange={e => void handleRoleChange(m.user_id, e.target.value as OrgRole)}
-                  style={selectStyle}
-                >
-                  {INVITE_ROLE_OPTIONS.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-                <button
-                  disabled={updating === m.user_id}
-                  onClick={() => void handleRemove(m.user_id)}
-                  style={{ ...btnStyle, color: '#ff6b6b', borderColor: '#5a2222' }}
-                >
-                  Remove
-                </button>
-              </>
-            ) : (
-              <span style={{ color: ROLE_COLOR[m.role], fontSize: 11, padding: '2px 8px',
-                background: 'rgba(255,255,255,0.05)', borderRadius: 4 }}>
-                {m.role}
-              </span>
-            )}
-          </div>
-        ))}
-        {members.length === 0 && !loading && (
-          <div style={{ color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }}>
-            No members
-          </div>
-        )}
+      {/* Tab switcher */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={() => setTab('members')}
+          style={{ ...btnStyle, ...(tab === 'members' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }}
+        >
+          Members
+        </button>
+        <button
+          onClick={() => setTab('lakes')}
+          style={{ ...btnStyle, ...(tab === 'lakes' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }}
+        >
+          Lakes
+        </button>
       </div>
 
-      {isAdmin && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-          <input
-            placeholder="User ID to invite"
-            value={addUserId}
-            onChange={e => setAddUserId(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
-            style={inputStyle}
-          />
-          <select value={addRole} onChange={e => setAddRole(e.target.value as OrgRole)} style={selectStyle}>
-            {INVITE_ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-          <button onClick={() => void handleAdd()} disabled={adding || !addUserId.trim()} style={btnStyle}>
-            {adding ? '...' : 'Add'}
-          </button>
-        </div>
+      {tab === 'members' && (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {members.map(m => (
+              <div key={m.user_id} style={memberRowStyle}>
+                <span style={{ color: '#8ab0d0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {m.user_id}
+                </span>
+                {isAdmin && m.role !== 'OWNER' && m.user_id !== currentUserId ? (
+                  <>
+                    <select
+                      value={m.role}
+                      disabled={updating === m.user_id}
+                      onChange={e => void handleRoleChange(m.user_id, e.target.value as OrgRole)}
+                      style={selectStyle}
+                    >
+                      {INVITE_ROLE_OPTIONS.map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                    <button
+                      disabled={updating === m.user_id}
+                      onClick={() => void handleRemove(m.user_id)}
+                      style={{ ...btnStyle, color: '#ff6b6b', borderColor: '#5a2222' }}
+                    >
+                      Remove
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ color: ROLE_COLOR[m.role], fontSize: 11, padding: '2px 8px',
+                    background: 'rgba(255,255,255,0.05)', borderRadius: 4 }}>
+                    {m.role}
+                  </span>
+                )}
+              </div>
+            ))}
+            {members.length === 0 && !loading && (
+              <div style={{ color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }}>
+                No members
+              </div>
+            )}
+          </div>
+
+          {isAdmin && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+              <input
+                placeholder="User ID to invite"
+                value={addUserId}
+                onChange={e => setAddUserId(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
+                style={inputStyle}
+              />
+              <select value={addRole} onChange={e => setAddRole(e.target.value as OrgRole)} style={selectStyle}>
+                {INVITE_ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <button onClick={() => void handleAdd()} disabled={adding || !addUserId.trim()} style={btnStyle}>
+                {adding ? '...' : 'Add'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === 'lakes' && (
+        <>
+          {lakesError && <ErrorMsg>{lakesError}</ErrorMsg>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {lakes.map(l => (
+              <div key={l.id} style={memberRowStyle}>
+                <span style={{ color: '#c0d8f0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {l.name}
+                </span>
+                <span style={{ color: '#4a6a8e', fontSize: 10 }}>{l.id.slice(0, 8)}…</span>
+              </div>
+            ))}
+            {lakes.length === 0 && !lakesLoading && (
+              <div style={{ color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }}>
+                No lakes linked to this organization
+              </div>
+            )}
+            {lakesLoading && (
+              <div style={{ color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }}>Loading…</div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )

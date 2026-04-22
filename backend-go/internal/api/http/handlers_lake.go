@@ -13,6 +13,7 @@ import (
 type LakeHandlers struct {
 	Lakes  *service.LakeService
 	Spaces *service.SpaceService
+	Orgs   *service.OrgService // P13-A：组织归属校验
 }
 
 type createLakeReq struct {
@@ -29,6 +30,7 @@ type lakeResp struct {
 	IsPublic    bool   `json:"is_public"`
 	OwnerID     string `json:"owner_id"`
 	SpaceID     string `json:"space_id,omitempty"`
+	OrgID       string `json:"org_id,omitempty"`
 	Role        string `json:"role,omitempty"`
 }
 
@@ -56,7 +58,7 @@ func (h *LakeHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, lakeResp{
 		ID: l.ID, Name: l.Name, Description: l.Description,
-		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID, Role: "OWNER",
+		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID, OrgID: l.OrgID, Role: "OWNER",
 	})
 }
 
@@ -71,7 +73,7 @@ func (h *LakeHandlers) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, lakeResp{
 		ID: l.ID, Name: l.Name, Description: l.Description,
-		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID, Role: string(role),
+		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID, OrgID: l.OrgID, Role: string(role),
 	})
 }
 
@@ -89,7 +91,7 @@ func (h *LakeHandlers) ListMine(w http.ResponseWriter, r *http.Request) {
 	for _, it := range items {
 		out = append(out, lakeResp{
 			ID: it.Lake.ID, Name: it.Lake.Name, Description: it.Lake.Description,
-			IsPublic: it.Lake.IsPublic, OwnerID: it.Lake.OwnerID, SpaceID: it.Lake.SpaceID, Role: string(it.Role),
+			IsPublic: it.Lake.IsPublic, OwnerID: it.Lake.OwnerID, SpaceID: it.Lake.SpaceID, OrgID: it.Lake.OrgID, Role: string(it.Role),
 		})
 		ids = append(ids, it.Lake.ID)
 	}
@@ -120,7 +122,35 @@ func (h *LakeHandlers) Move(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, lakeResp{
 		ID: l.ID, Name: l.Name, Description: l.Description,
-		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID,
+		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID, OrgID: l.OrgID,
+	})
+}
+
+// SetLakeOrg PATCH /api/v1/lakes/{id}/org  P13-A：设置/清除湖的组织归属。
+// body: {"org_id": "" | "<uuid>"}
+func (h *LakeHandlers) SetLakeOrg(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "lake id required")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	var in struct {
+		OrgID string `json:"org_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	l, err := h.Lakes.SetLakeOrg(r.Context(), u, id, in.OrgID, h.Orgs)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, lakeResp{
+		ID: l.ID, Name: l.Name, Description: l.Description,
+		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID, OrgID: l.OrgID,
 	})
 }
 

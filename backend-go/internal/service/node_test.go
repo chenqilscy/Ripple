@@ -52,6 +52,15 @@ func (r *memNodeRepo) UpdateContent(_ context.Context, n *domain.Node) error {
 	r.data[n.ID] = n
 	return nil
 }
+func (r *memNodeRepo) Search(_ context.Context, lakeID, q string, _ int) ([]domain.NodeSearchResult, error) {
+	return []domain.NodeSearchResult{}, nil
+}
+func (r *memNodeRepo) BatchCreate(_ context.Context, nodes []*domain.Node) error {
+	for _, n := range nodes {
+		r.data[n.ID] = n
+	}
+	return nil
+}
 
 func newNodeSvc(t *testing.T) (*NodeService, *memLakeRepo, *memMembershipRepo, *memNodeRepo) {
 	t.Helper()

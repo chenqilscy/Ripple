@@ -46,6 +46,23 @@ func (r *memLakeRepo) UpdateSpaceID(_ context.Context, id, spaceID string) (*dom
 	l.SpaceID = spaceID
 	return l, nil
 }
+func (r *memLakeRepo) UpdateOrgID(_ context.Context, id, orgID string) (*domain.Lake, error) {
+	l, ok := r.data[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	l.OrgID = orgID
+	return l, nil
+}
+func (r *memLakeRepo) ListByOrg(_ context.Context, orgID string) ([]domain.Lake, error) {
+	out := make([]domain.Lake, 0)
+	for _, l := range r.data {
+		if l.OrgID == orgID {
+			out = append(out, *l)
+		}
+	}
+	return out, nil
+}
 
 type memMembershipRepo struct {
 	data map[string]map[string]*domain.LakeMembership // userID -> lakeID -> m
@@ -98,6 +115,15 @@ func (r *memMembershipRepo) ListMembers(_ context.Context, lakeID string) ([]dom
 		}
 	}
 	return out, nil
+}
+func (r *memMembershipRepo) UpdateRole(_ context.Context, userID, lakeID string, role domain.Role) error {
+	if u, ok := r.data[userID]; ok {
+		if m, ok := u[lakeID]; ok {
+			m.Role = role
+			return nil
+		}
+	}
+	return domain.ErrNotFound
 }
 
 // Outbox 桩：直接记录事件，不真正走 tx。

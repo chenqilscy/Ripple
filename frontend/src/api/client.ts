@@ -266,6 +266,13 @@ export const api = {
   removeOrgMember(orgId: string, userId: string): Promise<void> {
     return request('DELETE', `/api/v1/organizations/${orgId}/members/${userId}`)
   },
+  // P13-A：湖归属组织
+  setLakeOrg(lakeId: string, orgId: string | null): Promise<Lake> {
+    return request('PATCH', `/api/v1/lakes/${lakeId}/org`, { org_id: orgId ?? '' })
+  },
+  listOrgLakes(orgId: string): Promise<{ lakes: Lake[] }> {
+    return request('GET', `/api/v1/organizations/${orgId}/lakes`)
+  },
 
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。

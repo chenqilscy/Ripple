@@ -12,7 +12,8 @@ import (
 
 // OrgHandlers 组织 HTTP 处理器（P12-C）。
 type OrgHandlers struct {
-	Orgs *service.OrgService
+	Orgs  *service.OrgService
+	Lakes *service.LakeService // P13-A：列出组织湖
 }
 
 type orgResp struct {
@@ -192,4 +193,40 @@ func (h *OrgHandlers) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListOrgLakes GET /api/v1/organizations/{id}/lakes  P13-A：列出组织下的所有湖。
+// 调用者需是该组织成员。
+func (h *OrgHandlers) ListOrgLakes(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID := chi.URLParam(r, "id")
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org id required")
+		return
+	}
+	lakes, err := h.Lakes.ListLakesByOrg(r.Context(), u, orgID, h.Orgs)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	type lakeItem struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		IsPublic    bool   `json:"is_public"`
+		OwnerID     string `json:"owner_id"`
+		OrgID       string `json:"org_id,omitempty"`
+	}
+	out := make([]lakeItem, 0, len(lakes))
+	for _, l := range lakes {
+		out = append(out, lakeItem{
+			ID: l.ID, Name: l.Name, Description: l.Description,
+			IsPublic: l.IsPublic, OwnerID: l.OwnerID, OrgID: l.OrgID,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"lakes": out})
 }
