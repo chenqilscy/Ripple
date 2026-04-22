@@ -9,7 +9,9 @@
 //
 // 鉴权（P6-B 起强制；可用 YJS_BRIDGE_REQUIRE_AUTH=false 关闭）：
 //   - JWT：由 RIPPLE_JWT_SECRET 配置，复用 Ripple 主服务签发的 Token
-//   - Origin：YJS_BRIDGE_ALLOWED_ORIGINS（逗号分隔）；为空时拒绝跨域
+//     P7-B 起要求 token purpose=="ws"（短期 ws-only token）
+//   - Origin：YJS_BRIDGE_ALLOWED_ORIGINS（逗号分隔）；
+//     P7-A：鉴权开启时白名单为空则 fail-closed（403），不回落 InsecureSkipVerify
 //
 // 运行：go run ./cmd/yjs-bridge  (默认监听 :7790)
 package main
@@ -125,14 +127,25 @@ func (h *hub) handleWS(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
+		// P7-B：要求 ws-only token（purpose=="ws"），拒绝主 token 直连
+		if claims.Purpose != "ws" {
+			http.Error(w, "token purpose must be 'ws': use POST /api/v1/ws_token to obtain a ws-only token", http.StatusUnauthorized)
+			return
+		}
 		userID = claims.UserID
 	}
 
-	// P6-B Origin 白名单：仅当配置非空且开启鉴权时才校验
+	// P7-A fail-closed：鉴权开启时，必须显式配置白名单；
+	// 若白名单为空则拒绝所有跨域请求，防止 InsecureSkipVerify 回落导致无鉴权。
 	acceptOpts := &websocket.AcceptOptions{Subprotocols: []string{"y-protocol"}}
 	if len(h.allowedOrigins) > 0 {
 		acceptOpts.OriginPatterns = h.originsRawList
+	} else if h.jwt != nil {
+		// 鉴权已启用但白名单为空 → fail-closed：拒绝所有带 Origin 头的请求
+		http.Error(w, "websocket origin not allowed", http.StatusForbidden)
+		return
 	} else {
+		// 鉴权已关闭（spike 模式）：允许所有来源
 		acceptOpts.InsecureSkipVerify = true
 	}
 

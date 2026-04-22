@@ -31,6 +31,8 @@ type Deps struct {
 	Attachments *AttachmentHandlers
 	Presence    *presence.Service
 	WS          *WSHandlers
+	// WsToken 非 nil 时挂载 POST /ws_token（P7-B ws-only 短期 token）。
+	WsToken     *WsTokenHandlers
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
 	LLMRouter   llm.StreamProvider
 	CORSOrigins []string
@@ -177,6 +179,11 @@ func NewRouter(d Deps) http.Handler {
 
 			if d.WS != nil {
 				r.Get("/lakes/{id}/ws", d.WS.LakeWS)
+			}
+
+			// P7-B：ws-only 短期 token 签发
+			if d.WsToken != nil {
+				r.Post("/ws_token", d.WsToken.Issue)
 			}
 		})
 	})

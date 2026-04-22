@@ -189,6 +189,9 @@ func main() {
 		Origins:  cfg.CORSOriginList(),
 	}
 
+	// P7-B：ws-only 短期 token 签发（5 分钟有效，purpose="ws"）
+	wsTokenH := &httpapi.WsTokenHandlers{JWT: jwt}
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Auth:        authSvc,
 		Lakes:       lakeSvc,
@@ -203,6 +206,7 @@ func main() {
 		Attachments:    attachmentH,
 		Presence:       presenceSvc,
 		WS:             wsH,
+		WsToken:        wsTokenH,
 		LLMRouter:      llmRouter,
 		CORSOrigins:    cfg.CORSOriginList(),
 		MetricsEnabled: cfg.MetricsEnabled,

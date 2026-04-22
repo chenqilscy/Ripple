@@ -3,9 +3,19 @@
 // 仅测试"建立 + 维持"连接的容量，不发送任何业务消息。
 //
 //	go run scripts/loadtest/ws_connect.go -url ws://localhost:8000/api/v1/lakes/<lakeID>/ws \
-//	    -token <jwt> -conc 1000 -hold 30s
+//	    -token <jwt> -conc 300 -hold 30s
 //
 // 输出：成功建立的连接数、失败数、握手 p50/p95、维持 X 秒后的存活率。
+//
+// P7-C 注意（Windows 默认动态端口范围 49152–65535，约 16383 个端口）：
+//
+//	测试客户端与服务端同机运行时每条连接占用 1 个本机端口，1000 并发会耗尽端口
+//	并导致大量 dial timeout（非后端逻辑问题）。
+//	解决方案：
+//	  a) 扩展端口范围（需管理员权限，重启生效）：
+//	     netsh int ipv4 set dynamicport tcp start=10000 num=55535
+//	  b) 控制客户端并发数 ≤300（本工具默认值）确保 CI 稳定通过。
+//	  c) 使用独立客户端机器做 1000+ 压测。
 package main
 
 import (
@@ -25,8 +35,9 @@ import (
 func main() {
 	urlStr := flag.String("url", "", "WebSocket URL (含 /api/v1/lakes/<id>/ws)")
 	token := flag.String("token", "", "JWT bearer")
-	conc := flag.Int("conc", 100, "并发连接数")
-	hold := flag.Duration("hold", 30*time.Second, "建连后保持时间")
+	// P7-C：默认 300（Windows 同机测试安全上限；详见文件头注释）
+	conc    := flag.Int("conc", 300, "并发连接数（Windows 同机推荐 ≤300；跨机或调参后可提至 1000+）")
+	hold    := flag.Duration("hold", 30*time.Second, "建连后保持时间")
 	timeout := flag.Duration("dial-timeout", 10*time.Second, "握手超时")
 	flag.Parse()
 	if *urlStr == "" {
