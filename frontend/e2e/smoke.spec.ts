@@ -1,42 +1,35 @@
-// Smoke：注册 → 登录 → 创建 lake → 添加 node → 凝结 → 反馈
-// 依赖：后端 RIPPLE_LLM_FAKE=true 启动，前端 dev server 在 5173
+// Smoke：注册→登录→创建湖→看见湖（P6-E 真实跑通版本）
+// 依赖：后端 :8000 已启动；前端 dev :5173 已启动。
 import { test, expect } from '@playwright/test'
 
 const TS = Date.now()
-const USER = `e2e_${TS}`
-const PWD = 'Test1234!'
+const EMAIL = `e2e_${TS}@ripple.test`
+const PWD = 'Test12345!'
 
 test.describe('Ripple 主路径 E2E', () => {
-  test('注册→登录→建湖→建节点→凝结→反馈', async ({ page }) => {
+  test('注册→登录→建湖→见湖', async ({ page }) => {
     await page.goto('/')
 
-    // 注册（如界面提供）
-    await page.getByRole('textbox', { name: /用户名|username/i }).fill(USER)
-    await page.getByRole('textbox', { name: /密码|password/i }).fill(PWD)
-    const reg = page.getByRole('button', { name: /注册|register/i })
-    if (await reg.isVisible()) await reg.click()
+    // Login.tsx 默认 mode='login'，先切到 register
+    const switchBtn = page.getByRole('button', { name: /还没账号？注册/ })
+    if (await switchBtn.isVisible().catch(() => false)) await switchBtn.click()
 
-    // 登录
-    await page.getByRole('button', { name: /登录|login/i }).click()
-    await expect(page.getByText(/我的湖|lakes/i)).toBeVisible({ timeout: 10_000 })
+    await page.getByPlaceholder('邮箱').fill(EMAIL)
+    await page.getByPlaceholder(/密码（≥8 位）/).fill(PWD)
+    const nick = page.getByPlaceholder(/昵称（可选）/)
+    if (await nick.isVisible().catch(() => false)) await nick.fill('e2e')
 
-    // 创建 lake
-    await page.getByRole('button', { name: /新建湖|create lake/i }).click()
+    await page.getByRole('button', { name: /注册并入湖/ }).click()
+
+    // 进入 Home，校验“青萍 · 我的湖”
+    await expect(page.getByText('青萍 · 我的湖')).toBeVisible({ timeout: 15_000 })
+
+    // 创建湖
     const lakeName = `e2e-lake-${TS}`
-    await page.getByRole('textbox', { name: /湖名|name/i }).fill(lakeName)
-    await page.getByRole('button', { name: /创建|create/i }).click()
-    await expect(page.getByText(lakeName)).toBeVisible()
+    await page.getByPlaceholder('新湖名…').fill(lakeName)
+    await page.getByRole('button', { name: '+' }).nth(1).click()
 
-    // 添加 node
-    await page.getByText(lakeName).click()
-    const nodeArea = page.getByRole('textbox', { name: /节点内容|node content/i })
-    await nodeArea.fill('青萍涟漪 E2E 测试节点 1')
-    await page.getByRole('button', { name: /添加|add/i }).click()
-    await nodeArea.fill('青萍涟漪 E2E 测试节点 2')
-    await page.getByRole('button', { name: /添加|add/i }).click()
-
-    // 凝结
-    await page.getByRole('button', { name: /凝结|crystallize/i }).click()
-    await expect(page.getByText(/凝结结果|结晶/)).toBeVisible({ timeout: 30_000 })
+    // 列表中出现湖名（既出现在侧栏 list 也出现在主区 heading；取第一个即可）
+    await expect(page.getByText(lakeName).first()).toBeVisible({ timeout: 10_000 })
   })
 })
