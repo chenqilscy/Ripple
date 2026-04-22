@@ -60,7 +60,7 @@ export default function CollabDemo({
           fetch(`${apiBase}/api/v1/nodes/${nodeId}/doc_state`, {
             method: 'PUT',
             headers: { Authorization: `Bearer ${wsToken}`, 'Content-Type': 'application/octet-stream' },
-            body: state,
+            body: state as BodyInit,
           }).catch((e) => console.warn('doc_state save error:', e));
         }, 3000)
       : null;

@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
+
+const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -38,6 +40,8 @@ export function Home({ onLogout }: Props) {
   const [streamText, setStreamText] = useState('')
   const [streaming, setStreaming] = useState(false)
   const streamAbortRef = useRef<(() => void) | null>(null)
+  // P9-C：节点视图模式（列表 | 图谱）
+  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list')
   // M3-S3：推荐位（基于历史 LIKE 反馈的协同过滤）
   const [recos, setRecos] = useState<{ target_id: string; score: number }[]>([])
   const wsRef = useRef<LakeWS | null>(null)
@@ -58,6 +62,7 @@ export function Home({ onLogout }: Props) {
     void loadEdges(active.id)
     void loadPresence(active.id)
     setLinkSrc(null)
+    setViewMode('list')
 
     const token = localStorage.getItem('ripple.token') ?? ''
     if (!token) return
@@ -564,7 +569,25 @@ export function Home({ onLogout }: Props) {
 
             <section style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ letterSpacing: 2, fontSize: 13 }}>湖中节点 ({nodes.length})</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <strong style={{ letterSpacing: 2, fontSize: 13 }}>湖中节点 ({nodes.length})</strong>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {(['list', 'graph'] as const).map(mode => (
+                      <button
+                        key={mode}
+                        onClick={() => setViewMode(mode)}
+                        style={{
+                          ...miniBtn,
+                          background: viewMode === mode ? 'rgba(74,144,226,0.35)' : undefined,
+                          color: viewMode === mode ? '#9ec5ee' : undefined,
+                          padding: '2px 10px',
+                        }}
+                      >
+                        {mode === 'list' ? '列表' : '图谱'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {crystalSel.size > 0 && (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <span style={{ fontSize: 11, color: '#9ec5ee' }}>已选 {crystalSel.size}</span>
@@ -575,29 +598,38 @@ export function Home({ onLogout }: Props) {
                   </div>
                 )}
               </div>
-              {linkSrc && (
-                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6, color: '#9ec5ee' }}>
-                  连线模式：已选起点 {linkSrc.slice(0, 8)}…，点击另一节点完成。再次点同一节点取消。
+
+              {viewMode === 'graph' ? (
+                <div style={{ marginTop: 12 }}>
+                  <React.Suspense fallback={<div style={{ height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a6a8e', fontSize: 13 }}>加载图谱中…</div>}>
+                    <LakeGraph nodes={nodes} edges={edges} />
+                  </React.Suspense>
                 </div>
-              )}
-              {nodes.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>此处风平浪静</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-                {nodes.map(n => {
-                  const out = outDeg.get(n.id) ?? 0
-                  const inc = inDeg.get(n.id) ?? 0
-                  const isLinkSrc = linkSrc === n.id
-                  const canCrystal = n.state === 'DROP' || n.state === 'FROZEN'
-                  const isSelected = crystalSel.has(n.id)
-                  return (
-                    <div key={n.id} style={{
-                      ...nodeCard,
-                      opacity: n.state === 'VAPOR' ? 0.4 : 1,
-                      boxShadow: isLinkSrc
-                        ? '0 0 0 2px #9ec5ee'
-                        : isSelected ? '0 0 0 2px #4a8eff' : undefined,
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ ...statePill, background: stateColor(n.state) }}>{n.state}</span>
+              ) : (
+                <>
+                  {linkSrc && (
+                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6, color: '#9ec5ee' }}>
+                      连线模式：已选起点 {linkSrc.slice(0, 8)}…，点击另一节点完成。再次点同一节点取消。
+                    </div>
+                  )}
+                  {nodes.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>此处风平浪静</div>}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+                    {nodes.map(n => {
+                      const out = outDeg.get(n.id) ?? 0
+                      const inc = inDeg.get(n.id) ?? 0
+                      const isLinkSrc = linkSrc === n.id
+                      const canCrystal = n.state === 'DROP' || n.state === 'FROZEN'
+                      const isSelected = crystalSel.has(n.id)
+                      return (
+                        <div key={n.id} style={{
+                          ...nodeCard,
+                          opacity: n.state === 'VAPOR' ? 0.4 : 1,
+                          boxShadow: isLinkSrc
+                            ? '0 0 0 2px #9ec5ee'
+                            : isSelected ? '0 0 0 2px #4a8eff' : undefined,
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ ...statePill, background: stateColor(n.state) }}>{n.state}</span>
                         <span style={{ fontSize: 10, opacity: 0.6 }}>
                           →{out} ←{inc}
                         </span>
@@ -626,8 +658,10 @@ export function Home({ onLogout }: Props) {
                       </div>
                     </div>
                   )
-                })}
-              </div>
+                    })}
+                  </div>
+                </>
+              )}
             </section>
 
             {recentPerma && (
