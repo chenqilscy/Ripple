@@ -200,3 +200,17 @@ func (s *LakeService) RequireWrite(ctx context.Context, actor *domain.User, lake
 	_, err := s.requireRole(ctx, actor, lakeID, domain.RolePassenger)
 	return err
 }
+
+// MoveToSpace 将湖移动到指定 space（''=移到个人湖）。仅 Owner 可操作。
+// 若目标 space 非空，actor 必须是该 space 的成员（角色 >= EDITOR）。
+func (s *LakeService) MoveToSpace(ctx context.Context, actor *domain.User, lakeID, targetSpaceID string, spaces *SpaceService) (*domain.Lake, error) {
+	if _, err := s.requireRole(ctx, actor, lakeID, domain.RoleOwner); err != nil {
+		return nil, err
+	}
+	if targetSpaceID != "" && spaces != nil {
+		if _, _, err := spaces.Get(ctx, actor, targetSpaceID); err != nil {
+			return nil, err
+		}
+	}
+	return s.lakes.UpdateSpaceID(ctx, lakeID, targetSpaceID)
+}

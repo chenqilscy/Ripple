@@ -173,6 +173,11 @@ export const api = {
     return request('POST', '/api/v1/perma_nodes', { lake_id, source_node_ids, title_hint })
   },
 
+  // ---- Lake Move (M3 T7) ----
+  moveLake(lakeID: string, target_space_id: string): Promise<Lake> {
+    return request('PATCH', `/api/v1/lakes/${lakeID}/space`, { space_id: target_space_id })
+  },
+
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
   streamWeave(

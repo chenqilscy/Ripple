@@ -353,6 +353,29 @@ export function Home({ onLogout }: Props) {
     } catch (e) { setErr((e as Error).message) }
   }
 
+  // M3 T7：移动湖到其他空间
+  async function moveLakeUI(lake: Lake) {
+    try {
+      const r = await api.listSpaces()
+      const opts = ['（个人湖 / 移除归属）', ...(r.spaces ?? []).map(s => `${s.name} [${s.id.slice(0, 8)}]`)]
+      const ids = ['', ...(r.spaces ?? []).map(s => s.id)]
+      const idx = await modalPrompt({
+        title: '移动湖',
+        label: `当前：${lake.space_id ? lake.space_id.slice(0, 8) : '个人湖'}\n输入序号选择目标：\n${opts.map((o, i) => `  ${i}. ${o}`).join('\n')}`,
+        initial: '0',
+        validate: v => {
+          const n = parseInt(v.trim(), 10)
+          return Number.isInteger(n) && n >= 0 && n < ids.length ? null : '请输入合法序号'
+        },
+      })
+      if (idx === null) return
+      const target = ids[parseInt(idx, 10)]
+      if (target === (lake.space_id || '')) return
+      await api.moveLake(lake.id, target)
+      await refresh()
+    } catch (e) { setErr((e as Error).message) }
+  }
+
   // O(E) 构建节点出入度；避免在 node.map 内每次 O(E) filter。
   const { outDeg, inDeg, nodeContentById } = useMemo(() => {
     const outDeg = new Map<string, number>()
@@ -404,8 +427,12 @@ export function Home({ onLogout }: Props) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>{l.name}</div>
                 {active?.id === l.id && l.role === 'OWNER' && (
-                  <button onClick={e => { e.stopPropagation(); void manageInvites() }}
-                    style={{ ...miniBtn, padding: '2px 6px', fontSize: 10 }}>邀请</button>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={e => { e.stopPropagation(); void moveLakeUI(l) }}
+                      style={{ ...miniBtn, padding: '2px 6px', fontSize: 10 }}>移</button>
+                    <button onClick={e => { e.stopPropagation(); void manageInvites() }}
+                      style={{ ...miniBtn, padding: '2px 6px', fontSize: 10 }}>邀请</button>
+                  </div>
                 )}
               </div>
               <div style={{ fontSize: 10, opacity: 0.5 }}>{l.role}</div>

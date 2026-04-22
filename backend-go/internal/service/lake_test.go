@@ -38,6 +38,14 @@ func (r *memLakeRepo) GetManyByIDs(_ context.Context, ids []string) ([]domain.La
 	}
 	return out, nil
 }
+func (r *memLakeRepo) UpdateSpaceID(_ context.Context, id, spaceID string) (*domain.Lake, error) {
+	l, ok := r.data[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	l.SpaceID = spaceID
+	return l, nil
+}
 
 type memMembershipRepo struct {
 	data map[string]map[string]*domain.LakeMembership // userID -> lakeID -> m

@@ -94,3 +94,31 @@ func (h *LakeHandlers) ListMine(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"lakes": out, "lake_ids": ids})
 }
+
+// Move PATCH /api/v1/lakes/{id}/space  body: {"space_id": "" | "<uuid>"}
+// 仅 Owner；目标 space 非空时 actor 必须是该 space 的成员。
+func (h *LakeHandlers) Move(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "lake id required")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	var in struct {
+		SpaceID string `json:"space_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	l, err := h.Lakes.MoveToSpace(r.Context(), u, id, in.SpaceID, h.Spaces)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, lakeResp{
+		ID: l.ID, Name: l.Name, Description: l.Description,
+		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID,
+	})
+}

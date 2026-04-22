@@ -16,6 +16,8 @@ type LakeRepository interface {
 	// GetManyByIDs 批量查询，返回按输入顺序（缺失的 ID 跳过，不报错）。
 	// 用于 ListMine 等需要一次性取多个湖的场景，避免 N+1。
 	GetManyByIDs(ctx context.Context, ids []string) ([]domain.Lake, error)
+	// UpdateSpaceID 修改湖归属的 space_id（''=移到个人湖）。返回更新后的 Lake。
+	UpdateSpaceID(ctx context.Context, id, spaceID string) (*domain.Lake, error)
 }
 
 type lakeRepoNeo struct {
@@ -133,6 +135,46 @@ func (r *lakeRepoNeo) GetManyByIDs(ctx context.Context, ids []string) ([]domain.
 		return nil, fmt.Errorf("lake get many: %w", err)
 	}
 	return out.([]domain.Lake), nil
+}
+
+// cypherUpdateLakeSpace 更新 space_id；空字符串等价于 REMOVE l.space_id 但为兼容简化我们仍 SET 为 ''。
+const cypherUpdateLakeSpace = `
+MATCH (l:Lake {id: $id})
+SET l.space_id = $space_id, l.updated_at = $updated_at
+RETURN l.id, l.name, l.description, l.is_public, l.owner_id, coalesce(l.space_id, '') AS space_id, l.created_at, l.updated_at
+`
+
+func (r *lakeRepoNeo) UpdateSpaceID(ctx context.Context, id, spaceID string) (*domain.Lake, error) {
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	out, err := sess.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		rec, err := tx.Run(ctx, cypherUpdateLakeSpace, map[string]any{
+			"id": id, "space_id": spaceID, "updated_at": time.Now().UTC().Format(time.RFC3339Nano),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !rec.Next(ctx) {
+			return nil, domain.ErrNotFound
+		}
+		vals := rec.Record().Values
+		l := &domain.Lake{
+			ID:          asString(vals[0]),
+			Name:        asString(vals[1]),
+			Description: asString(vals[2]),
+			IsPublic:    asBool(vals[3]),
+			OwnerID:     asString(vals[4]),
+			SpaceID:     asString(vals[5]),
+			CreatedAt:   parseTime(asString(vals[6])),
+			UpdatedAt:   parseTime(asString(vals[7])),
+		}
+		return l, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out.(*domain.Lake), nil
 }
 
 func asString(v any) string {

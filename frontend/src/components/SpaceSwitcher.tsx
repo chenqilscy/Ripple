@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type Space } from '../api/client'
-import { prompt as modalPrompt } from './Modal'
+import { prompt as modalPrompt, confirm as modalConfirm } from './Modal'
 
 export interface SpaceSwitcherProps {
   // 当前选中的 spaceId（''=个人湖）
@@ -85,9 +85,26 @@ export default function SpaceSwitcher(props: SpaceSwitcherProps) {
             key={s.id}
             name={s.name}
             sub={s.role === 'OWNER' ? '所有者' : s.role === 'EDITOR' ? '编辑' : '查看'}
+            quotaUsed={s.llm_used_current_month}
+            quotaTotal={s.llm_quota_monthly}
             active={props.currentSpaceId === s.id}
+            isOwner={s.role === 'OWNER'}
             onClick={() => props.onChange(s.id)}
             onMembers={() => props.onManageMembers(s)}
+            onDelete={async () => {
+              const ok = await modalConfirm(
+                `确定删除空间「${s.name}」？此操作不可撤销。\n空间下的湖不会被删除（会变成个人湖）。`,
+                { title: '删除空间', danger: true },
+              )
+              if (!ok) return
+              try {
+                await api.deleteSpace(s.id)
+                if (props.currentSpaceId === s.id) props.onChange('')
+                await refresh()
+              } catch (e) {
+                setErr((e as Error).message)
+              }
+            }}
           />
         ))}
       </ul>
@@ -98,10 +115,17 @@ export default function SpaceSwitcher(props: SpaceSwitcherProps) {
 function SpaceRow(p: {
   name: string
   sub?: string
+  quotaUsed?: number
+  quotaTotal?: number
   active: boolean
+  isOwner?: boolean
   onClick: () => void
   onMembers?: () => void
+  onDelete?: () => void
 }) {
+  const showQuota = p.quotaTotal !== undefined && p.quotaTotal > 0
+  const ratio = showQuota ? Math.min(1, (p.quotaUsed || 0) / p.quotaTotal!) : 0
+  const barColor = ratio > 0.9 ? '#d24343' : ratio > 0.7 ? '#e0a23a' : '#4a8eff'
   return (
     <li
       onClick={p.onClick}
@@ -113,20 +137,38 @@ function SpaceRow(p: {
         color: p.active ? '#e6e6e6' : '#bbb',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
         <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
         {p.sub && <span style={{ fontSize: 10, color: '#666' }}>{p.sub}</span>}
+        {showQuota && (
+          <div title={`${p.quotaUsed || 0} / ${p.quotaTotal} tokens`}
+            style={{ marginTop: 2, height: 3, background: '#2a2a2a', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ width: `${ratio * 100}%`, height: '100%', background: barColor }} />
+          </div>
+        )}
       </div>
-      {p.onMembers && (
-        <button
-          onClick={e => { e.stopPropagation(); p.onMembers!() }}
-          title="管理成员"
-          style={{
-            background: 'transparent', border: 'none', color: '#888', cursor: 'pointer',
-            fontSize: 14, padding: '0 4px',
-          }}
-        >👥</button>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        {p.onMembers && (
+          <button
+            onClick={e => { e.stopPropagation(); p.onMembers!() }}
+            title="管理成员"
+            style={{
+              background: 'transparent', border: 'none', color: '#888', cursor: 'pointer',
+              fontSize: 14, padding: '0 4px',
+            }}
+          >👥</button>
+        )}
+        {p.isOwner && p.onDelete && (
+          <button
+            onClick={e => { e.stopPropagation(); p.onDelete!() }}
+            title="删除空间"
+            style={{
+              background: 'transparent', border: 'none', color: '#888', cursor: 'pointer',
+              fontSize: 12, padding: '0 4px',
+            }}
+          >🗑</button>
+        )}
+      </div>
     </li>
   )
 }

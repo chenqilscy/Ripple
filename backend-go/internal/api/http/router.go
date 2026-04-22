@@ -101,6 +101,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/lakes", lakeH.Create)
 			r.Get("/lakes", lakeH.ListMine)
 			r.Get("/lakes/{id}", lakeH.Get)
+			r.Patch("/lakes/{id}/space", lakeH.Move)
 			r.Get("/lakes/{id}/nodes", nodeH.ListByLake)
 
 			r.Post("/nodes", nodeH.Create)
