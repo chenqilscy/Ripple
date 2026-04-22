@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space } from '../api/client'
+import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -28,6 +28,10 @@ export function Home({ onLogout }: Props) {
   const [currentSpaceId, setCurrentSpaceId] = useState<string>('')
   // 成员管理抽屉
   const [membersDrawer, setMembersDrawer] = useState<Space | null>(null)
+  // M3-S2：凝结多选（DROP/FROZEN 节点 id 集合）
+  const [crystalSel, setCrystalSel] = useState<Set<string>>(new Set())
+  // 凝结结果（最近一次）
+  const [recentPerma, setRecentPerma] = useState<PermaNode | null>(null)
   const wsRef = useRef<LakeWS | null>(null)
 
   useEffect(() => { void refresh() }, [currentSpaceId])
@@ -324,6 +328,31 @@ export function Home({ onLogout }: Props) {
     } catch (e) { setErr((e as Error).message) }
   }
 
+  // M3-S2：切换节点凝结选中
+  function toggleCrystalSel(nodeId: string) {
+    setCrystalSel(prev => {
+      const next = new Set(prev)
+      if (next.has(nodeId)) next.delete(nodeId)
+      else next.add(nodeId)
+      return next
+    })
+  }
+
+  // 执行凝结
+  async function doCrystallize() {
+    if (!active) return
+    const ids = Array.from(crystalSel)
+    if (ids.length < 2) { void modalAlert('至少选择 2 个节点'); return }
+    if (ids.length > 20) { void modalAlert('最多选择 20 个节点'); return }
+    const hint = await modalPrompt({ title: '凝结', label: '标题提示（可留空，由 AI 生成）：', initial: '' })
+    if (hint === null) return
+    try {
+      const p = await api.crystallize(active.id, ids, hint || '')
+      setRecentPerma(p)
+      setCrystalSel(new Set())
+    } catch (e) { setErr((e as Error).message) }
+  }
+
   // O(E) 构建节点出入度；避免在 node.map 内每次 O(E) filter。
   const { outDeg, inDeg, nodeContentById } = useMemo(() => {
     const outDeg = new Map<string, number>()
@@ -439,7 +468,18 @@ export function Home({ onLogout }: Props) {
             )}
 
             <section style={card}>
-              <strong style={{ letterSpacing: 2, fontSize: 13 }}>湖中节点 ({nodes.length})</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ letterSpacing: 2, fontSize: 13 }}>湖中节点 ({nodes.length})</strong>
+                {crystalSel.size > 0 && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: '#9ec5ee' }}>已选 {crystalSel.size}</span>
+                    <button onClick={doCrystallize} style={{ ...miniBtn, background: '#4a8eff', color: '#fff' }}>
+                      ❄ 凝结所选
+                    </button>
+                    <button onClick={() => setCrystalSel(new Set())} style={miniBtn}>清空</button>
+                  </div>
+                )}
+              </div>
               {linkSrc && (
                 <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6, color: '#9ec5ee' }}>
                   连线模式：已选起点 {linkSrc.slice(0, 8)}…，点击另一节点完成。再次点同一节点取消。
@@ -451,11 +491,15 @@ export function Home({ onLogout }: Props) {
                   const out = outDeg.get(n.id) ?? 0
                   const inc = inDeg.get(n.id) ?? 0
                   const isLinkSrc = linkSrc === n.id
+                  const canCrystal = n.state === 'DROP' || n.state === 'FROZEN'
+                  const isSelected = crystalSel.has(n.id)
                   return (
                     <div key={n.id} style={{
                       ...nodeCard,
                       opacity: n.state === 'VAPOR' ? 0.4 : 1,
-                      boxShadow: isLinkSrc ? '0 0 0 2px #9ec5ee' : undefined,
+                      boxShadow: isLinkSrc
+                        ? '0 0 0 2px #9ec5ee'
+                        : isSelected ? '0 0 0 2px #4a8eff' : undefined,
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ ...statePill, background: stateColor(n.state) }}>{n.state}</span>
@@ -477,12 +521,35 @@ export function Home({ onLogout }: Props) {
                         </button>
                         <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容">✎</button>
                         <button onClick={() => showHistory(n)} style={miniBtn} title="历史版本">⟲</button>
+                        {canCrystal && (
+                          <button
+                            onClick={() => toggleCrystalSel(n.id)}
+                            style={{ ...miniBtn, background: isSelected ? '#4a8eff' : undefined, color: isSelected ? '#fff' : undefined }}
+                            title="选入凝结集合"
+                          >❄</button>
+                        )}
                       </div>
                     </div>
                   )
                 })}
               </div>
             </section>
+
+            {recentPerma && (
+              <section style={{ ...card, borderLeft: '3px solid #4a8eff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ letterSpacing: 2, fontSize: 13, color: '#9ec5ee' }}>❄ 凝结结果</strong>
+                  <button onClick={() => setRecentPerma(null)} style={miniBtn}>关</button>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600 }}>{recentPerma.title}</div>
+                <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.6, opacity: 0.9 }}>{recentPerma.summary}</div>
+                <div style={{ marginTop: 8, fontSize: 11, opacity: 0.6 }}>
+                  来源 {recentPerma.source_node_ids.length} 个节点
+                  {recentPerma.llm_provider && ` · ${recentPerma.llm_provider}`}
+                  {recentPerma.llm_cost_tokens ? ` · ${recentPerma.llm_cost_tokens} tokens` : ''}
+                </div>
+              </section>
+            )}
 
             {edges.length > 0 && (
               <section style={card}>
