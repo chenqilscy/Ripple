@@ -83,6 +83,38 @@ func (r *memFeedbackRepo) ListLikedByUsers(_ context.Context, userIDs []string, 
 	}
 	return out, nil
 }
+func (r *memFeedbackRepo) TopLikedTargets(_ context.Context, targetType string, exclude []string, limit int) ([]store.TargetCount, error) {
+	excl := map[string]struct{}{}
+	for _, e := range exclude {
+		excl[e] = struct{}{}
+	}
+	count := map[string]int64{}
+	for k, set := range r.likes {
+		if len(k) < len(targetType)+1 || k[len(k)-len(targetType):] != targetType {
+			continue
+		}
+		for t := range set {
+			if _, skip := excl[t]; skip {
+				continue
+			}
+			count[t]++
+		}
+	}
+	out := make([]store.TargetCount, 0, len(count))
+	for t, c := range count {
+		out = append(out, store.TargetCount{TargetID: t, Count: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].TargetID < out[j].TargetID
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
 
 func TestRecommender_HappyPath(t *testing.T) {
 	fb := newMemFeedback()
@@ -99,7 +131,7 @@ func TestRecommender_HappyPath(t *testing.T) {
 	_ = fb.AddEvent(ctx, store.FeedbackEvent{UserID: "u3", TargetType: "perma", TargetID: "D", EventType: "LIKE"})
 	_ = fb.AddEvent(ctx, store.FeedbackEvent{UserID: "u3", TargetType: "perma", TargetID: "E", EventType: "LIKE"})
 
-	svc := NewRecommenderService(fb)
+	svc := NewRecommenderService(fb, nil)
 	recs, err := svc.Recommend(ctx, &domain.User{ID: "u1"}, RecommendInput{TargetType: "perma"})
 	if err != nil {
 		t.Fatalf("recommend: %v", err)
@@ -115,7 +147,7 @@ func TestRecommender_HappyPath(t *testing.T) {
 
 func TestRecommender_ColdStart(t *testing.T) {
 	fb := newMemFeedback()
-	svc := NewRecommenderService(fb)
+	svc := NewRecommenderService(fb, nil)
 	recs, err := svc.Recommend(context.Background(), &domain.User{ID: "newbie"}, RecommendInput{TargetType: "perma"})
 	if err != nil {
 		t.Fatalf("recommend: %v", err)
@@ -126,7 +158,7 @@ func TestRecommender_ColdStart(t *testing.T) {
 }
 
 func TestRecommender_RequiresTargetType(t *testing.T) {
-	svc := NewRecommenderService(newMemFeedback())
+	svc := NewRecommenderService(newMemFeedback(), nil)
 	_, err := svc.Recommend(context.Background(), &domain.User{ID: "u"}, RecommendInput{})
 	if err == nil {
 		t.Fatal("want error")

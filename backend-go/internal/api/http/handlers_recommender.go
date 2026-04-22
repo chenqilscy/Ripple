@@ -61,6 +61,10 @@ func (h *RecommenderHandlers) AddFeedback(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// 写反馈后失效该用户推荐缓存（保证下一次 GET 能拿到最新结果）
+	if h.Svc != nil {
+		h.Svc.InvalidateUser(r.Context(), u.ID)
+	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 

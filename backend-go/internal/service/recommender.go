@@ -1,30 +1,36 @@
-// Package service · M3-S3 推荐器骨架（最小协同过滤）。
+// Package service · M3-S3 推荐器（M4-T3 增强：Redis 缓存 + 全局热度信号融合）。
 //
-// 算法（item-based + 简化 user-based）：
+// 算法（item-based + 简化 user-based + 全局热度）：
 //  1. 取当前用户已 LIKE 的 N 个 target；
-//  2. 对每个 target 找其他 LIKE 过它的用户；
-//  3. 取这些"邻居"用户合计 LIKE 过的 target，去除当前用户已交互过的；
-//  4. 按 LIKE 频次排序返回 Top-K。
-//
-// 注意：这是骨架，未做时间衰减/类目偏置/向量召回。后续 M3-S3.1 升级。
+//  2. 对每个 target 找其他 LIKE 过它的用户（邻居）；
+//  3. 取邻居合计 LIKE 过、当前用户未交互的 target，按 LIKE 频次排序（协同分）；
+//  4. 融合全局热度信号：score = 2*collab + 1*global_hot；
+//  5. 结果写入 Redis 缓存（5 分钟），命中直接返回。
 package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"sort"
+	"strconv"
+	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
+	"github.com/redis/go-redis/v9"
 )
 
 // RecommenderService 推荐服务。
 type RecommenderService struct {
 	feedback store.FeedbackRepository
+	rdb      *redis.Client
+	cacheTTL time.Duration
 }
 
-// NewRecommenderService 装配。
-func NewRecommenderService(feedback store.FeedbackRepository) *RecommenderService {
-	return &RecommenderService{feedback: feedback}
+// NewRecommenderService 装配；rdb 可为 nil，nil 时跳过缓存。
+func NewRecommenderService(feedback store.FeedbackRepository, rdb *redis.Client) *RecommenderService {
+	return &RecommenderService{feedback: feedback, rdb: rdb, cacheTTL: 5 * time.Minute}
 }
 
 // Recommendation 单条推荐结果。
@@ -35,8 +41,8 @@ type Recommendation struct {
 
 // RecommendInput 推荐请求。
 type RecommendInput struct {
-	TargetType string // 例如 "perma_node" / "lake"
-	Limit      int    // <= 50；默认 20
+	TargetType string
+	Limit      int
 }
 
 // Recommend 返回 Top-K 推荐 target_id。空结果不报错。
@@ -50,44 +56,101 @@ func (s *RecommenderService) Recommend(ctx context.Context, actor *domain.User, 
 	if in.Limit <= 0 || in.Limit > 50 {
 		in.Limit = 20
 	}
-	// 1. 我已 LIKE 的 target
+
+	cacheKey := "reco:" + actor.ID + ":" + in.TargetType + ":" + strconv.Itoa(in.Limit)
+	if s.rdb != nil {
+		if raw, err := s.rdb.Get(ctx, cacheKey).Result(); err == nil && raw != "" {
+			var out []Recommendation
+			if json.Unmarshal([]byte(raw), &out) == nil {
+				return out, nil
+			}
+		}
+	}
+
 	mine, err := s.feedback.ListUserPositiveTargets(ctx, actor.ID, in.TargetType, 100)
 	if err != nil {
 		return nil, err
 	}
-	if len(mine) == 0 {
-		// 冷启动：暂返回空（后续可降级到全局热度）
-		return nil, nil
-	}
-	// 2. 收集邻居用户（去重 + 排除自己）
-	neighborSet := map[string]struct{}{}
-	for _, tid := range mine {
-		users, err := s.feedback.ListUsersWhoLiked(ctx, in.TargetType, tid, 100)
-		if err != nil {
-			return nil, err
-		}
-		for _, u := range users {
-			if u == actor.ID {
-				continue
+
+	collabScores := map[string]int64{}
+	if len(mine) > 0 {
+		neighborSet := map[string]struct{}{}
+		for _, tid := range mine {
+			users, err := s.feedback.ListUsersWhoLiked(ctx, in.TargetType, tid, 100)
+			if err != nil {
+				return nil, err
 			}
-			neighborSet[u] = struct{}{}
+			for _, u := range users {
+				if u == actor.ID {
+					continue
+				}
+				neighborSet[u] = struct{}{}
+			}
+		}
+		if len(neighborSet) > 0 {
+			neighbors := make([]string, 0, len(neighborSet))
+			for u := range neighborSet {
+				neighbors = append(neighbors, u)
+			}
+			tcs, err := s.feedback.ListLikedByUsers(ctx, neighbors, in.TargetType, mine, in.Limit*2)
+			if err != nil {
+				return nil, err
+			}
+			for _, tc := range tcs {
+				collabScores[tc.TargetID] = tc.Count
+			}
 		}
 	}
-	if len(neighborSet) == 0 {
-		return nil, nil
-	}
-	neighbors := make([]string, 0, len(neighborSet))
-	for u := range neighborSet {
-		neighbors = append(neighbors, u)
-	}
-	// 3. 邻居们 LIKE 过、且我没交互过的 target
-	tcs, err := s.feedback.ListLikedByUsers(ctx, neighbors, in.TargetType, mine, in.Limit)
+
+	hotSignals, err := s.feedback.TopLikedTargets(ctx, in.TargetType, mine, in.Limit*2)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Recommendation, 0, len(tcs))
-	for _, tc := range tcs {
-		out = append(out, Recommendation{TargetID: tc.TargetID, Score: tc.Count})
+	hotScores := map[string]int64{}
+	for _, tc := range hotSignals {
+		hotScores[tc.TargetID] = tc.Count
+	}
+
+	merged := map[string]int64{}
+	for tid, c := range collabScores {
+		merged[tid] += 2 * c
+	}
+	for tid, h := range hotScores {
+		merged[tid] += h
+	}
+	if len(merged) == 0 {
+		return nil, nil
+	}
+	out := make([]Recommendation, 0, len(merged))
+	for tid, sc := range merged {
+		out = append(out, Recommendation{TargetID: tid, Score: sc})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Score != out[j].Score {
+			return out[i].Score > out[j].Score
+		}
+		return out[i].TargetID < out[j].TargetID
+	})
+	if len(out) > in.Limit {
+		out = out[:in.Limit]
+	}
+
+	if s.rdb != nil {
+		if b, err := json.Marshal(out); err == nil {
+			_ = s.rdb.Set(ctx, cacheKey, b, s.cacheTTL).Err()
+		}
 	}
 	return out, nil
+}
+
+// InvalidateUser 清除用户的推荐缓存。
+func (s *RecommenderService) InvalidateUser(ctx context.Context, userID string) {
+	if s.rdb == nil || userID == "" {
+		return
+	}
+	pattern := "reco:" + userID + ":*"
+	iter := s.rdb.Scan(ctx, 0, pattern, 100).Iterator()
+	for iter.Next(ctx) {
+		_ = s.rdb.Del(ctx, iter.Val()).Err()
+	}
 }

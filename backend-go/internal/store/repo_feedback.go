@@ -17,6 +17,8 @@ type FeedbackRepository interface {
 	ListUsersWhoLiked(ctx context.Context, targetType, targetID string, limit int) ([]string, error)
 	// ListLikedByUsers 返回这些用户合计 LIKE 过的 target_id（按出现次数倒序），可排除某些已知 ID。
 	ListLikedByUsers(ctx context.Context, userIDs []string, targetType string, exclude []string, limit int) ([]TargetCount, error)
+	// TopLikedTargets 返回全局最热（按 LIKE 总数倒序）的 target_id；用于冷启动 / 信号融合。
+	TopLikedTargets(ctx context.Context, targetType string, exclude []string, limit int) ([]TargetCount, error)
 }
 
 // FeedbackEvent 一条反馈事件（写入用）。
@@ -148,4 +150,33 @@ func nullableUUIDArray(s []string) any {
 		return nil
 	}
 	return s
+}
+
+func (r *feedbackRepoPG) TopLikedTargets(ctx context.Context, targetType string, exclude []string, limit int) ([]TargetCount, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := r.pool.Query(ctx, `
+SELECT target_id::text, COUNT(*) AS cnt
+FROM feedback_events
+WHERE target_type = $1
+  AND event_type = 'LIKE'
+  AND ($2::uuid[] IS NULL OR NOT (target_id = ANY($2::uuid[])))
+GROUP BY target_id
+ORDER BY cnt DESC, target_id
+LIMIT $3
+`, targetType, nullableUUIDArray(exclude), limit)
+	if err != nil {
+		return nil, fmt.Errorf("feedback top liked: %w", err)
+	}
+	defer rows.Close()
+	out := make([]TargetCount, 0, limit)
+	for rows.Next() {
+		var tc TargetCount
+		if err := rows.Scan(&tc.TargetID, &tc.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, tc)
+	}
+	return out, rows.Err()
 }
