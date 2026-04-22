@@ -19,6 +19,7 @@ type Deps struct {
 	Edges       *service.EdgeService
 	Invites     *service.InviteService
 	Clouds      *service.CloudService
+	Spaces      *service.SpaceService
 	Presence    *presence.Service
 	WS          *WSHandlers
 	CORSOrigins []string
@@ -61,6 +62,10 @@ func NewRouter(d Deps) http.Handler {
 	var presenceH *PresenceHandlers
 	if d.Presence != nil {
 		presenceH = &PresenceHandlers{Presence: d.Presence, Lakes: d.Lakes}
+	}
+	var spaceH *SpaceHandlers
+	if d.Spaces != nil {
+		spaceH = &SpaceHandlers{Spaces: d.Spaces}
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -110,6 +115,17 @@ func NewRouter(d Deps) http.Handler {
 
 			if presenceH != nil {
 				r.Get("/lakes/{id}/presence", presenceH.List)
+			}
+
+			if spaceH != nil {
+				r.Post("/spaces", spaceH.Create)
+				r.Get("/spaces", spaceH.ListMine)
+				r.Get("/spaces/{id}", spaceH.Get)
+				r.Patch("/spaces/{id}", spaceH.Update)
+				r.Delete("/spaces/{id}", spaceH.Delete)
+				r.Get("/spaces/{id}/members", spaceH.ListMembers)
+				r.Post("/spaces/{id}/members", spaceH.AddMember)
+				r.Delete("/spaces/{id}/members/{userID}", spaceH.RemoveMember)
 			}
 
 			if d.WS != nil {

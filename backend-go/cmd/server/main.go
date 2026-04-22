@@ -82,9 +82,11 @@ func main() {
 	edges := store.NewEdgeRepository(neo, cfg.Neo4jDatabase)
 	invites := store.NewInviteRepository(pg)
 	nodeRevs := store.NewNodeRevisionRepository(pg)
+	spaceRepo := store.NewSpaceRepository(pg)
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
+	spaceSvc := service.NewSpaceService(spaceRepo)
 
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
@@ -163,6 +165,7 @@ func main() {
 		Edges:       edgeSvc,
 		Invites:     inviteSvc,
 		Clouds:      cloudSvc,
+		Spaces:      spaceSvc,
 		Presence:    presenceSvc,
 		WS:          wsH,
 		CORSOrigins: cfg.CORSOriginList(),

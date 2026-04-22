@@ -166,3 +166,18 @@
 6. 代码注释 / commit message
 
 任何文档新增/修改必须声明在以上层级中的位置。
+
+
+## 会话收口前自查（每轮强制）
+
+```
+[ ] 已读 .github/instructions/copilot.instructions.md
+[ ] 准备 AskQuestions
+    [ ] 包含固定选项 `必须按照文档执行 #file:copilot.instructions.md `
+    [ ] ≥ 3 预设选项
+    [ ] 至少 1 个选项指向新可执行任务
+    [ ] 允许多选（multiSelect: true 或单选时仍允许 freeform）
+    [ ] 允许自由输入（不设 allowFreeformInput: false）
+[ ] 用户选择已记录到 /memories/session/
+[ ] 若用户选了"必须按文档执行" → 复述铁律原文
+```
