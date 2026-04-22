@@ -13,6 +13,7 @@ require (
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/rs/zerolog v1.33.0
 	golang.org/x/crypto v0.28.0
+	golang.org/x/time v0.5.0
 	nhooyr.io/websocket v1.8.17
 )
 

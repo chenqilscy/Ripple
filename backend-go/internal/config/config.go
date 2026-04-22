@@ -80,8 +80,14 @@ type Config struct {
 	OpenAICompatEndpoint string `envconfig:"OPENAI_COMPAT_ENDPOINT"`
 	OpenAICompatName     string `envconfig:"OPENAI_COMPAT_NAME" default:"openai-compat"`
 
-	// Claude Code CLI（订阅制 provider；当前仅做启动侦测 + 日志）
+	// Claude Code CLI（订阅制 provider；CLAUDE_CODE_ENABLED=true 启用，需本机已装 claude）
+	ClaudeCodeEnabled bool   `envconfig:"CLAUDE_CODE_ENABLED" default:"false"`
 	ClaudeCodeCLIPath string `envconfig:"CLAUDE_CODE_CLI_PATH"`
+	ClaudeCodeModel   string `envconfig:"CLAUDE_CODE_MODEL"`
+
+	// 全局 LLM provider 速率限制（每秒次数 + burst）；rps<=0 不限
+	LLMRPS   float64 `envconfig:"LLM_RPS" default:"5"`
+	LLMBurst int     `envconfig:"LLM_BURST" default:"10"`
 }
 
 // Load 从环境变量加载配置。

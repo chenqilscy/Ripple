@@ -1,33 +1,17 @@
-//go:build claude_code
-// +build claude_code
-
-// Package llm · Claude Code CLI Provider 草案（build tag 隔离）。
+// Package llm · Claude Code CLI Provider（订阅制；不计 token）。
 //
-// 本文件仅在 `go build -tags=claude_code` 时参与编译，主线不参与。
-// 研究背景：docs/system-design/研究-coding-plan-agent接入.md
+// 调用本机已安装的 Claude Code CLI（`claude` 可执行）。订阅按月固定费用，
+// 因此 CostTokens 字段返回 0；真实成本通过调用次数 + 上层配额限制控制。
 //
 // ## 设计要点
 //
-//  1. **不计 token**：Claude Code 订阅制（Pro/Team/Enterprise），按月固定费用，
-//     不按 token 计费。因此 CostTokens 字段返回 0（占位），真实成本分摊由上层统计调用次数实现。
-//  2. **通过 stdin/stdout**：使用 `claude -p` 模式（print/non-interactive），
-//     prompt 从 stdin 传入，避免 shell 命令行注入；响应从 stdout 读取。
-//  3. **timeout 必选**：默认 60s（Claude Code 思考周期较长）。context cancel 时杀进程。
-//  4. **红线**：
-//     - 仅用于内部 / 单租户场景（共享订阅，Anthropic ToS 可能不允许商业多租户复用）
-//     - 绝不把用户输入直接 fork+exec shell（用 exec.CommandContext 参数列表）
-//     - 日志脱敏：不记录完整 prompt，只记录 sha256 前 16B
-//     - 配额监控：若 Claude Code 返回 "quota exceeded"，router 应 fallback 到 token-based provider
+//  1. **不计 token**：CostTokens=0
+//  2. **stdin/stdout**：使用 `claude -p` 模式，prompt 从 stdin 传入避免命令行注入
+//  3. **timeout 必选**：默认 60s，context cancel 杀进程
+//  4. **N 上限 5**：避免订阅配额被快速耗尽
+//  5. **启动侦测**：[claude_code_detect.go](claude_code_detect.go) ProbeClaudeCodeCLI
 //
-// ## 使用（未来）
-//
-//   export CLAUDE_CODE_CLI_PATH=/usr/local/bin/claude
-//   go build -tags=claude_code -o ripple-server ./cmd/server
-//
-// ## 测试
-//
-// 本文件**不**包含测试。集成验证需真实安装 Claude Code CLI + 有效订阅。
-// 首次启用前必须人工核对 Anthropic ToS。
+// 启用：在配置中提供 RIPPLE_CLAUDE_CODE_CLI_PATH（或留空走 PATH）即可注册。
 package llm
 
 import (
@@ -133,8 +117,14 @@ func (p *ClaudeCodeProvider) invokeOnce(ctx context.Context, prompt string) (str
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return "", fmt.Errorf("claude-code: timeout after %s", p.cfg.Timeout)
 		}
-		return "", fmt.Errorf("claude-code: exec failed: %w (stderr: %s)",
-			err, strings.TrimSpace(stderr.String()))
+		errOut := strings.TrimSpace(stderr.String())
+		// 尝试识别配额相关错误，便于上层 router 决策 fallback
+		lower := strings.ToLower(errOut)
+		if strings.Contains(lower, "quota") || strings.Contains(lower, "rate limit") ||
+			strings.Contains(lower, "usage limit") || strings.Contains(lower, "exhausted") {
+			return "", fmt.Errorf("claude-code: quota exceeded: %s", errOut)
+		}
+		return "", fmt.Errorf("claude-code: exec failed: %w (stderr: %s)", err, errOut)
 	}
 	return stdout.String(), nil
 }

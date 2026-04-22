@@ -115,6 +115,11 @@ func main() {
 		OpenAICompatModel:    cfg.OpenAICompatModel,
 		OpenAICompatEndpoint: cfg.OpenAICompatEndpoint,
 		OpenAICompatName:     cfg.OpenAICompatName,
+		ClaudeCodeEnabled:    cfg.ClaudeCodeEnabled,
+		ClaudeCodeCLIPath:    cfg.ClaudeCodeCLIPath,
+		ClaudeCodeModel:      cfg.ClaudeCodeModel,
+		RPS:                  cfg.LLMRPS,
+		Burst:                cfg.LLMBurst,
 		Order:                cfg.LLMProviderOrder,
 	})
 	if len(providers) == 0 {

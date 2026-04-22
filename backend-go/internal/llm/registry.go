@@ -41,13 +41,22 @@ type ProviderConfig struct {
 	OpenAICompatEndpoint string
 	OpenAICompatName     string
 
+	// Claude Code（订阅制；自动侦测：cliPath="" 时走 PATH）
+	ClaudeCodeEnabled bool
+	ClaudeCodeCLIPath string
+	ClaudeCodeModel   string
+
+	// 速率限制（per provider 应用同一参数；rps<=0 不限）
+	RPS   float64
+	Burst int
+
 	// Order 控制注册顺序，逗号分隔。空 = 默认顺序。
-	// 合法值：zhipu,openai,deepseek,volc,minimax,openai-compat
+	// 合法值：zhipu,openai,deepseek,volc,minimax,openai-compat,claude-code
 	Order string
 }
 
 // BuildProviders 按 cfg 顺序构造 Provider 切片。
-// 不会 panic；缺 key 的 provider 跳过。
+// 不会 panic；缺 key 的 provider 跳过。若 cfg.RPS>0，对每个 provider 套上速率限制装饰器。
 func BuildProviders(cfg ProviderConfig) []Provider {
 	order := parseOrder(cfg.Order)
 	out := make([]Provider, 0, len(order))
@@ -58,14 +67,14 @@ func BuildProviders(cfg ProviderConfig) []Provider {
 		}
 		seen[name] = true
 		if p := buildOne(name, cfg); p != nil {
-			out = append(out, p)
+			out = append(out, NewRateLimitedProvider(p, cfg.RPS, cfg.Burst))
 		}
 	}
 	return out
 }
 
 func parseOrder(raw string) []string {
-	def := []string{"zhipu", "deepseek", "openai", "volc", "minimax", "openai-compat"}
+	def := []string{"zhipu", "deepseek", "openai", "volc", "minimax", "openai-compat", "claude-code"}
 	if raw == "" {
 		return def
 	}
@@ -129,6 +138,14 @@ func buildOne(name string, cfg ProviderConfig) Provider {
 		return NewOpenAICompatClient(OpenAICompatConfig{
 			Name: name, APIKey: cfg.OpenAICompatKey, Model: cfg.OpenAICompatModel,
 			Endpoint: cfg.OpenAICompatEndpoint,
+		})
+	case "claude-code":
+		if !cfg.ClaudeCodeEnabled {
+			return nil
+		}
+		return NewClaudeCodeProvider(ClaudeCodeConfig{
+			CLIPath: cfg.ClaudeCodeCLIPath,
+			Model:   cfg.ClaudeCodeModel,
 		})
 	}
 	return nil

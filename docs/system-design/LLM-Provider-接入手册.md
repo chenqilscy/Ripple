@@ -22,7 +22,7 @@
 
 - 通用客户端：[internal/llm/openai_compat.go](backend-go/internal/llm/openai_compat.go)
 - 智谱专用：[internal/llm/zhipu.go](backend-go/internal/llm/zhipu.go)
-- Claude Code：[internal/llm/claude_code.go](backend-go/internal/llm/claude_code.go) (build tag `claude_code`)
+- Claude Code：[internal/llm/claude_code.go](backend-go/internal/llm/claude_code.go)（主线，env `RIPPLE_CLAUDE_CODE_ENABLED=true` 启用）
 - Claude Code 启动侦测：[internal/llm/claude_code_detect.go](backend-go/internal/llm/claude_code_detect.go)
 - 路由 + 注册：[internal/llm/router.go](backend-go/internal/llm/router.go) / [internal/llm/registry.go](backend-go/internal/llm/registry.go)
 
@@ -87,13 +87,13 @@ RIPPLE_LLM_FALLBACK=true
 
 ## 4. Claude Code Provider 落地说明
 
-### 4.1 现状
+### 4.1 现状（主线已接入，2025-Q4）
 
-Claude Code Provider 完整实现在 [claude_code.go](backend-go/internal/llm/claude_code.go) 中，但通过 `//go:build claude_code` build tag 隔离，**主线编译不参与**。原因：
+Claude Code Provider 已主线编译（移除 `claude_code` build tag），通过环境变量 `RIPPLE_CLAUDE_CODE_ENABLED=true` 启用，调用本机已安装的 `claude` CLI 完成生成。配额异常（`quota` / `rate limit` / `usage limit` / `exhausted`）会被 stderr 关键字识别并以独立错误返回，便于上层熔断。
 
-1. **ToS 合规**：Claude Code 个人订阅 ≠ 商业多租户复用；启用前需人工核对 Anthropic 服务条款
-2. **CLI 强依赖**：production 镜像需预装 `claude` CLI + 注入有效订阅 token
-3. **配额共享**：所有租户共享一个订阅，需上层做调用计数限流（避免被封）
+实现：[claude_code.go](backend-go/internal/llm/claude_code.go) · 注册：[registry.go](backend-go/internal/llm/registry.go) `case "claude-code"`。
+
+> 合规提示：Claude Code 个人订阅不得用于商业多租户复用；生产启用前请人工核对 Anthropic ToS，并务必配合 §4.5 的速率限制与配额监控。
 
 ### 4.2 启动侦测
 
@@ -105,18 +105,20 @@ Claude Code Provider 完整实现在 [claude_code.go](backend-go/internal/llm/cl
 
 侦测**不阻塞启动**，失败仅日志。
 
-### 4.3 启用步骤（未来）
+### 4.3 启用步骤
 
 ```bash
-# 1. 安装 Claude Code CLI（例如官方安装器）
-# 2. 验证：claude --version
+# 1. 本机安装 Claude Code CLI 并完成登录订阅
+claude --version    # 验证可用
 
-# 3. 编译带 build tag 的二进制
-cd backend-go
-go build -tags=claude_code -o ripple-server-claude ./cmd/server
+# 2. 配置环境变量（.env）
+RIPPLE_CLAUDE_CODE_ENABLED=true
+RIPPLE_CLAUDE_CODE_CLI_PATH=         # 可选；空走 PATH
+RIPPLE_CLAUDE_CODE_MODEL=            # 可选；空走 CLI 默认
+# 可选：把 claude-code 放到顺位末尾做 fallback
+RIPPLE_LLM_PROVIDER_ORDER=zhipu,deepseek,openai,claude-code
 
-# 4. 在 registry.go 中追加 case "claude-code" 分支并构造 provider
-# 5. 在 LLM_PROVIDER_ORDER 中插入位置（建议放最后做 fallback）
+# 3. 启动；启动日志会出现 `claude code cli detected`
 ```
 
 ### 4.4 集成测试
@@ -129,7 +131,7 @@ go test ./internal/llm/... -run TestProbeClaudeCodeCLI_Real -v
 
 详见 [claude_code_detect_test.go](backend-go/internal/llm/claude_code_detect_test.go)。
 
-### 4.5 安全红线
+### 4.5 安全红线 + 配额监控
 
 | 红线 | 实现位置 |
 |------|----------|
@@ -137,7 +139,54 @@ go test ./internal/llm/... -run TestProbeClaudeCodeCLI_Real -v
 | context cancel 必须杀子进程 | `exec.CommandContext` 自动处理 |
 | 单次调用上限 60s | `cfg.Timeout` 默认 60s |
 | N>5 拒绝（订阅配额保护） | `Generate` 入参校验 |
+| 配额耗尽自动识别 | `invokeOnce` 扫描 stderr 含 `quota`/`rate limit`/`usage limit`/`exhausted` |
+| 全局速率限制 | `RIPPLE_LLM_RPS` + `RIPPLE_LLM_BURST` 套用 `RateLimitedProvider`（见 §6） |
 | 不把完整 prompt 写日志 | 仅记 sha256 前 16B（待落地） |
+
+---
+
+## 5. 流式输出（OpenAI 兼容，TD-001 已偿还）
+
+`OpenAICompatClient` 实现了可选接口 `StreamProvider`：
+
+```go
+type StreamProvider interface {
+    GenerateStream(ctx context.Context, req GenerateRequest) (<-chan StreamChunk, error)
+}
+type StreamChunk struct {
+    Delta      string
+    Done       bool
+    CostTokens int64
+    Err        error
+}
+```
+
+- 协议：标准 SSE（`data: {...json...}` / `data: [DONE]`）
+- 行为：自动转发 ctx cancel，关闭 channel；usage 通过 `Done=true` 帧的 `CostTokens` 返回
+- 适用：仅 `ModalityText`；其他模态 `GenerateStream` 直接报错
+- Router 暂未集成（M3 PERMA Crystallize 上线时再接入）；当前业务可直接通过类型断言使用：
+
+```go
+if sp, ok := provider.(llm.StreamProvider); ok { /* stream */ }
+```
+
+---
+
+## 6. Provider 速率限制（TD-002 已偿还）
+
+所有 Provider 在 `BuildProviders` 阶段被 `RateLimitedProvider` 装饰器透明包裹，参数来自配置：
+
+| 环境变量 | 默认 | 说明 |
+|----------|-----:|------|
+| `RIPPLE_LLM_RPS` | 5 | 每个 Provider 每秒最大调用次数；`<=0` 关闭限速 |
+| `RIPPLE_LLM_BURST` | 10 | 短时令牌桶容量 |
+
+实现细节：
+
+- 内部用 `golang.org/x/time/rate` 标准 token bucket
+- `Generate` / `GenerateStream` 调用前先 `limiter.Wait(ctx)`；ctx cancel 立即返回错误
+- `Name()` / `Supports()` 透传给 inner Provider，对 Router 透明
+- 单元测试：[rate_limit_test.go](backend-go/internal/llm/rate_limit_test.go) 覆盖无限速绕过、burst 不阻塞、耗尽后阻塞、ctx cancel 退出
 
 ---
 
