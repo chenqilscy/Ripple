@@ -32,9 +32,22 @@ export function Home({ onLogout }: Props) {
   const [crystalSel, setCrystalSel] = useState<Set<string>>(new Set())
   // 凝结结果（最近一次）
   const [recentPerma, setRecentPerma] = useState<PermaNode | null>(null)
+  // M3-T4：SSE 流式预览
+  const [streamText, setStreamText] = useState('')
+  const [streaming, setStreaming] = useState(false)
+  const streamAbortRef = useRef<(() => void) | null>(null)
+  // M3-S3：推荐位（基于历史 LIKE 反馈的协同过滤）
+  const [recos, setRecos] = useState<{ target_id: string; score: number }[]>([])
   const wsRef = useRef<LakeWS | null>(null)
 
   useEffect(() => { void refresh() }, [currentSpaceId])
+
+  // M3-S3：拉取推荐位（异步，失败静默）
+  useEffect(() => {
+    api.recommend('perma_node', 6)
+      .then(r => setRecos(r.recommendations || []))
+      .catch(() => setRecos([]))
+  }, [])
 
   // 切换 active 湖时：重建 WS 订阅，并加载节点。
   useEffect(() => {
@@ -300,6 +313,32 @@ export function Home({ onLogout }: Props) {
     finally { setBusy(false) }
   }
 
+  // M3-T4：SSE 流式预览，把 AI 回复实时增量渲染到面板。
+  function startWeaveStream() {
+    if (!active || !prompt.trim() || streaming) return
+    streamAbortRef.current?.()
+    setStreamText('')
+    setStreaming(true)
+    setErr(null)
+    const stop = api.streamWeave(active.id, prompt.trim(), (ev, data) => {
+      if (ev === 'delta') {
+        setStreamText(prev => prev + (data?.text ?? ''))
+      } else if (ev === 'done') {
+        setStreaming(false)
+      } else if (ev === 'error') {
+        setErr(`流式错误：${data?.message ?? 'unknown'}`)
+        setStreaming(false)
+      }
+    })
+    streamAbortRef.current = stop
+  }
+
+  function stopWeaveStream() {
+    streamAbortRef.current?.()
+    streamAbortRef.current = null
+    setStreaming(false)
+  }
+
   async function poll(taskId: string) {
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 1500))
@@ -474,7 +513,34 @@ export function Home({ onLogout }: Props) {
                 <button onClick={generate} disabled={busy || !prompt.trim()} style={primaryBtn}>
                   {busy ? '...' : '造云'}
                 </button>
+                {!streaming ? (
+                  <button onClick={startWeaveStream} disabled={!prompt.trim()} style={miniBtn}
+                    title="SSE 流式预览（不落盘）">
+                    ✨ 流式预览
+                  </button>
+                ) : (
+                  <button onClick={stopWeaveStream} style={{ ...miniBtn, color: '#d24343' }}>
+                    停止
+                  </button>
+                )}
               </div>
+              {(streaming || streamText) && (
+                <div style={{
+                  marginTop: 10, padding: 10, borderRadius: 6,
+                  background: '#0e1218', border: '1px solid #1d2433',
+                  fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                  maxHeight: 220, overflow: 'auto',
+                }}>
+                  {streamText}
+                  {streaming && <span style={{ opacity: 0.5 }}>▍</span>}
+                  {!streaming && streamText && (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                      <button style={miniBtn} onClick={() => { void navigator.clipboard.writeText(streamText) }}>复制</button>
+                      <button style={miniBtn} onClick={() => setStreamText('')}>清空</button>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
 
             {tasks.length > 0 && (
@@ -574,6 +640,41 @@ export function Home({ onLogout }: Props) {
                   来源 {recentPerma.source_node_ids.length} 个节点
                   {recentPerma.llm_provider && ` · ${recentPerma.llm_provider}`}
                   {recentPerma.llm_cost_tokens ? ` · ${recentPerma.llm_cost_tokens} tokens` : ''}
+                </div>
+              </section>
+            )}
+
+            {recos.length > 0 && (
+              <section style={card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ letterSpacing: 2, fontSize: 13, color: '#9ec5ee' }}>✨ 你可能感兴趣的凝结</strong>
+                  <span style={{ fontSize: 11, opacity: 0.5 }}>基于历史 LIKE 反馈</span>
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {recos.map(r => (
+                    <div key={r.target_id} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '6px 8px', borderRadius: 4, background: '#0e1218',
+                      fontSize: 12,
+                    }}>
+                      <span style={{ flex: 1, fontFamily: 'monospace', opacity: 0.85 }}>
+                        {r.target_id.slice(0, 8)}…
+                      </span>
+                      <span style={{ opacity: 0.6 }}>score {r.score.toFixed(2)}</span>
+                      <button style={miniBtn}
+                        onClick={() => {
+                          void api.sendFeedback('perma_node', r.target_id, 'LIKE')
+                            .then(() => setRecos(prev => prev.filter(x => x.target_id !== r.target_id)))
+                            .catch(e => modalAlert(`反馈失败：${(e as Error).message}`))
+                        }}>👍</button>
+                      <button style={miniBtn}
+                        onClick={() => {
+                          void api.sendFeedback('perma_node', r.target_id, 'DISMISS')
+                            .then(() => setRecos(prev => prev.filter(x => x.target_id !== r.target_id)))
+                            .catch(() => { /* ignore */ })
+                        }}>✕</button>
+                    </div>
+                  ))}
                 </div>
               </section>
             )}

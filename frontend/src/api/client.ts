@@ -178,6 +178,14 @@ export const api = {
     return request('PATCH', `/api/v1/lakes/${lakeID}/space`, { space_id: target_space_id })
   },
 
+  // ---- Recommendations / Feedback (M3-S3) ----
+  recommend(target_type: string, limit = 10): Promise<{ recommendations: { target_id: string; score: number }[] }> {
+    return request('GET', `/api/v1/recommendations?target_type=${encodeURIComponent(target_type)}&limit=${limit}`)
+  },
+  sendFeedback(target_type: string, target_id: string, event_type: string, payload = ''): Promise<{ id: string }> {
+    return request('POST', '/api/v1/feedback', { target_type, target_id, event_type, payload })
+  },
+
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
   streamWeave(
