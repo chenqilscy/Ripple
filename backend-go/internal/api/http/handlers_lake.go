@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -121,4 +122,37 @@ func (h *LakeHandlers) Move(w http.ResponseWriter, r *http.Request) {
 		ID: l.ID, Name: l.Name, Description: l.Description,
 		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID,
 	})
+}
+
+// UpdateMemberRole PUT /api/v1/lakes/{id}/members/{userID}/role
+// P10-C：变更湖成员角色（仅 OWNER 可操作；不能升级为 OWNER；不能修改自己）。
+func (h *LakeHandlers) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
+	actor, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	lakeID := chi.URLParam(r, "id")
+	targetUserID := chi.URLParam(r, "userID")
+	if lakeID == "" || targetUserID == "" {
+		writeError(w, http.StatusBadRequest, "lake id and user id required")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 512)
+	var in struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if in.Role == "" {
+		writeError(w, http.StatusBadRequest, "role is required")
+		return
+	}
+	if err := h.Lakes.UpdateMemberRole(r.Context(), actor, lakeID, targetUserID, domain.Role(in.Role)); err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

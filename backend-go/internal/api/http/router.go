@@ -35,6 +35,10 @@ type Deps struct {
 	WsToken     *WsTokenHandlers
 	// DocStates 非 nil 时挂载 GET/PUT /nodes/{id}/doc_state（P8-C Y.Doc 快照）。
 	DocStates   store.NodeDocStateRepository
+	// APIKeys 非 nil 时挂载 /api_keys 端点并开启 ApiKey 鉴权（P10-A）。
+	APIKeys     store.APIKeyRepository
+	// AuditLogs 非 nil 时挂载 GET /audit_logs（P10-B）。
+	AuditLogs   store.AuditLogRepository
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
 	LLMRouter   llm.StreamProvider
 	CORSOrigins []string
@@ -103,9 +107,9 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/auth/register", authH.Register)
 		r.Post("/auth/login", authH.Login)
 
-		// 需鉴权
+		// 需鉴权（JWT 或 ApiKey 二选一）
 		r.Group(func(r chi.Router) {
-			r.Use(AuthMiddleware(d.Auth))
+			r.Use(CombinedAuthMiddleware(d.Auth, d.APIKeys))
 			r.Get("/auth/me", authH.Me)
 
 			r.Post("/lakes", lakeH.Create)
@@ -194,6 +198,23 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/nodes/{id}/doc_state", docStateH.GetDocState)
 				r.Put("/nodes/{id}/doc_state", docStateH.PutDocState)
 			}
+
+			// P10-A：API Key 管理
+			if d.APIKeys != nil {
+				apiKeyH := &APIKeyHandlers{Repo: d.APIKeys}
+				r.Post("/api_keys", apiKeyH.Create)
+				r.Get("/api_keys", apiKeyH.List)
+				r.Delete("/api_keys/{id}", apiKeyH.Revoke)
+			}
+
+			// P10-B：审计日志查询
+			if d.AuditLogs != nil {
+				auditH := &AuditLogHandlers{Repo: d.AuditLogs}
+				r.Get("/audit_logs", auditH.List)
+			}
+
+			// P10-C：湖成员角色变更
+			r.Put("/lakes/{id}/members/{userID}/role", lakeH.UpdateMemberRole)
 		})
 	})
 

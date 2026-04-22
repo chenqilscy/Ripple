@@ -86,6 +86,20 @@ func main() {
 	spaceRepo := store.NewSpaceRepository(pg)
 	permaRepo := store.NewPermaNodeRepository(pg)
 	docStateRepo := store.NewNodeDocStateRepository(pg) // P8-A/B/C
+	apiKeyRepo := store.NewAPIKeyRepository(pg)          // P10-A
+	auditLogRepo := store.NewAuditLogRepository(pg)      // P10-B
+
+	// P10-B：启动时清理 30 天以前的审计日志（非阻塞）
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cutoff := time.Now().UTC().AddDate(0, 0, -30)
+		if n, err := auditLogRepo.PruneOlderThan(ctx, cutoff); err != nil {
+			logger.Warn().Err(err).Msg("audit_log prune failed")
+		} else if n > 0 {
+			logger.Info().Int64("pruned", n).Msg("audit_logs pruned")
+		}
+	}()
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
@@ -209,6 +223,8 @@ func main() {
 		WS:             wsH,
 		WsToken:        wsTokenH,
 		DocStates:      docStateRepo,
+		APIKeys:        apiKeyRepo,
+		AuditLogs:      auditLogRepo,
 		LLMRouter:      llmRouter,
 		CORSOrigins:    cfg.CORSOriginList(),
 		MetricsEnabled: cfg.MetricsEnabled,

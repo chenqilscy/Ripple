@@ -214,3 +214,24 @@ func (s *LakeService) MoveToSpace(ctx context.Context, actor *domain.User, lakeI
 	}
 	return s.lakes.UpdateSpaceID(ctx, lakeID, targetSpaceID)
 }
+
+// UpdateMemberRole P10-C：变更湖成员角色。
+// 规则：
+//   - actor 必须是该湖的 OWNER。
+//   - 不能修改 OWNER 自己的角色（湖必须有且仅有一个 OWNER）。
+//   - 新角色不能设为 OWNER（防止通过此接口转让所有权）。
+func (s *LakeService) UpdateMemberRole(ctx context.Context, actor *domain.User, lakeID, targetUserID string, newRole domain.Role) error {
+	if _, err := s.requireRole(ctx, actor, lakeID, domain.RoleOwner); err != nil {
+		return err
+	}
+	if actor.ID == targetUserID {
+		return domain.ErrPermissionDenied // OWNER 不能修改自己的角色
+	}
+	if newRole == domain.RoleOwner {
+		return domain.ErrPermissionDenied // 不允许通过此接口转让所有权
+	}
+	if !newRole.IsValid() {
+		return domain.ErrInvalidInput
+	}
+	return s.memberships.UpdateRole(ctx, targetUserID, lakeID, newRole)
+}

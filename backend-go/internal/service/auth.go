@@ -99,3 +99,8 @@ func (s *AuthService) VerifyToken(ctx context.Context, tokenStr string) (*domain
 	}
 	return u, nil
 }
+
+// GetUserByID 直接按 ID 加载用户（P10-A API Key 鉴权使用）。
+func (s *AuthService) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
+	return s.users.GetByID(ctx, id)
+}

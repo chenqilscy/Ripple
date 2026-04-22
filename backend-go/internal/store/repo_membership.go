@@ -21,6 +21,8 @@ type MembershipRepository interface {
 	// 用于 ListMine 等列表场景，避免"每个湖再查 role"的 N+1。
 	ListLakesByUserWithRole(ctx context.Context, userID string) ([]domain.LakeMembership, error)
 	ListMembers(ctx context.Context, lakeID string) ([]domain.LakeMembership, error)
+	// UpdateRole P10-C：变更成员角色（不能升级为 OWNER）。
+	UpdateRole(ctx context.Context, userID, lakeID string, role domain.Role) error
 }
 
 type membershipRepoPG struct{ pool *pgxpool.Pool }
@@ -146,3 +148,20 @@ func (r *membershipRepoPG) ListMembers(ctx context.Context, lakeID string) ([]do
 	}
 	return out, rows.Err()
 }
+
+const sqlUpdateMemberRole = `
+UPDATE lake_memberships SET role = $3, updated_at = now()
+WHERE  user_id = $1 AND lake_id = $2
+`
+
+func (r *membershipRepoPG) UpdateRole(ctx context.Context, userID, lakeID string, role domain.Role) error {
+	tag, err := r.pool.Exec(ctx, sqlUpdateMemberRole, userID, lakeID, string(role))
+	if err != nil {
+		return fmt.Errorf("membership update role: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
