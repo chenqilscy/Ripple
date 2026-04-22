@@ -157,6 +157,88 @@ export const api = {
     crystallize(lake_id, source_node_ids, title_hint = '') {
         return request('POST', '/api/v1/perma_nodes', { lake_id, source_node_ids, title_hint });
     },
+    // ---- Lake Move (M3 T7) ----
+    moveLake(lakeID, target_space_id) {
+        return request('PATCH', `/api/v1/lakes/${lakeID}/space`, { space_id: target_space_id });
+    },
+    // ---- Recommendations / Feedback (M3-S3) ----
+    recommend(target_type, limit = 10) {
+        return request('GET', `/api/v1/recommendations?target_type=${encodeURIComponent(target_type)}&limit=${limit}`);
+    },
+    sendFeedback(target_type, target_id, event_type, payload = '') {
+        return request('POST', '/api/v1/feedback', { target_type, target_id, event_type, payload });
+    },
+    // ---- Attachments (M4-B 本地 FS) ----
+    async uploadAttachment(file, nodeId) {
+        const fd = new FormData();
+        fd.append('file', file);
+        if (nodeId)
+            fd.append('node_id', nodeId);
+        const tok = getToken();
+        const resp = await fetch(`${BASE}/api/v1/attachments`, {
+            method: 'POST',
+            headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+            body: fd,
+        });
+        if (!resp.ok)
+            throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+        return resp.json();
+    },
+    attachmentURL(id) {
+        return `${BASE}/api/v1/attachments/${id}`;
+    },
+    // ---- Weave Stream (SSE / M3 T4) ----
+    // onEvent(eventName, payload) 回调；返回 abort 函数。
+    streamWeave(lakeID, prompt, onEvent) {
+        const ctrl = new AbortController();
+        const tok = getToken();
+        const url = `${BASE}/api/v1/lakes/${lakeID}/weave/stream?prompt=${encodeURIComponent(prompt)}`;
+        fetch(url, {
+            headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+            signal: ctrl.signal,
+        }).then(async (resp) => {
+            if (!resp.ok || !resp.body) {
+                onEvent('error', { message: `HTTP ${resp.status}` });
+                return;
+            }
+            const reader = resp.body.getReader();
+            const dec = new TextDecoder();
+            let buf = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done)
+                    break;
+                buf += dec.decode(value, { stream: true });
+                // 按 SSE 分隔符（双换行）切分
+                let idx;
+                while ((idx = buf.indexOf('\n\n')) !== -1) {
+                    const raw = buf.slice(0, idx);
+                    buf = buf.slice(idx + 2);
+                    let event = 'message';
+                    let dataStr = '';
+                    for (const line of raw.split('\n')) {
+                        if (line.startsWith('event: '))
+                            event = line.slice(7).trim();
+                        else if (line.startsWith('data: '))
+                            dataStr += line.slice(6);
+                    }
+                    if (!dataStr)
+                        continue;
+                    try {
+                        const data = JSON.parse(dataStr);
+                        onEvent(event, data);
+                    }
+                    catch {
+                        onEvent('error', { message: 'invalid sse json' });
+                    }
+                }
+            }
+        }).catch((e) => {
+            if (e?.name !== 'AbortError')
+                onEvent('error', { message: String(e?.message || e) });
+        });
+        return () => ctrl.abort();
+    },
 };
 // 重新导出 types
 export * from './types';

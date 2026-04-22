@@ -4,6 +4,8 @@ import { api } from '../api/client';
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal';
 import SpaceSwitcher from '../components/SpaceSwitcher';
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer';
+import AttachmentBar from '../components/AttachmentBar';
+import CollabDemo from '../components/CollabDemo';
 import { LakeWS } from '../api/wsClient';
 const EDGE_KINDS = ['relates', 'derives', 'opposes', 'refines', 'groups', 'custom'];
 export function Home({ onLogout }) {
@@ -25,8 +27,24 @@ export function Home({ onLogout }) {
     const [currentSpaceId, setCurrentSpaceId] = useState('');
     // 成员管理抽屉
     const [membersDrawer, setMembersDrawer] = useState(null);
+    // M3-S2：凝结多选（DROP/FROZEN 节点 id 集合）
+    const [crystalSel, setCrystalSel] = useState(new Set());
+    // 凝结结果（最近一次）
+    const [recentPerma, setRecentPerma] = useState(null);
+    // M3-T4：SSE 流式预览
+    const [streamText, setStreamText] = useState('');
+    const [streaming, setStreaming] = useState(false);
+    const streamAbortRef = useRef(null);
+    // M3-S3：推荐位（基于历史 LIKE 反馈的协同过滤）
+    const [recos, setRecos] = useState([]);
     const wsRef = useRef(null);
     useEffect(() => { void refresh(); }, [currentSpaceId]);
+    // M3-S3：拉取推荐位（异步，失败静默）
+    useEffect(() => {
+        api.recommend('perma_node', 6)
+            .then(r => setRecos(r.recommendations || []))
+            .catch(() => setRecos([]));
+    }, []);
     // 切换 active 湖时：重建 WS 订阅，并加载节点。
     useEffect(() => {
         if (!active)
@@ -358,6 +376,33 @@ export function Home({ onLogout }) {
             setBusy(false);
         }
     }
+    // M3-T4：SSE 流式预览，把 AI 回复实时增量渲染到面板。
+    function startWeaveStream() {
+        if (!active || !prompt.trim() || streaming)
+            return;
+        streamAbortRef.current?.();
+        setStreamText('');
+        setStreaming(true);
+        setErr(null);
+        const stop = api.streamWeave(active.id, prompt.trim(), (ev, data) => {
+            if (ev === 'delta') {
+                setStreamText(prev => prev + (data?.text ?? ''));
+            }
+            else if (ev === 'done') {
+                setStreaming(false);
+            }
+            else if (ev === 'error') {
+                setErr(`流式错误：${data?.message ?? 'unknown'}`);
+                setStreaming(false);
+            }
+        });
+        streamAbortRef.current = stop;
+    }
+    function stopWeaveStream() {
+        streamAbortRef.current?.();
+        streamAbortRef.current = null;
+        setStreaming(false);
+    }
     async function poll(taskId) {
         for (let i = 0; i < 30; i++) {
             await new Promise(r => setTimeout(r, 1500));
@@ -393,6 +438,69 @@ export function Home({ onLogout }) {
             setErr(e.message);
         }
     }
+    // M3-S2：切换节点凝结选中
+    function toggleCrystalSel(nodeId) {
+        setCrystalSel(prev => {
+            const next = new Set(prev);
+            if (next.has(nodeId))
+                next.delete(nodeId);
+            else
+                next.add(nodeId);
+            return next;
+        });
+    }
+    // 执行凝结
+    async function doCrystallize() {
+        if (!active)
+            return;
+        const ids = Array.from(crystalSel);
+        if (ids.length < 2) {
+            void modalAlert('至少选择 2 个节点');
+            return;
+        }
+        if (ids.length > 20) {
+            void modalAlert('最多选择 20 个节点');
+            return;
+        }
+        const hint = await modalPrompt({ title: '凝结', label: '标题提示（可留空，由 AI 生成）：', initial: '' });
+        if (hint === null)
+            return;
+        try {
+            const p = await api.crystallize(active.id, ids, hint || '');
+            setRecentPerma(p);
+            setCrystalSel(new Set());
+        }
+        catch (e) {
+            setErr(e.message);
+        }
+    }
+    // M3 T7：移动湖到其他空间
+    async function moveLakeUI(lake) {
+        try {
+            const r = await api.listSpaces();
+            const opts = ['（个人湖 / 移除归属）', ...(r.spaces ?? []).map(s => `${s.name} [${s.id.slice(0, 8)}]`)];
+            const ids = ['', ...(r.spaces ?? []).map(s => s.id)];
+            const idx = await modalPrompt({
+                title: '移动湖',
+                label: `当前：${lake.space_id ? lake.space_id.slice(0, 8) : '个人湖'}\n输入序号选择目标：\n${opts.map((o, i) => `  ${i}. ${o}`).join('\n')}`,
+                initial: '0',
+                validate: v => {
+                    const n = parseInt(v.trim(), 10);
+                    return Number.isInteger(n) && n >= 0 && n < ids.length ? null : '请输入合法序号';
+                },
+            });
+            if (idx === null)
+                return;
+            const target = ids[parseInt(idx, 10)];
+            if (target === (lake.space_id || ''))
+                return;
+            await api.moveLake(lake.id, target);
+            await refresh();
+        }
+        catch (e) {
+            setErr(e.message);
+        }
+    }
     // O(E) 构建节点出入度；避免在 node.map 内每次 O(E) filter。
     const { outDeg, inDeg, nodeContentById } = useMemo(() => {
         const outDeg = new Map();
@@ -413,16 +521,37 @@ export function Home({ onLogout }) {
                                         } })] }), _jsx("button", { onClick: onLogout, style: ghostBtn, children: "\u9000\u51FA" })] }), _jsxs("div", { style: { display: 'flex', gap: 6, marginTop: 16 }, children: [_jsx("input", { value: newLakeName, onChange: e => setNewLakeName(e.target.value), placeholder: "\u65B0\u6E56\u540D\u2026", style: inputSmall }), _jsx("button", { onClick: createLake, disabled: busy, style: primaryBtnSmall, children: "+" })] }), _jsx("ul", { style: { listStyle: 'none', padding: 0, margin: '16px 0 0' }, children: lakes.map(l => (_jsxs("li", { onClick: () => setActive(l), style: {
                                 ...lakeItem,
                                 background: active?.id === l.id ? 'rgba(74,144,226,0.25)' : 'transparent',
-                            }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsx("div", { children: l.name }), active?.id === l.id && l.role === 'OWNER' && (_jsx("button", { onClick: e => { e.stopPropagation(); void manageInvites(); }, style: { ...miniBtn, padding: '2px 6px', fontSize: 10 }, children: "\u9080\u8BF7" }))] }), _jsx("div", { style: { fontSize: 10, opacity: 0.5 }, children: l.role })] }, l.id))) })] }), _jsxs("main", { style: main, children: [!active && _jsx("div", { style: { opacity: 0.5 }, children: "\u9009\u62E9\u4E00\u4E2A\u6E56\uFF0C\u6216\u65B0\u5EFA\u4E00\u4E2A" }), active && (_jsxs(_Fragment, { children: [_jsx("h2", { style: { margin: '0 0 8px', fontWeight: 300 }, children: active.name }), _jsx("div", { style: { opacity: 0.5, marginBottom: 24, fontSize: 12 }, children: active.description || '未命名湖区 · ' + active.id.slice(0, 8) }), onlineUsers.length > 0 && (_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, opacity: 0.8 }, children: [_jsxs("span", { children: ["\u5728\u7EBF ", onlineUsers.length, "\uFF1A"] }), onlineUsers.slice(0, 8).map(uid => (_jsx("span", { title: uid, style: presenceDot, children: uid.slice(0, 2).toUpperCase() }, uid))), onlineUsers.length > 8 && _jsxs("span", { children: ["+", onlineUsers.length - 8] })] })), _jsxs("section", { style: card, children: [_jsx("strong", { style: { letterSpacing: 2, fontSize: 13 }, children: "\u9020\u4E91 \u00B7 AI \u53D1\u6563" }), _jsx("textarea", { value: prompt, onChange: e => setPrompt(e.target.value), placeholder: "\u4F8B\u5982\uFF1A\u7ED9\u4E00\u6B3E\u51A5\u60F3 App \u8D77 5 \u4E2A\u540D\u5B57", rows: 3, style: textarea }), _jsxs("div", { style: { display: 'flex', gap: 12, alignItems: 'center' }, children: [_jsx("label", { style: { fontSize: 12, opacity: 0.7 }, children: "\u5019\u9009\u6570" }), _jsx("input", { type: "number", min: 1, max: 10, value: n, onChange: e => setN(Number(e.target.value)), style: { ...inputSmall, width: 60 } }), _jsx("button", { onClick: generate, disabled: busy || !prompt.trim(), style: primaryBtn, children: busy ? '...' : '造云' })] })] }), tasks.length > 0 && (_jsxs("section", { style: card, children: [_jsx("strong", { style: { letterSpacing: 2, fontSize: 13 }, children: "\u6700\u8FD1\u7684\u4E91" }), tasks.slice(0, 5).map(t => (_jsxs("div", { style: taskRow, children: [_jsx("span", { style: { ...statusPill, background: statusColor(t.status) }, children: t.status }), _jsx("span", { style: { flex: 1, opacity: 0.85, fontSize: 13 }, children: t.prompt }), _jsxs("span", { style: { opacity: 0.5, fontSize: 11 }, children: [t.result_node_ids?.length ?? 0, "/", t.n] })] }, t.id)))] })), _jsxs("section", { style: card, children: [_jsxs("strong", { style: { letterSpacing: 2, fontSize: 13 }, children: ["\u6E56\u4E2D\u8282\u70B9 (", nodes.length, ")"] }), linkSrc && (_jsxs("div", { style: { fontSize: 12, opacity: 0.8, marginTop: 6, color: '#9ec5ee' }, children: ["\u8FDE\u7EBF\u6A21\u5F0F\uFF1A\u5DF2\u9009\u8D77\u70B9 ", linkSrc.slice(0, 8), "\u2026\uFF0C\u70B9\u51FB\u53E6\u4E00\u8282\u70B9\u5B8C\u6210\u3002\u518D\u6B21\u70B9\u540C\u4E00\u8282\u70B9\u53D6\u6D88\u3002"] })), nodes.length === 0 && _jsx("div", { style: { opacity: 0.4, fontSize: 12 }, children: "\u6B64\u5904\u98CE\u5E73\u6D6A\u9759" }), _jsx("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }, children: nodes.map(n => {
+                            }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsx("div", { children: l.name }), active?.id === l.id && l.role === 'OWNER' && (_jsxs("div", { style: { display: 'flex', gap: 4 }, children: [_jsx("button", { onClick: e => { e.stopPropagation(); void moveLakeUI(l); }, style: { ...miniBtn, padding: '2px 6px', fontSize: 10 }, children: "\u79FB" }), _jsx("button", { onClick: e => { e.stopPropagation(); void manageInvites(); }, style: { ...miniBtn, padding: '2px 6px', fontSize: 10 }, children: "\u9080\u8BF7" })] }))] }), _jsx("div", { style: { fontSize: 10, opacity: 0.5 }, children: l.role })] }, l.id))) })] }), _jsxs("main", { style: main, children: [!active && _jsx("div", { style: { opacity: 0.5 }, children: "\u9009\u62E9\u4E00\u4E2A\u6E56\uFF0C\u6216\u65B0\u5EFA\u4E00\u4E2A" }), active && (_jsxs(_Fragment, { children: [_jsx("h2", { style: { margin: '0 0 8px', fontWeight: 300 }, children: active.name }), _jsx("div", { style: { opacity: 0.5, marginBottom: 24, fontSize: 12 }, children: active.description || '未命名湖区 · ' + active.id.slice(0, 8) }), onlineUsers.length > 0 && (_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, opacity: 0.8 }, children: [_jsxs("span", { children: ["\u5728\u7EBF ", onlineUsers.length, "\uFF1A"] }), onlineUsers.slice(0, 8).map(uid => (_jsx("span", { title: uid, style: presenceDot, children: uid.slice(0, 2).toUpperCase() }, uid))), onlineUsers.length > 8 && _jsxs("span", { children: ["+", onlineUsers.length - 8] })] })), _jsxs("section", { style: card, children: [_jsx("strong", { style: { letterSpacing: 2, fontSize: 13 }, children: "\u9020\u4E91 \u00B7 AI \u53D1\u6563" }), _jsx("textarea", { value: prompt, onChange: e => setPrompt(e.target.value), placeholder: "\u4F8B\u5982\uFF1A\u7ED9\u4E00\u6B3E\u51A5\u60F3 App \u8D77 5 \u4E2A\u540D\u5B57", rows: 3, style: textarea }), _jsxs("div", { style: { display: 'flex', gap: 12, alignItems: 'center' }, children: [_jsx("label", { style: { fontSize: 12, opacity: 0.7 }, children: "\u5019\u9009\u6570" }), _jsx("input", { type: "number", min: 1, max: 10, value: n, onChange: e => setN(Number(e.target.value)), style: { ...inputSmall, width: 60 } }), _jsx("button", { onClick: generate, disabled: busy || !prompt.trim(), style: primaryBtn, children: busy ? '...' : '造云' }), !streaming ? (_jsx("button", { onClick: startWeaveStream, disabled: !prompt.trim(), style: miniBtn, title: "SSE \u6D41\u5F0F\u9884\u89C8\uFF08\u4E0D\u843D\u76D8\uFF09", children: "\u2728 \u6D41\u5F0F\u9884\u89C8" })) : (_jsx("button", { onClick: stopWeaveStream, style: { ...miniBtn, color: '#d24343' }, children: "\u505C\u6B62" }))] }), (streaming || streamText) && (_jsxs("div", { style: {
+                                            marginTop: 10, padding: 10, borderRadius: 6,
+                                            background: '#0e1218', border: '1px solid #1d2433',
+                                            fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                                            maxHeight: 220, overflow: 'auto',
+                                        }, children: [streamText, streaming && _jsx("span", { style: { opacity: 0.5 }, children: "\u258D" }), !streaming && streamText && (_jsxs("div", { style: { marginTop: 8, display: 'flex', gap: 8 }, children: [_jsx("button", { style: miniBtn, onClick: () => { void navigator.clipboard.writeText(streamText); }, children: "\u590D\u5236" }), _jsx("button", { style: miniBtn, onClick: () => setStreamText(''), children: "\u6E05\u7A7A" })] }))] }))] }), tasks.length > 0 && (_jsxs("section", { style: card, children: [_jsx("strong", { style: { letterSpacing: 2, fontSize: 13 }, children: "\u6700\u8FD1\u7684\u4E91" }), tasks.slice(0, 5).map(t => (_jsxs("div", { style: taskRow, children: [_jsx("span", { style: { ...statusPill, background: statusColor(t.status) }, children: t.status }), _jsx("span", { style: { flex: 1, opacity: 0.85, fontSize: 13 }, children: t.prompt }), _jsxs("span", { style: { opacity: 0.5, fontSize: 11 }, children: [t.result_node_ids?.length ?? 0, "/", t.n] })] }, t.id)))] })), _jsxs("section", { style: card, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsxs("strong", { style: { letterSpacing: 2, fontSize: 13 }, children: ["\u6E56\u4E2D\u8282\u70B9 (", nodes.length, ")"] }), crystalSel.size > 0 && (_jsxs("div", { style: { display: 'flex', gap: 6, alignItems: 'center' }, children: [_jsxs("span", { style: { fontSize: 11, color: '#9ec5ee' }, children: ["\u5DF2\u9009 ", crystalSel.size] }), _jsx("button", { onClick: doCrystallize, style: { ...miniBtn, background: '#4a8eff', color: '#fff' }, children: "\u2744 \u51DD\u7ED3\u6240\u9009" }), _jsx("button", { onClick: () => setCrystalSel(new Set()), style: miniBtn, children: "\u6E05\u7A7A" })] }))] }), linkSrc && (_jsxs("div", { style: { fontSize: 12, opacity: 0.8, marginTop: 6, color: '#9ec5ee' }, children: ["\u8FDE\u7EBF\u6A21\u5F0F\uFF1A\u5DF2\u9009\u8D77\u70B9 ", linkSrc.slice(0, 8), "\u2026\uFF0C\u70B9\u51FB\u53E6\u4E00\u8282\u70B9\u5B8C\u6210\u3002\u518D\u6B21\u70B9\u540C\u4E00\u8282\u70B9\u53D6\u6D88\u3002"] })), nodes.length === 0 && _jsx("div", { style: { opacity: 0.4, fontSize: 12 }, children: "\u6B64\u5904\u98CE\u5E73\u6D6A\u9759" }), _jsx("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }, children: nodes.map(n => {
                                             const out = outDeg.get(n.id) ?? 0;
                                             const inc = inDeg.get(n.id) ?? 0;
                                             const isLinkSrc = linkSrc === n.id;
+                                            const canCrystal = n.state === 'DROP' || n.state === 'FROZEN';
+                                            const isSelected = crystalSel.has(n.id);
                                             return (_jsxs("div", { style: {
                                                     ...nodeCard,
                                                     opacity: n.state === 'VAPOR' ? 0.4 : 1,
-                                                    boxShadow: isLinkSrc ? '0 0 0 2px #9ec5ee' : undefined,
-                                                }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between' }, children: [_jsx("span", { style: { ...statePill, background: stateColor(n.state) }, children: n.state }), _jsxs("span", { style: { fontSize: 10, opacity: 0.6 }, children: ["\u2192", out, " \u2190", inc] })] }), _jsx("div", { style: { marginTop: 8, fontSize: 13, lineHeight: 1.5 }, children: n.content }), _jsxs("div", { style: { marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }, children: [n.state === 'MIST' && (_jsx("button", { onClick: () => condense(n.id), style: miniBtn, children: "\u51DD\u9732 \u2193" })), (n.state === 'DROP' || n.state === 'FROZEN') && (_jsx("button", { onClick: () => evaporate(n.id), style: miniBtn, children: "\u84B8\u53D1 \u2191" })), _jsx("button", { onClick: () => handleNodeClickForLink(n.id), style: miniBtn, title: isLinkSrc ? '取消连线' : '连线（先选起点再选终点）', children: isLinkSrc ? '✕' : '🔗' }), _jsx("button", { onClick: () => editNodeContent(n), style: miniBtn, title: "\u7F16\u8F91\u5185\u5BB9", children: "\u270E" }), _jsx("button", { onClick: () => showHistory(n), style: miniBtn, title: "\u5386\u53F2\u7248\u672C", children: "\u27F2" })] })] }, n.id));
-                                        }) })] }), edges.length > 0 && (_jsxs("section", { style: card, children: [_jsxs("strong", { style: { letterSpacing: 2, fontSize: 13 }, children: ["\u8FB9 (", edges.length, ")"] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }, children: edges.map(e => {
+                                                    boxShadow: isLinkSrc
+                                                        ? '0 0 0 2px #9ec5ee'
+                                                        : isSelected ? '0 0 0 2px #4a8eff' : undefined,
+                                                }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between' }, children: [_jsx("span", { style: { ...statePill, background: stateColor(n.state) }, children: n.state }), _jsxs("span", { style: { fontSize: 10, opacity: 0.6 }, children: ["\u2192", out, " \u2190", inc] })] }), _jsx("div", { style: { marginTop: 8, fontSize: 13, lineHeight: 1.5 }, children: n.content }), _jsxs("div", { style: { marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }, children: [n.state === 'MIST' && (_jsx("button", { onClick: () => condense(n.id), style: miniBtn, children: "\u51DD\u9732 \u2193" })), (n.state === 'DROP' || n.state === 'FROZEN') && (_jsx("button", { onClick: () => evaporate(n.id), style: miniBtn, children: "\u84B8\u53D1 \u2191" })), _jsx("button", { onClick: () => handleNodeClickForLink(n.id), style: miniBtn, title: isLinkSrc ? '取消连线' : '连线（先选起点再选终点）', children: isLinkSrc ? '✕' : '🔗' }), _jsx("button", { onClick: () => editNodeContent(n), style: miniBtn, title: "\u7F16\u8F91\u5185\u5BB9", children: "\u270E" }), _jsx("button", { onClick: () => showHistory(n), style: miniBtn, title: "\u5386\u53F2\u7248\u672C", children: "\u27F2" }), canCrystal && (_jsx("button", { onClick: () => toggleCrystalSel(n.id), style: { ...miniBtn, background: isSelected ? '#4a8eff' : undefined, color: isSelected ? '#fff' : undefined }, title: "\u9009\u5165\u51DD\u7ED3\u96C6\u5408", children: "\u2744" }))] })] }, n.id));
+                                        }) })] }), recentPerma && (_jsxs("section", { style: { ...card, borderLeft: '3px solid #4a8eff' }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsx("strong", { style: { letterSpacing: 2, fontSize: 13, color: '#9ec5ee' }, children: "\u2744 \u51DD\u7ED3\u7ED3\u679C" }), _jsx("button", { onClick: () => setRecentPerma(null), style: miniBtn, children: "\u5173" })] }), _jsx("div", { style: { marginTop: 8, fontSize: 14, fontWeight: 600 }, children: recentPerma.title }), _jsx("div", { style: { marginTop: 6, fontSize: 13, lineHeight: 1.6, opacity: 0.9 }, children: recentPerma.summary }), _jsxs("div", { style: { marginTop: 8, fontSize: 11, opacity: 0.6 }, children: ["\u6765\u6E90 ", recentPerma.source_node_ids.length, " \u4E2A\u8282\u70B9", recentPerma.llm_provider && ` · ${recentPerma.llm_provider}`, recentPerma.llm_cost_tokens ? ` · ${recentPerma.llm_cost_tokens} tokens` : ''] })] })), _jsxs("section", { style: card, children: [_jsx("div", { style: { marginBottom: 6, fontSize: 12, opacity: 0.7 }, children: "\uD83D\uDCCE \u9644\u4EF6\uFF08M4-B \u672C\u5730 FS\uFF09" }), _jsx(AttachmentBar, {})] }), active && (_jsx("section", { style: card, children: _jsx(CollabDemo, { lakeId: active.id, token: localStorage.getItem('ripple.token') ?? '' }) })), recos.length > 0 && (_jsxs("section", { style: card, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsx("strong", { style: { letterSpacing: 2, fontSize: 13, color: '#9ec5ee' }, children: "\u2728 \u4F60\u53EF\u80FD\u611F\u5174\u8DA3\u7684\u51DD\u7ED3" }), _jsx("span", { style: { fontSize: 11, opacity: 0.5 }, children: "\u57FA\u4E8E\u5386\u53F2 LIKE \u53CD\u9988" })] }), _jsx("div", { style: { marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }, children: recos.map(r => (_jsxs("div", { style: {
+                                                display: 'flex', alignItems: 'center', gap: 8,
+                                                padding: '6px 8px', borderRadius: 4, background: '#0e1218',
+                                                fontSize: 12,
+                                            }, children: [_jsxs("span", { style: { flex: 1, fontFamily: 'monospace', opacity: 0.85 }, children: [r.target_id.slice(0, 8), "\u2026"] }), _jsxs("span", { style: { opacity: 0.6 }, children: ["score ", r.score.toFixed(2)] }), _jsx("button", { style: miniBtn, onClick: () => {
+                                                        void api.sendFeedback('perma_node', r.target_id, 'LIKE')
+                                                            .then(() => setRecos(prev => prev.filter(x => x.target_id !== r.target_id)))
+                                                            .catch(e => modalAlert(`反馈失败：${e.message}`));
+                                                    }, children: "\uD83D\uDC4D" }), _jsx("button", { style: miniBtn, onClick: () => {
+                                                        void api.sendFeedback('perma_node', r.target_id, 'DISMISS')
+                                                            .then(() => setRecos(prev => prev.filter(x => x.target_id !== r.target_id)))
+                                                            .catch(() => { });
+                                                    }, children: "\u2715" })] }, r.target_id))) })] })), edges.length > 0 && (_jsxs("section", { style: card, children: [_jsxs("strong", { style: { letterSpacing: 2, fontSize: 13 }, children: ["\u8FB9 (", edges.length, ")"] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }, children: edges.map(e => {
                                             const src = nodeContentById.get(e.src_node_id);
                                             const dst = nodeContentById.get(e.dst_node_id);
                                             return (_jsxs("div", { style: edgeRow, children: [_jsxs("span", { style: { ...edgeKindPill }, children: [e.kind, e.label ? `: ${e.label}` : ''] }), _jsxs("span", { style: { flex: 1, fontSize: 12, opacity: 0.85 }, children: [(src ?? e.src_node_id.slice(0, 8)).slice(0, 24), ' → ', (dst ?? e.dst_node_id.slice(0, 8)).slice(0, 24)] }), _jsx("button", { onClick: () => deleteEdge(e.id), style: miniBtn, children: "\u5220" })] }, e.id));

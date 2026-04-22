@@ -4,6 +4,7 @@ import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } f
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
 import AttachmentBar from '../components/AttachmentBar'
+import CollabDemo from '../components/CollabDemo'
 import { LakeWS } from '../api/wsClient'
 
 interface Props { onLogout: () => void }
@@ -649,6 +650,12 @@ export function Home({ onLogout }: Props) {
               <div style={{ marginBottom: 6, fontSize: 12, opacity: 0.7 }}>📎 附件（M4-B 本地 FS）</div>
               <AttachmentBar />
             </section>
+
+            {active && (
+              <section style={card}>
+                <CollabDemo lakeId={active.id} token={localStorage.getItem('ripple.token') ?? ''} />
+              </section>
+            )}
 
             {recos.length > 0 && (
               <section style={card}>

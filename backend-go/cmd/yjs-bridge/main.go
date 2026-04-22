@@ -5,8 +5,11 @@
 //   - 接收任意二进制（Yjs y-protocol 帧），原样广播给同 lake 其他对端；
 //   - 不解析协议、不持久化，仅做"广播 hub"（M4-A Spike 阶段）。
 //
-// 路由：GET /yjs?lake=<lake_id>
-// 鉴权：Spike 阶段使用查询参数 token（非生产）；后续接入 JWT。
+// 路由：GET /yjs?lake=<lake_id>&token=<jwt>
+//
+// 鉴权（P6-B 起强制；可用 YJS_BRIDGE_REQUIRE_AUTH=false 关闭）：
+//   - JWT：由 RIPPLE_JWT_SECRET 配置，复用 Ripple 主服务签发的 Token
+//   - Origin：YJS_BRIDGE_ALLOWED_ORIGINS（逗号分隔）；为空时拒绝跨域
 //
 // 运行：go run ./cmd/yjs-bridge  (默认监听 :7790)
 package main
@@ -18,24 +21,44 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/platform"
 	"nhooyr.io/websocket"
 )
 
 type peer struct {
 	conn   *websocket.Conn
 	lakeID string
+	userID string // P6-B 鉴权后写入
 }
 
 type hub struct {
-	mu    sync.RWMutex
-	rooms map[string]map[*peer]struct{} // lakeID -> peers
+	mu              sync.RWMutex
+	rooms           map[string]map[*peer]struct{} // lakeID -> peers
+	jwt             *platform.JWTSigner           // nil 表示禁用鉴权
+	allowedOrigins  map[string]struct{}           // empty 表示不限 Origin（仅当 jwt==nil 时安全）
+	originsRawList  []string                      // 用于 AcceptOptions
 }
 
-func newHub() *hub { return &hub{rooms: map[string]map[*peer]struct{}{}} }
+func newHub(jwtSigner *platform.JWTSigner, originsList []string) *hub {
+	allowed := map[string]struct{}{}
+	for _, o := range originsList {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			allowed[o] = struct{}{}
+		}
+	}
+	return &hub{
+		rooms:          map[string]map[*peer]struct{}{},
+		jwt:            jwtSigner,
+		allowedOrigins: allowed,
+		originsRawList: originsList,
+	}
+}
 
 func (h *hub) join(p *peer) {
 	h.mu.Lock()
@@ -82,19 +105,47 @@ func (h *hub) handleWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "lake required", http.StatusBadRequest)
 		return
 	}
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // Spike 阶段允许跨域
-		Subprotocols:       []string{"y-protocol"},
-	})
+
+	// P6-B 鉴权：JWT 必须有效；user 来自 token claims
+	var userID string
+	if h.jwt != nil {
+		tok := r.URL.Query().Get("token")
+		if tok == "" {
+			// 兼容 Authorization 头
+			if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+				tok = strings.TrimPrefix(h, "Bearer ")
+			}
+		}
+		if tok == "" {
+			http.Error(w, "token required", http.StatusUnauthorized)
+			return
+		}
+		claims, err := h.jwt.Parse(tok)
+		if err != nil {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+		userID = claims.UserID
+	}
+
+	// P6-B Origin 白名单：仅当配置非空且开启鉴权时才校验
+	acceptOpts := &websocket.AcceptOptions{Subprotocols: []string{"y-protocol"}}
+	if len(h.allowedOrigins) > 0 {
+		acceptOpts.OriginPatterns = h.originsRawList
+	} else {
+		acceptOpts.InsecureSkipVerify = true
+	}
+
+	c, err := websocket.Accept(w, r, acceptOpts)
 	if err != nil {
 		return
 	}
 	defer c.Close(websocket.StatusInternalError, "")
 
-	p := &peer{conn: c, lakeID: lakeID}
+	p := &peer{conn: c, lakeID: lakeID, userID: userID}
 	h.join(p)
 	defer h.leave(p)
-	log.Printf("yjs-bridge: peer joined lake=%s", lakeID)
+	log.Printf("yjs-bridge: peer joined lake=%s user=%s", lakeID, userID)
 
 	ctx := r.Context()
 	for {
@@ -133,14 +184,39 @@ func main() {
 	if addr == "" {
 		addr = ":7790"
 	}
-	h := newHub()
+
+	// P6-B 鉴权（默认开启；YJS_BRIDGE_REQUIRE_AUTH=false 关闭，仅 spike 用）
+	var jwtSigner *platform.JWTSigner
+	if strings.ToLower(os.Getenv("YJS_BRIDGE_REQUIRE_AUTH")) != "false" {
+		secret := os.Getenv("RIPPLE_JWT_SECRET")
+		if secret == "" {
+			log.Fatal("yjs-bridge: RIPPLE_JWT_SECRET required when auth enabled (set YJS_BRIDGE_REQUIRE_AUTH=false to disable for spike)")
+		}
+		jwtSigner = platform.NewJWTSigner(secret, 24*time.Hour)
+	}
+
+	// P6-B Origin 白名单
+	originsList := []string{}
+	if v := os.Getenv("YJS_BRIDGE_ALLOWED_ORIGINS"); v != "" {
+		for _, o := range strings.Split(v, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				originsList = append(originsList, o)
+			}
+		}
+	}
+
+	h := newHub(jwtSigner, originsList)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/yjs", h.handleWS)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("/stats", h.stats)
 
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	log.Printf("yjs-bridge listening on %s", addr)
+	authStatus := "DISABLED"
+	if jwtSigner != nil {
+		authStatus = "ENABLED"
+	}
+	log.Printf("yjs-bridge listening on %s (auth=%s, origins=%v)", addr, authStatus, originsList)
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

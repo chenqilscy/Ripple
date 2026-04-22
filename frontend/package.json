@@ -15,7 +15,9 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "three": "^0.168.0"
+    "three": "^0.168.0",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
