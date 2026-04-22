@@ -113,6 +113,7 @@ func setup(t *testing.T) *integrationFixture {
 		Edges:       edgeSvc,
 		Invites:     inviteSvc,
 		Presence:    presenceSvc,
+		WsToken:     &httpapi.WsTokenHandlers{JWT: jwt},
 		CORSOrigins: []string{"*"},
 	})
 
@@ -838,3 +839,69 @@ func TestIntegrationPresenceFlow(t *testing.T) {
 		t.Fatalf("after leave want empty, got %v", pr.Users)
 	}
 }
+
+// TestIntegration_WsToken 验证 POST /api/v1/ws_token 端点（P7-D）：
+//
+//  1. 有效主 token → 200，返回 purpose="ws" 的短期 token（expires_in=300）。
+//  2. ws-only token 自我续期 → 403（禁止无限续期）。
+//  3. 无 token → 401（AuthMiddleware 拦截）。
+func TestIntegration_WsToken(t *testing.T) {
+	f := setup(t)
+
+	email := fmt.Sprintf("wstoken+%s@ripple.local", uuid.NewString()[:8])
+	password := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": email, "password": password, "display_name": "wstoken-user",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("register: want 201, got %d", code)
+	}
+
+	var login struct {
+		AccessToken string `json:"access_token"`
+	}
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": email, "password": password,
+	}, &login); code != http.StatusOK {
+		t.Fatalf("login: want 200, got %d", code)
+	}
+	f.tok = login.AccessToken
+
+	// 场景 1：有效主 token → 200 + ws token
+	var resp1 struct {
+		Token     string `json:"token"`
+		ExpiresIn int    `json:"expires_in"`
+	}
+	if code := f.do(t, "POST", "/api/v1/ws_token", nil, &resp1); code != http.StatusOK {
+		t.Fatalf("ws_token with main token: want 200, got %d", code)
+	}
+	if resp1.Token == "" {
+		t.Fatal("ws_token: got empty token")
+	}
+	if resp1.ExpiresIn != 300 {
+		t.Fatalf("ws_token: want expires_in=300, got %d", resp1.ExpiresIn)
+	}
+
+	// 验证返回的 token purpose="ws"（使用同一 JWTSigner 解析）
+	cfg := f.cfg
+	signer := platform.NewJWTSigner(cfg.JWTSecret, cfg.JWTExpiresIn)
+	claims, err := signer.Parse(resp1.Token)
+	if err != nil {
+		t.Fatalf("parse ws token: %v", err)
+	}
+	if claims.Purpose != "ws" {
+		t.Fatalf("ws token purpose: want 'ws', got %q", claims.Purpose)
+	}
+
+	// 场景 2：用 ws-only token 续期 → 403
+	f.tok = resp1.Token
+	if code := f.do(t, "POST", "/api/v1/ws_token", nil, nil); code != http.StatusForbidden {
+		t.Fatalf("ws token renewal: want 403, got %d", code)
+	}
+
+	// 场景 3：无 token → 401
+	f.tok = ""
+	if code := f.do(t, "POST", "/api/v1/ws_token", nil, nil); code != http.StatusUnauthorized {
+		t.Fatalf("no token: want 401, got %d", code)
+	}
+}
+

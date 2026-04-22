@@ -9,18 +9,22 @@ import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
+// P7-F：后端 API 基地址优先读 Vite 环境变量（与 api/client.ts 保持一致）。
+const DEFAULT_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
+const DEFAULT_BRIDGE_URL = (import.meta.env.VITE_YJS_BRIDGE_URL as string | undefined) ?? 'ws://localhost:7790/yjs'
+
 interface Props {
   lakeId: string;
   token: string;            // 主 JWT，用于换取 ws-only token
-  apiBase?: string;         // 后端 API 基地址，默认 http://localhost:8080
-  bridgeURL?: string;       // 默认 ws://localhost:7790/yjs
+  apiBase?: string;         // 后端 API 基地址（默认读 VITE_API_BASE）
+  bridgeURL?: string;       // Yjs bridge 地址（默认读 VITE_YJS_BRIDGE_URL）
 }
 
 export default function CollabDemo({
   lakeId,
   token,
-  apiBase = 'http://localhost:8080',
-  bridgeURL = 'ws://localhost:7790/yjs',
+  apiBase = DEFAULT_API_BASE,
+  bridgeURL = DEFAULT_BRIDGE_URL,
 }: Props) {
   const [text, setText] = useState('');
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
