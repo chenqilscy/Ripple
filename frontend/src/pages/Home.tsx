@@ -495,7 +495,7 @@ export function Home({ onLogout }: Props) {
   }
 
   // P14-C：批量操作
-  async function batchOperate(action: 'evaporate' | 'condense') {
+  async function batchOperate(action: 'evaporate' | 'condense' | 'erase') {
     if (!active || batchSel.size === 0) return
     setBatchBusy(true)
     try {
@@ -849,6 +849,7 @@ export function Home({ onLogout }: Props) {
                       <span style={{ fontSize: 12, color: '#9ec5ee' }}>已选 {batchSel.size} 个节点</span>
                       <button onClick={() => void batchOperate('condense')} disabled={batchBusy} style={miniBtn}>凝露 ↓</button>
                       <button onClick={() => void batchOperate('evaporate')} disabled={batchBusy} style={miniBtn}>蒸发 ↑</button>
+                      <button onClick={() => { if (window.confirm(`确认彻底删除已选 ${batchSel.size} 个节点？此操作不可恢复。`)) { void batchOperate('erase') } }} disabled={batchBusy} style={{ ...miniBtn, background: 'rgba(220,53,69,0.15)', color: '#ff6b7a' }}>删除 ✕</button>
                       <button onClick={() => setBatchSel(new Set())} style={{ ...miniBtn, opacity: 0.6 }}>取消选择</button>
                     </div>
                   )}

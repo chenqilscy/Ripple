@@ -498,7 +498,40 @@ type BatchOperateResult struct {
 	Failed    int `json:"failed"`
 }
 
-// BatchOperate 对节点列表执行批量操作。支持 "evaporate" 和 "condense"。
+// Erase 手动彻底删除（软删除）一个节点，将其状态设为 ERASED。
+// 权限：节点 owner 本人 OR 湖 NAVIGATOR+（管理员级别可清理他人节点）。
+func (s *NodeService) Erase(ctx context.Context, actor *domain.User, nodeID string) (*domain.Node, error) {
+	n, err := s.nodes.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	// 权限：节点 owner 本人，或 lake 成员 NAVIGATOR+
+	if n.OwnerID != actor.ID {
+		if n.LakeID == "" {
+			return nil, domain.ErrPermissionDenied
+		}
+		role, rerr := s.memberships.GetRole(ctx, actor.ID, n.LakeID)
+		if rerr != nil {
+			if errors.Is(rerr, domain.ErrNotFound) {
+				return nil, domain.ErrPermissionDenied
+			}
+			return nil, rerr
+		}
+		if !role.AtLeast(domain.RoleNavigator) {
+			return nil, domain.ErrPermissionDenied
+		}
+	}
+	if err := n.Erase(time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	if err := s.nodes.UpdateState(ctx, n); err != nil {
+		return nil, err
+	}
+	s.publish(ctx, n.LakeID, "node.erased", n)
+	return n, nil
+}
+
+// BatchOperate 对节点列表执行批量操作。支持 "evaporate" / "condense" / "erase"。
 func (s *NodeService) BatchOperate(ctx context.Context, actor *domain.User, lakeID, action string, nodeIDs []string) (*BatchOperateResult, error) {
 	if len(nodeIDs) == 0 {
 		return &BatchOperateResult{}, nil
@@ -506,8 +539,8 @@ func (s *NodeService) BatchOperate(ctx context.Context, actor *domain.User, lake
 	if len(nodeIDs) > batchOperateMaxNodes {
 		return nil, fmt.Errorf("%w: too many nodes in batch (max %d)", domain.ErrInvalidInput, batchOperateMaxNodes)
 	}
-	if action != "evaporate" && action != "condense" {
-		return nil, fmt.Errorf("%w: action must be evaporate or condense", domain.ErrInvalidInput)
+	if action != "evaporate" && action != "condense" && action != "erase" {
+		return nil, fmt.Errorf("%w: action must be evaporate, condense or erase", domain.ErrInvalidInput)
 	}
 	res := &BatchOperateResult{}
 	for _, id := range nodeIDs {
@@ -517,6 +550,8 @@ func (s *NodeService) BatchOperate(ctx context.Context, actor *domain.User, lake
 			_, err = s.Evaporate(ctx, actor, id)
 		case "condense":
 			_, err = s.Condense(ctx, actor, id, lakeID)
+		case "erase":
+			_, err = s.Erase(ctx, actor, id)
 		}
 		if err != nil {
 			res.Failed++

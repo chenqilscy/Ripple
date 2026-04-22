@@ -36,6 +36,12 @@ func (s NodeState) CanEvaporate() bool {
 	return s == StateDrop || s == StateFrozen
 }
 
+// CanErase 判断当前状态是否允许手动彻底删除。
+// MIST / DROP / FROZEN / VAPOR 均允许（ERASED/GHOST 不允许）。
+func (s NodeState) CanErase() bool {
+	return s == StateMist || s == StateDrop || s == StateFrozen || s == StateVapor
+}
+
 // CanRestore 判断当前状态是否允许还原。
 func (s NodeState) CanRestore() bool {
 	return s == StateVapor
@@ -114,6 +120,18 @@ func (n *Node) Restore(now time.Time) error {
 	}
 	n.State = StateDrop
 	n.DeletedAt = nil
+	n.TTLAt = nil
+	n.UpdatedAt = now
+	return nil
+}
+
+// Erase 手动将节点彻底标记为 ERASED（软删除）。
+func (n *Node) Erase(now time.Time) error {
+	if !n.State.CanErase() {
+		return ErrInvalidStateTransition
+	}
+	n.State = StateErased
+	n.DeletedAt = &now
 	n.TTLAt = nil
 	n.UpdatedAt = now
 	return nil
