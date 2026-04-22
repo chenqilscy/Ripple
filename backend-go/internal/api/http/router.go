@@ -33,6 +33,8 @@ type Deps struct {
 	WS          *WSHandlers
 	// WsToken 非 nil 时挂载 POST /ws_token（P7-B ws-only 短期 token）。
 	WsToken     *WsTokenHandlers
+	// DocStates 非 nil 时挂载 GET/PUT /nodes/{id}/doc_state（P8-C Y.Doc 快照）。
+	DocStates   store.NodeDocStateRepository
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
 	LLMRouter   llm.StreamProvider
 	CORSOrigins []string
@@ -184,6 +186,13 @@ func NewRouter(d Deps) http.Handler {
 			// P7-B：ws-only 短期 token 签发
 			if d.WsToken != nil {
 				r.Post("/ws_token", d.WsToken.Issue)
+			}
+
+			// P8-C：Y.Doc 快照读写
+			if d.DocStates != nil {
+				docStateH := &DocStateHandlers{Nodes: d.Nodes, DocStates: d.DocStates}
+				r.Get("/nodes/{id}/doc_state", docStateH.GetDocState)
+				r.Put("/nodes/{id}/doc_state", docStateH.PutDocState)
 			}
 		})
 	})

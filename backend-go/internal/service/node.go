@@ -322,6 +322,11 @@ func (s *NodeService) recordRevision(ctx context.Context, n *domain.Node, editor
 
 // --- 内部权限工具 ---
 
+// RequireWrite 校验 actor 对指定湖有 PASSENGER 以上写权限（P8-C doc_state 外部调用）。
+func (s *NodeService) RequireWrite(ctx context.Context, actor *domain.User, lakeID string) error {
+	return s.requireWrite(ctx, actor, lakeID)
+}
+
 func (s *NodeService) requireWrite(ctx context.Context, actor *domain.User, lakeID string) error {
 	role, err := s.memberships.GetRole(ctx, actor.ID, lakeID)
 	if err != nil {

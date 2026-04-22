@@ -1,9 +1,14 @@
 // CollabDemo · P6-D 协作 demo：通过 y-websocket 接入 yjs-bridge :7790。
 //
-// 用法：在 Home.tsx 渲染 <CollabDemo lakeId={lake.id} token={token} />
+// 用法：在 Home.tsx 渲染 <CollabDemo lakeId={lake.id} nodeId={node.id} token={token} />
 // 协议：双向同步一个 Y.Text，每个客户端实时看到对方输入。
 // 鉴权（P7-B）：先调 POST /api/v1/ws_token 换取 ws-only 短期 token（5 分钟），
 //               再用该 token 建立 yjs-bridge WS 连接，避免主 token 暴露在 URL 日志。
+// P8-D/E：若提供 nodeId，则：
+//   - WS URL 携带 node=<nodeId>（bridge 按节点维度路由房间）
+//   - Y.Text 命名为 "node-content"（绑定节点内容）
+//   - Y.Doc 变更时防抖写回 PUT /api/v1/nodes/{id}/doc_state（Yjs 快照）
+//   - Y.Text 变更时防抖写回 PUT /api/v1/nodes/{id}/content（Neo4j 文本内容）
 
 import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
@@ -15,13 +20,26 @@ const DEFAULT_BRIDGE_URL = (import.meta.env.VITE_YJS_BRIDGE_URL as string | unde
 
 interface Props {
   lakeId: string;
+  nodeId?: string;          // P8-E：可选，提供时启用节点绑定与快照持久化
   token: string;            // 主 JWT，用于换取 ws-only token
   apiBase?: string;         // 后端 API 基地址（默认读 VITE_API_BASE）
   bridgeURL?: string;       // Yjs bridge 地址（默认读 VITE_YJS_BRIDGE_URL）
 }
 
+/** 防抖：延迟 delay 毫秒后执行 fn（返回取消函数）。 */
+function debounce<T extends unknown[]>(fn: (...args: T) => void, delay: number) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const wrapped = (...args: T) => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+  wrapped.cancel = () => { if (timer !== null) { clearTimeout(timer); timer = null; } };
+  return wrapped;
+}
+
 export default function CollabDemo({
   lakeId,
+  nodeId,
   token,
   apiBase = DEFAULT_API_BASE,
   bridgeURL = DEFAULT_BRIDGE_URL,
@@ -33,6 +51,31 @@ export default function CollabDemo({
 
   useEffect(() => {
     let cancelled = false;
+
+    // P8-E：快照写回（防抖 3s），将 Y.Doc 完整状态保存至 REST API。
+    const saveSnapshot = nodeId
+      ? debounce((doc: Y.Doc, wsToken: string) => {
+          if (cancelled) return;
+          const state = Y.encodeStateAsUpdate(doc);
+          fetch(`${apiBase}/api/v1/nodes/${nodeId}/doc_state`, {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${wsToken}`, 'Content-Type': 'application/octet-stream' },
+            body: state,
+          }).catch((e) => console.warn('doc_state save error:', e));
+        }, 3000)
+      : null;
+
+    // P8-E：节点文本写回（防抖 2s），将 Y.Text 内容持久化至 Neo4j。
+    const saveContent = nodeId
+      ? debounce((content: string, wsToken: string) => {
+          if (cancelled) return;
+          fetch(`${apiBase}/api/v1/nodes/${nodeId}/content`, {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${wsToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+          }).catch((e) => console.warn('content save error:', e));
+        }, 2000)
+      : null;
 
     // P7-B：先换取 ws-only 短期 token，再建立 WebSocket
     const setupCollab = async () => {
@@ -54,19 +97,38 @@ export default function CollabDemo({
 
       const ydoc = new Y.Doc();
       ydocRef.current = ydoc;
-      const url = `${bridgeURL}?token=${encodeURIComponent(wsToken)}`;
-      const provider = new WebsocketProvider(url, lakeId, ydoc, {
+
+      // P8-D/E：使用 y-websocket params 选项传递认证和路由参数。
+      // y-websocket 会将 params 拼入 URL querystring，将 roomName 追加为 /<roomName> 路径段。
+      // bridge 只读 querystring（lake/node/token），路径段被忽略。
+      const roomName = nodeId ?? lakeId;
+      const wsParams: Record<string, string> = { lake: lakeId, token: wsToken };
+      if (nodeId) wsParams.node = nodeId;
+
+      const provider = new WebsocketProvider(bridgeURL, roomName, ydoc, {
         protocols: ['y-protocol'],
+        params: wsParams,
+        connect: false,
       });
       providerRef.current = provider;
       provider.on('status', (e: { status: string }) => {
         setStatus(e.status === 'connected' ? 'connected' : e.status === 'connecting' ? 'connecting' : 'disconnected');
       });
 
-      const ytext = ydoc.getText('shared');
-      const onChange = () => setText(ytext.toString());
+      // P8-E：Y.Text 命名与节点绑定
+      const ytextName = nodeId ? 'node-content' : 'shared';
+      const ytext = ydoc.getText(ytextName);
+
+      const onChange = () => {
+        const content = ytext.toString();
+        setText(content);
+        if (saveSnapshot) saveSnapshot(ydoc, wsToken);
+        if (saveContent) saveContent(content, wsToken);
+      };
       ytext.observe(onChange);
       onChange();
+
+      provider.connect();
     };
 
     setStatus('connecting');
@@ -74,13 +136,16 @@ export default function CollabDemo({
 
     return () => {
       cancelled = true;
+      saveSnapshot?.cancel();
+      saveContent?.cancel();
       providerRef.current?.destroy();
       ydocRef.current?.destroy();
     };
-  }, [lakeId, token, apiBase, bridgeURL]);
+  }, [lakeId, nodeId, token, apiBase, bridgeURL]);
 
   const onInput = (next: string) => {
-    const ytext = ydocRef.current?.getText('shared');
+    const ytextName = nodeId ? 'node-content' : 'shared';
+    const ytext = ydocRef.current?.getText(ytextName);
     if (!ytext) return;
     ydocRef.current?.transact(() => {
       ytext.delete(0, ytext.length);

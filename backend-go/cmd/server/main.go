@@ -85,6 +85,7 @@ func main() {
 	nodeRevs := store.NewNodeRevisionRepository(pg)
 	spaceRepo := store.NewSpaceRepository(pg)
 	permaRepo := store.NewPermaNodeRepository(pg)
+	docStateRepo := store.NewNodeDocStateRepository(pg) // P8-A/B/C
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
@@ -207,6 +208,7 @@ func main() {
 		Presence:       presenceSvc,
 		WS:             wsH,
 		WsToken:        wsTokenH,
+		DocStates:      docStateRepo,
 		LLMRouter:      llmRouter,
 		CORSOrigins:    cfg.CORSOriginList(),
 		MetricsEnabled: cfg.MetricsEnabled,
