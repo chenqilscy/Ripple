@@ -170,9 +170,10 @@ func main() {
 		Invites:     inviteSvc,
 		Clouds:      cloudSvc,
 		Spaces:      spaceSvc,
-		Crystallize: crystallizeSvc,
-		Presence:    presenceSvc,
-		WS:          wsH,
+		Crystallize:    crystallizeSvc,
+		Presence:       presenceSvc,
+		WS:             wsH,
+		LLMRouter:      llmRouter,
 		CORSOrigins:    cfg.CORSOriginList(),
 		MetricsEnabled: cfg.MetricsEnabled,
 	})

@@ -172,6 +172,57 @@ export const api = {
   crystallize(lake_id: string, source_node_ids: string[], title_hint = ''): Promise<PermaNode> {
     return request('POST', '/api/v1/perma_nodes', { lake_id, source_node_ids, title_hint })
   },
+
+  // ---- Weave Stream (SSE / M3 T4) ----
+  // onEvent(eventName, payload) 回调；返回 abort 函数。
+  streamWeave(
+    lakeID: string,
+    prompt: string,
+    onEvent: (event: 'delta' | 'done' | 'error', data: any) => void,
+  ): () => void {
+    const ctrl = new AbortController()
+    const tok = getToken()
+    const url = `${BASE}/api/v1/lakes/${lakeID}/weave/stream?prompt=${encodeURIComponent(prompt)}`
+    fetch(url, {
+      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+      signal: ctrl.signal,
+    }).then(async (resp) => {
+      if (!resp.ok || !resp.body) {
+        onEvent('error', { message: `HTTP ${resp.status}` })
+        return
+      }
+      const reader = resp.body.getReader()
+      const dec = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        // 按 SSE 分隔符（双换行）切分
+        let idx
+        while ((idx = buf.indexOf('\n\n')) !== -1) {
+          const raw = buf.slice(0, idx)
+          buf = buf.slice(idx + 2)
+          let event = 'message'
+          let dataStr = ''
+          for (const line of raw.split('\n')) {
+            if (line.startsWith('event: ')) event = line.slice(7).trim()
+            else if (line.startsWith('data: ')) dataStr += line.slice(6)
+          }
+          if (!dataStr) continue
+          try {
+            const data = JSON.parse(dataStr)
+            onEvent(event as any, data)
+          } catch {
+            onEvent('error', { message: 'invalid sse json' })
+          }
+        }
+      }
+    }).catch((e) => {
+      if (e?.name !== 'AbortError') onEvent('error', { message: String(e?.message || e) })
+    })
+    return () => ctrl.abort()
+  },
 }
 
 // 重新导出 types

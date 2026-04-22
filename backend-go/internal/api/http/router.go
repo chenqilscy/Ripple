@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
@@ -24,6 +25,8 @@ type Deps struct {
 	Crystallize *service.CrystallizeService
 	Presence    *presence.Service
 	WS          *WSHandlers
+	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
+	LLMRouter   llm.StreamProvider
 	CORSOrigins []string
 	// MetricsEnabled true 时挂载 GET /metrics（Prometheus 文本格式）；false 不暴露。
 	MetricsEnabled bool
@@ -147,6 +150,11 @@ func NewRouter(d Deps) http.Handler {
 
 			if crysH != nil {
 				r.Post("/perma_nodes", crysH.Create)
+			}
+
+			if d.LLMRouter != nil {
+				weaveH := &WeaveStreamHandlers{Lakes: d.Lakes, Router: d.LLMRouter}
+				r.Get("/lakes/{id}/weave/stream", weaveH.Stream)
 			}
 
 			if d.WS != nil {
