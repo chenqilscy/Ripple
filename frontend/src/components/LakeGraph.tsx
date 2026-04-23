@@ -336,15 +336,19 @@ interface SceneProps {
   newNodeIds?: Set<string>
   resetToken?: number
   searchQuery?: string
+  snapshotLayout?: Record<string, { x: number; y: number }>
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, resetToken, searchQuery }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, resetToken, searchQuery, snapshotLayout }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
 
   const { sim, simLinks, positions, simNodes } = useMemo(() => {
-    const simNodes: SimNode[] = displayNodes.map(n => ({ id: n.id, item: n }))
+    const simNodes: SimNode[] = displayNodes.map(n => {
+      const forced = snapshotLayout?.[n.id]
+      return { id: n.id, item: n, x: forced?.x ?? 0, y: forced?.y ?? 0, fx: forced?.x, fy: forced?.y }
+    })
     const idSet = new Set(simNodes.map(n => n.id))
 
     const simLinks: SimLink[] = displayEdges
@@ -379,7 +383,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, rese
 
     return { sim, simLinks, positions, simNodes }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayNodes, displayEdges, resetToken])
+  }, [displayNodes, displayEdges, resetToken, snapshotLayout])
 
   const simNodeMap = useMemo(() => {
     const m = new Map<string, SimNode>()
@@ -455,9 +459,10 @@ export interface LakeGraphProps {
   edges: EdgeItem[]
   onNodeSelect?: (node: NodeItem | null) => void
   searchQuery?: string
+  snapshotLayout?: Record<string, { x: number; y: number }>
 }
 
-export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery }: LakeGraphProps) {
+export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery, snapshotLayout }: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
     [nodes],
@@ -553,6 +558,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery }: L
             newNodeIds={newNodeIds}
             resetToken={resetToken}
             searchQuery={searchQuery}
+            snapshotLayout={snapshotLayout}
           />
         </React.Suspense>
       </Canvas>

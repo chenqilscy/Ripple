@@ -21,6 +21,8 @@ type NodeRepository interface {
 	Search(ctx context.Context, lakeID, q string, limit int) ([]domain.NodeSearchResult, error)
 	// BatchCreate 批量创建节点（单事务 UNWIND），P12-A。
 	BatchCreate(ctx context.Context, nodes []*domain.Node) error
+	// FindRelated P18-A：在同湖内找与指定节点内容相近的节点（全文搜索）。
+	FindRelated(ctx context.Context, nodeID, lakeID, keyword string, limit int) ([]domain.NodeSearchResult, error)
 }
 
 type nodeRepoNeo struct {
@@ -333,3 +335,61 @@ func (r *nodeRepoNeo) BatchCreate(ctx context.Context, nodes []*domain.Node) err
 	})
 	return err
 }
+
+// cypherFindRelated P18-A：在同湖内利用全文索引查找相关节点（排除自身）。
+// 依赖 node_content_fts（与 cypherSearchNodes 相同的索引）。
+const cypherFindRelated = `
+CALL db.index.fulltext.queryNodes("node_content_fts", $q)
+YIELD node AS n, score
+WHERE n.lake_id = $lake_id AND n.id <> $node_id
+  AND n.state IN ["MIST","DROP","FROZEN"]
+RETURN n.id, n.lake_id, n.content, score
+ORDER BY score DESC
+LIMIT $limit
+`
+
+// FindRelated P18-A：在同湖内找与关键词相关的节点（排除 nodeID 自身）。
+func (r *nodeRepoNeo) FindRelated(ctx context.Context, nodeID, lakeID, keyword string, limit int) ([]domain.NodeSearchResult, error) {
+	if limit <= 0 || limit > 20 {
+		limit = 5
+	}
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	out, err := sess.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		rec, err := tx.Run(ctx, cypherFindRelated, map[string]any{
+			"q":       keyword,
+			"lake_id": lakeID,
+			"node_id": nodeID,
+			"limit":   int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		var results []domain.NodeSearchResult
+		for rec.Next(ctx) {
+			v := rec.Record().Values
+			content := asString(v[2])
+			snippet := content
+			if len([]rune(snippet)) > 150 {
+				runes := []rune(snippet)
+				snippet = string(runes[:150]) + "…"
+			}
+			results = append(results, domain.NodeSearchResult{
+				NodeID:  asString(v[0]),
+				LakeID:  asString(v[1]),
+				Snippet: snippet,
+				Score:   asFloat(v[3]),
+			})
+		}
+		return results, rec.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return []domain.NodeSearchResult{}, nil
+	}
+	return out.([]domain.NodeSearchResult), nil
+}
+

@@ -116,6 +116,12 @@ func (s *NodeService) Get(ctx context.Context, actor *domain.User, nodeID string
 	return n, nil
 }
 
+// GetPublicByID P18-B：通过 share token 已验证后直接取节点，不做权限检查。
+// 仅供 NodeShareHandlers.GetSharedNode 调用。
+func (s *NodeService) GetPublicByID(ctx context.Context, nodeID string) (*domain.Node, error) {
+	return s.nodes.GetByID(ctx, nodeID)
+}
+
 // ListByLake 列出湖中的节点（默认隐藏 VAPOR）。
 func (s *NodeService) ListByLake(ctx context.Context, actor *domain.User, lakeID string, includeVapor bool) ([]domain.Node, error) {
 	if err := s.assertReadable(ctx, actor, lakeID); err != nil {
@@ -394,6 +400,32 @@ func (s *NodeService) SearchNodes(ctx context.Context, actor *domain.User, lakeI
 	// Escape Lucene special characters to prevent query parse errors.
 	q = escapeLuceneQuery(q)
 	return s.nodes.Search(ctx, lakeID, q, limit)
+}
+
+// FindRelated P18-A：取目标节点所在湖内的相关节点（基于全文索引）。
+// 使用节点内容的前 50 字作为关键词查询。
+func (s *NodeService) FindRelated(ctx context.Context, actor *domain.User, nodeID string, limit int) ([]domain.NodeSearchResult, error) {
+	n, err := s.nodes.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	if n.LakeID != "" {
+		if err := s.assertReadable(ctx, actor, n.LakeID); err != nil {
+			return nil, err
+		}
+	} else if n.OwnerID != actor.ID {
+		return nil, domain.ErrPermissionDenied
+	}
+	// 取内容前 50 字作为关键词（截取 rune 避免乱码）
+	runes := []rune(strings.TrimSpace(n.Content))
+	if len(runes) > 50 {
+		runes = runes[:50]
+	}
+	keyword := escapeLuceneQuery(string(runes))
+	if keyword == "" {
+		return []domain.NodeSearchResult{}, nil
+	}
+	return s.nodes.FindRelated(ctx, nodeID, n.LakeID, keyword, limit)
 }
 
 // escapeLuceneQuery 转义 Lucene 查询特殊字符，防止解析错误。

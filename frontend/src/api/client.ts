@@ -354,6 +354,51 @@ export const api = {
 
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
+  // ---- P18-A：节点关联推荐 ----
+  getRelatedNodes(nodeId: string, limit = 5): Promise<{ related: import('./types').NodeSearchResult[] }> {
+    return request('GET', `/api/v1/nodes/${nodeId}/related?limit=${limit}`)
+  },
+
+  // ---- P18-C：节点模板库 ----
+  listTemplates(): Promise<{ templates: import('./types').NodeTemplate[] }> {
+    return request('GET', '/api/v1/templates')
+  },
+  createTemplate(name: string, content: string, description?: string, tags?: string[]): Promise<import('./types').NodeTemplate> {
+    return request('POST', '/api/v1/templates', { name, content, description: description ?? '', tags: tags ?? [] })
+  },
+  deleteTemplate(id: string): Promise<void> {
+    return request('DELETE', `/api/v1/templates/${id}`)
+  },
+  createNodeFromTemplate(lakeId: string, template_id: string): Promise<import('./types').NodeItem> {
+    return request('POST', `/api/v1/lakes/${lakeId}/nodes/from_template`, { template_id })
+  },
+
+  // ---- P18-D：图谱快照 ----
+  createSnapshot(lakeId: string, name: string, layout: Record<string, { x: number; y: number }>): Promise<import('./types').LakeSnapshot> {
+    return request('POST', `/api/v1/lakes/${lakeId}/snapshots`, { name, layout })
+  },
+  listSnapshots(lakeId: string): Promise<{ snapshots: import('./types').LakeSnapshot[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/snapshots`)
+  },
+  deleteSnapshot(lakeId: string, snapshotId: string): Promise<void> {
+    return request('DELETE', `/api/v1/lakes/${lakeId}/snapshots/${snapshotId}`)
+  },
+
+  // ---- P18-B：节点外链分享 ----
+  createNodeShare(nodeId: string, ttl_hours?: number): Promise<import('./types').NodeShare> {
+    return request('POST', `/api/v1/nodes/${nodeId}/share`, ttl_hours ? { ttl_hours } : {})
+  },
+  listNodeShares(nodeId: string): Promise<{ shares: import('./types').NodeShare[] }> {
+    return request('GET', `/api/v1/nodes/${nodeId}/shares`)
+  },
+  revokeNodeShare(id: string): Promise<void> {
+    return request('DELETE', `/api/v1/shares/${id}`)
+  },
+  // 公开访问（无鉴权）
+  getSharedNode(token: string): Promise<{ node: import('./types').NodeItem; share_id: string; expires_at: string }> {
+    return request('GET', `/api/v1/share/${token}`)
+  },
+
   streamWeave(
     lakeID: string,
     prompt: string,

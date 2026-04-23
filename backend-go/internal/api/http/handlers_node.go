@@ -378,3 +378,26 @@ func (h *NodeHandlers) BatchOperate(w http.ResponseWriter, r *http.Request) {
 		"failed":    result.Failed,
 	})
 }
+
+// GetRelated GET /api/v1/nodes/{id}/related — P18-A 节点关联推荐。
+func (h *NodeHandlers) GetRelated(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	nodeID := chi.URLParam(r, "id")
+
+	results, err := h.Nodes.FindRelated(r.Context(), u, nodeID, 5)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	type relatedItem struct {
+		NodeID  string  `json:"node_id"`
+		LakeID  string  `json:"lake_id"`
+		Snippet string  `json:"snippet"`
+		Score   float64 `json:"score"`
+	}
+	items := make([]relatedItem, len(results))
+	for i, r := range results {
+		items[i] = relatedItem{NodeID: r.NodeID, LakeID: r.LakeID, Snippet: r.Snippet, Score: r.Score}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"related": items})
+}

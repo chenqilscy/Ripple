@@ -50,6 +50,14 @@ type Deps struct {
 	CORSOrigins []string
 	// MetricsEnabled true 时挂载 GET /metrics（Prometheus 文本格式）；false 不暴露。
 	MetricsEnabled bool
+	// P18-C：节点模板库；非 nil 时挂载 /templates 端点。
+	NodeTemplates store.NodeTemplateRepository
+	// P18-D：图谱快照；非 nil 时挂载 /lakes/{id}/snapshots 端点。
+	LakeSnapshots store.LakeSnapshotRepository
+	// P18-B：节点外链分享；非 nil 时挂载 /nodes/{id}/share 端点。
+	NodeShares    store.NodeShareRepository
+	// Memberships 用于快照权限校验；与 Lakes 配套注入。
+	Memberships   store.MembershipRepository
 }
 
 // NewRouter 装配 Chi 路由。
@@ -271,7 +279,41 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/nodes/{id}/tags", tagH.GetNodeTags)
 				r.Put("/nodes/{id}/tags", tagH.SetNodeTags)
 			}
+
+			// P18-A：节点关联推荐
+			r.Get("/nodes/{id}/related", nodeH.GetRelated)
+
+			// P18-C：节点模板库
+			if d.NodeTemplates != nil {
+				tplH := &NodeTemplateHandlers{Repo: d.NodeTemplates, Nodes: d.Nodes}
+				r.Get("/templates", tplH.ListTemplates)
+				r.Post("/templates", tplH.CreateTemplate)
+				r.Delete("/templates/{id}", tplH.DeleteTemplate)
+				r.Post("/lakes/{id}/nodes/from_template", tplH.CreateNodeFromTemplate)
+			}
+
+			// P18-D：图谱快照
+			if d.LakeSnapshots != nil && d.Memberships != nil {
+				snapH := &LakeSnapshotHandlers{Repo: d.LakeSnapshots, Memberships: d.Memberships}
+				r.Post("/lakes/{id}/snapshots", snapH.CreateSnapshot)
+				r.Get("/lakes/{id}/snapshots", snapH.ListSnapshots)
+				r.Delete("/lakes/{id}/snapshots/{snapshotID}", snapH.DeleteSnapshot)
+			}
+
+			// P18-B：节点外链分享（需鉴权端点）
+			if d.NodeShares != nil {
+				shareH := &NodeShareHandlers{Shares: d.NodeShares, Nodes: d.Nodes}
+				r.Post("/nodes/{id}/share", shareH.CreateShare)
+				r.Get("/nodes/{id}/shares", shareH.ListShares)
+				r.Delete("/shares/{id}", shareH.RevokeShare)
+			}
 		})
+
+		// P18-B：公开分享端点（无需鉴权）
+		if d.NodeShares != nil {
+			shareH := &NodeShareHandlers{Shares: d.NodeShares, Nodes: d.Nodes}
+			r.Get("/share/{token}", shareH.GetSharedNode)
+		}
 	})
 
 	return r

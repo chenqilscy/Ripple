@@ -220,3 +220,46 @@ export interface OrgMember {
   role: OrgRole
   joined_at: string
 }
+
+// ---- P18-A：节点关联推荐 ----
+export interface NodeSearchResult {
+  node_id: string
+  lake_id: string
+  snippet: string
+  score: number
+}
+
+// ---- P18-C：节点模板库 ----
+export interface NodeTemplate {
+  id: string
+  name: string
+  description: string
+  content: string
+  tags: string[]
+  is_system: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+// ---- P18-D：图谱快照 ----
+export interface LakeSnapshot {
+  id: string
+  lake_id: string
+  name: string
+  layout: Record<string, { x: number; y: number }>
+  created_by: string
+  created_at: string
+}
+
+// ---- P18-B：节点外链分享 ----
+export interface NodeShare {
+  id: string
+  node_id: string
+  token: string
+  url: string
+  expires_at: string | null
+  revoked: boolean
+  created_by: string
+  created_at: string
+}

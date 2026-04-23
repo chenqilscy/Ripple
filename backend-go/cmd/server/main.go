@@ -120,6 +120,15 @@ func main() {
 	orgSvc := service.NewOrgService(orgRepo)               // P12-C
 	notifRepo := store.NewNotificationRepository(pg)        // P13-B
 	tagRepo := store.NewTagRepository(pg)                   // P13-C
+	// P18：新仓库
+	nodeTemplateRepo := store.NewNodeTemplateRepository(pg) // P18-C
+	lakeSnapshotRepo := store.NewLakeSnapshotRepository(pg) // P18-D
+	nodeShareRepo := store.NewNodeShareRepository(pg)       // P18-B
+
+	// P18-C：插入系统内置模板（幂等）
+	if err := store.EnsureSystemTemplates(bootCtx, pg); err != nil {
+		logger.Warn().Err(err).Msg("ensure system templates failed (non-fatal)")
+	}
 
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
@@ -250,6 +259,11 @@ func main() {
 		LLMRouter:      llmRouter,
 		CORSOrigins:    cfg.CORSOriginList(),
 		MetricsEnabled: cfg.MetricsEnabled,
+		// P18
+		NodeTemplates: nodeTemplateRepo,
+		LakeSnapshots: lakeSnapshotRepo,
+		NodeShares:    nodeShareRepo,
+		Memberships:   memberships,
 	})
 
 	srv := &http.Server{

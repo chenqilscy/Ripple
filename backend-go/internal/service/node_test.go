@@ -61,6 +61,9 @@ func (r *memNodeRepo) BatchCreate(_ context.Context, nodes []*domain.Node) error
 	}
 	return nil
 }
+func (r *memNodeRepo) FindRelated(_ context.Context, nodeID, lakeID, keyword string, limit int) ([]domain.NodeSearchResult, error) {
+	return []domain.NodeSearchResult{}, nil
+}
 
 func newNodeSvc(t *testing.T) (*NodeService, *memLakeRepo, *memMembershipRepo, *memNodeRepo) {
 	t.Helper()

@@ -1,0 +1,199 @@
+package httpapi
+
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/platform"
+	"github.com/chenqilscy/ripple/backend-go/internal/service"
+	"github.com/chenqilscy/ripple/backend-go/internal/store"
+	"github.com/go-chi/chi/v5"
+)
+
+// NodeShareHandlers P18-B：节点外链分享。
+type NodeShareHandlers struct {
+	Shares store.NodeShareRepository
+	Nodes  *service.NodeService
+}
+
+type shareResp struct {
+	ID        string     `json:"id"`
+	NodeID    string     `json:"node_id"`
+	Token     string     `json:"token"`
+	URL       string     `json:"url"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	Revoked   bool       `json:"revoked"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+func toShareResp(s domain.NodeShare, baseURL string) shareResp {
+	resp := shareResp{
+		ID:        s.ID,
+		NodeID:    s.NodeID,
+		Token:     s.Token,
+		URL:       baseURL + "/api/v1/share/" + s.Token,
+		Revoked:   s.Revoked,
+		CreatedAt: s.CreatedAt,
+	}
+	if !s.ExpiresAt.IsZero() {
+		resp.ExpiresAt = &s.ExpiresAt
+	}
+	return resp
+}
+
+// generateToken 生成 URL-safe base64 随机 token（32 字节 = 43 字符）。
+func generateToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// CreateShare POST /api/v1/nodes/{id}/share
+func (h *NodeShareHandlers) CreateShare(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	nodeID := chi.URLParam(r, "id")
+
+	// Must be able to read the node (also validates it exists).
+	node, err := h.Nodes.Get(r.Context(), u, nodeID)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+
+	var req struct {
+		TTLHours int `json:"ttl_hours"` // 0 = never expires
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	token, err := generateToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "token generation failed")
+		return
+	}
+
+	now := time.Now().UTC()
+	share := &domain.NodeShare{
+		ID:        platform.NewID(),
+		NodeID:    node.ID,
+		Token:     token,
+		CreatedBy: u.ID,
+		CreatedAt: now,
+	}
+	if req.TTLHours > 0 {
+		exp := now.Add(time.Duration(req.TTLHours) * time.Hour)
+		share.ExpiresAt = exp
+	}
+
+	if err := h.Shares.Create(r.Context(), share); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, toShareResp(*share, baseURLFromRequest(r)))
+}
+
+// ListShares GET /api/v1/nodes/{id}/shares
+func (h *NodeShareHandlers) ListShares(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	nodeID := chi.URLParam(r, "id")
+
+	if _, err := h.Nodes.Get(r.Context(), u, nodeID); err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+
+	shares, err := h.Shares.ListByNode(r.Context(), nodeID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	base := baseURLFromRequest(r)
+	resp := make([]shareResp, len(shares))
+	for i, s := range shares {
+		resp[i] = toShareResp(s, base)
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"shares": resp})
+}
+
+// RevokeShare DELETE /api/v1/shares/{id}
+func (h *NodeShareHandlers) RevokeShare(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	shareID := chi.URLParam(r, "id")
+
+	if err := h.Shares.Revoke(r.Context(), shareID, u.ID); err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetSharedNode GET /api/v1/share/{token} — 公开端点，无需鉴权。
+func (h *NodeShareHandlers) GetSharedNode(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+
+	share, err := h.Shares.GetByToken(r.Context(), token)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "share not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	if share.Revoked {
+		writeError(w, http.StatusGone, "share has been revoked")
+		return
+	}
+	if !share.ExpiresAt.IsZero() && time.Now().After(share.ExpiresAt) {
+		writeError(w, http.StatusGone, "share has expired")
+		return
+	}
+
+	// Retrieve node without auth check — this is a public share endpoint.
+	// We call the repo directly via the node service's Get method with a synthetic
+	// system user to bypass lake membership checks.
+	// Since this is a public endpoint, we must NOT reveal private lake info —
+	// only the node content is returned.
+	type publicNodeResp struct {
+		ID        string    `json:"id"`
+		Content   string    `json:"content"`
+		Type      string    `json:"type"`
+		State     string    `json:"state"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}
+	// We use a "system" actor (empty string owner) bypass — the node service
+	// Get() checks membership, which is inappropriate for public shares.
+	// Instead, we call h.Nodes.GetPublic which is implemented below or we accept
+	// that this handler has direct access via share token validation.
+	// Since we already validated the share token, we expose node content directly
+	// via a dedicated service method.
+	node, err := h.Nodes.GetPublicByID(r.Context(), share.NodeID)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, publicNodeResp{
+		ID:        node.ID,
+		Content:   node.Content,
+		Type:      string(node.Type),
+		State:     string(node.State),
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
+	})
+}
+
+// baseURLFromRequest 从 request 中推导服务 base URL。
+func baseURLFromRequest(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}

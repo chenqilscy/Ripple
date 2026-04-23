@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
-import type { NodeRevision } from '../api/types'
+import type { NodeRevision, NodeSearchResult, NodeTemplate, LakeSnapshot, NodeShare } from '../api/types'
 import { NodeDiffViewer } from '../components/NodeDiffViewer'
 import NodeVersionHistory from '../components/NodeVersionHistory'
 
@@ -71,6 +71,21 @@ export function Home({ onLogout }: Props) {
   const tagAbortRef = useRef<AbortController | null>(null)
   const [lakeTags, setLakeTags] = useState<string[]>([])
   const [nodeTags, setNodeTags] = useState<Record<string, string[]>>({})
+  // P18-A：节点关联推荐
+  const [relatedPanel, setRelatedPanel] = useState<{ nodeId: string; results: NodeSearchResult[] } | null>(null)
+  const [relatedLoading, setRelatedLoading] = useState<string | null>(null)
+  // P18-C：节点模板库
+  const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  const [templates, setTemplates] = useState<NodeTemplate[]>([])
+  const [templatesBusy, setTemplatesBusy] = useState(false)
+  // P18-D：图谱快照
+  const [snapshotPanelOpen, setSnapshotPanelOpen] = useState(false)
+  const [snapshots, setSnapshots] = useState<LakeSnapshot[]>([])
+  const [snapshotBusy, setSnapshotBusy] = useState(false)
+  const [graphLayout, setGraphLayout] = useState<Record<string, { x: number; y: number }> | undefined>(undefined)
+  // P18-B：节点外链分享
+  const [shareModal, setShareModal] = useState<{ nodeId: string; shares: NodeShare[] } | null>(null)
+  const [shareLoading, setShareLoading] = useState<string | null>(null)
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -141,6 +156,9 @@ export function Home({ onLogout }: Props) {
     tagAbortRef.current?.abort()
     setImportResult(null)
     setBatchSel(new Set())
+    setGraphLayout(undefined)
+    // P18-D：加载快照
+    void loadSnapshots(active.id)
     // P13-C：加载湖标签列表
     api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => setLakeTags([]))
 
@@ -514,6 +532,96 @@ export function Home({ onLogout }: Props) {
     finally { setExportBusy(false) }
   }
 
+  // P18-A：加载关联推荐
+  async function loadRelated(nodeId: string) {
+    setRelatedLoading(nodeId)
+    try {
+      const r = await api.getRelatedNodes(nodeId, 5)
+      setRelatedPanel({ nodeId, results: r.related })
+    } catch (e) { setErr((e as Error).message) }
+    finally { setRelatedLoading(null) }
+  }
+
+  // P18-C：加载模板列表
+  async function loadTemplates() {
+    setTemplatesBusy(true)
+    try {
+      const r = await api.listTemplates()
+      setTemplates(r.templates)
+    } catch (e) { setErr((e as Error).message) }
+    finally { setTemplatesBusy(false) }
+  }
+
+  // P18-C：从模板创建节点
+  async function createFromTemplate(templateId: string) {
+    if (!active) return
+    try {
+      await api.createNodeFromTemplate(active.id, templateId)
+      setTemplateModalOpen(false)
+      void loadNodes(active.id)
+    } catch (e) { setErr((e as Error).message) }
+  }
+
+  // P18-D：加载快照列表
+  async function loadSnapshots(lakeId: string) {
+    try {
+      const r = await api.listSnapshots(lakeId)
+      setSnapshots(r.snapshots)
+    } catch { /* 静默 */ }
+  }
+
+  // P18-D：保存快照
+  async function saveSnapshot() {
+    if (!active) return
+    const name = await modalPrompt({
+      title: '保存图谱快照',
+      label: '快照名称（便于识别）',
+      validate: v => (!v.trim() ? '名称不能为空' : null),
+    })
+    if (name === null) return
+    setSnapshotBusy(true)
+    try {
+      const layout: Record<string, { x: number; y: number }> = {}
+      for (const n of nodes) layout[n.id] = { x: n.position.x, y: n.position.y }
+      await api.createSnapshot(active.id, name.trim(), layout)
+      void loadSnapshots(active.id)
+    } catch (e) { setErr((e as Error).message) }
+    finally { setSnapshotBusy(false) }
+  }
+
+  // P18-D：恢复快照布局
+  function restoreSnapshot(snap: LakeSnapshot) {
+    setGraphLayout(snap.layout)
+    setSnapshotPanelOpen(false)
+  }
+
+  // P18-B：加载节点分享
+  async function loadShares(nodeId: string) {
+    setShareLoading(nodeId)
+    try {
+      const r = await api.listNodeShares(nodeId)
+      setShareModal({ nodeId, shares: r.shares })
+    } catch (e) { setErr((e as Error).message) }
+    finally { setShareLoading(null) }
+  }
+
+  // P18-B：创建分享链接
+  async function createShare(nodeId: string) {
+    try {
+      const ttlIn = await modalPrompt({
+        title: '创建分享链接',
+        label: '有效小时数（留空 = 永久）',
+        placeholder: '例如：24',
+      })
+      if (ttlIn === null) return
+      const ttl = ttlIn.trim() ? parseInt(ttlIn.trim(), 10) : undefined
+      const share = await api.createNodeShare(nodeId, ttl)
+      const ok = await copyText(share.url)
+      await modalAlert(`分享链接已创建\n\n${share.url}\n\n${ok ? '（已复制到剪贴板）' : '（请手动复制链接）'}`)
+      void loadShares(nodeId)
+    } catch (e) { setErr((e as Error).message) }
+  }
+
   // P13-E：导入
   async function importLakeUI(file: File) {
     if (!active) return
@@ -850,6 +958,12 @@ export function Home({ onLogout }: Props) {
                       </button>
                     ))}
                   </div>
+                  {/* P18-C：从模板创建节点 */}
+                  <button
+                    onClick={() => { void loadTemplates(); setTemplateModalOpen(true) }}
+                    style={{ ...miniBtn, color: '#cba6f7' }}
+                    title="从模板创建节点"
+                  >📋 模板</button>
                 </div>
                 {crystalSel.size > 0 && (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -873,8 +987,51 @@ export function Home({ onLogout }: Props) {
                       style={{ width: '100%', padding: '4px 8px', fontSize: 12, background: '#0d1e2e', border: '1px solid #1e3a5a', borderRadius: 4, color: '#c8dff0', boxSizing: 'border-box' }}
                     />
                   </div>
+                  {/* P18-D：快照工具栏 */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => void saveSnapshot()}
+                      disabled={snapshotBusy}
+                      style={{ ...miniBtn, color: '#a6e3a1' }}
+                      title="保存当前图谱布局为快照"
+                    >{snapshotBusy ? '…' : '📷 保存快照'}</button>
+                    <button
+                      onClick={() => setSnapshotPanelOpen(o => !o)}
+                      style={{ ...miniBtn, color: snapshotPanelOpen ? '#89b4fa' : undefined }}
+                      title="查看图谱快照"
+                    >🗂 快照 ({snapshots.length})</button>
+                    {graphLayout && (
+                      <button onClick={() => setGraphLayout(undefined)} style={{ ...miniBtn, color: '#f38ba8' }}>
+                        ✕ 清除快照布局
+                      </button>
+                    )}
+                  </div>
+                  {snapshotPanelOpen && (
+                    <div style={{
+                      marginBottom: 10, padding: 10, background: '#0a1929',
+                      border: '1px solid #1e3a5a', borderRadius: 6,
+                    }}>
+                      {snapshots.length === 0 && <div style={{ fontSize: 12, opacity: 0.5 }}>暂无快照</div>}
+                      {snapshots.map(snap => (
+                        <div key={snap.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12 }}>
+                          <span style={{ flex: 1 }}>{snap.name}</span>
+                          <span style={{ opacity: 0.5 }}>{new Date(snap.created_at).toLocaleString('zh-CN')}</span>
+                          <button onClick={() => restoreSnapshot(snap)} style={{ ...miniBtn, color: '#89b4fa' }}>恢复</button>
+                          <button
+                            onClick={async () => {
+                              if (!active) return
+                              if (!(await modalConfirm(`删除快照「${snap.name}」？`, { danger: true }))) return
+                              await api.deleteSnapshot(active.id, snap.id).catch(e => setErr((e as Error).message))
+                              void loadSnapshots(active.id)
+                            }}
+                            style={{ ...miniBtn, color: '#f38ba8' }}
+                          >删</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <React.Suspense fallback={<div style={{ height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a6a8e', fontSize: 13 }}>加载图谱中…</div>}>
-                    <LakeGraph nodes={nodes} edges={edges} searchQuery={nodeSearch} />
+                    <LakeGraph nodes={nodes} edges={edges} searchQuery={nodeSearch} snapshotLayout={graphLayout} />
                   </React.Suspense>
                 </div>
               ) : (
@@ -986,6 +1143,20 @@ export function Home({ onLogout }: Props) {
                           style={miniBtn}
                           title="AI 摘要"
                         >{aiSummaryBusy.has(n.id) ? '…' : '✦'}</button>
+                        {/* P18-A 关联推荐 */}
+                        <button
+                          onClick={() => void loadRelated(n.id)}
+                          disabled={relatedLoading === n.id}
+                          style={{ ...miniBtn, color: '#89dceb' }}
+                          title="查找关联节点"
+                        >{relatedLoading === n.id ? '…' : '⚡关联'}</button>
+                        {/* P18-B 节点分享 */}
+                        <button
+                          onClick={() => void loadShares(n.id)}
+                          disabled={shareLoading === n.id}
+                          style={{ ...miniBtn, color: '#f9e2af' }}
+                          title="分享节点"
+                        >{shareLoading === n.id ? '…' : '🔗分享'}</button>
                         {canCrystal && (
                           <button
                             onClick={() => toggleCrystalSel(n.id)}
@@ -1155,8 +1326,126 @@ export function Home({ onLogout }: Props) {
           }}
         />
       )}
+      {/* P18-A：关联推荐面板 */}
+      {relatedPanel && (
+        <div style={modalOverlay} onClick={() => setRelatedPanel(null)}>
+          <div style={{ ...modalBox, minWidth: 360 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <strong style={{ color: '#89dceb' }}>⚡ 关联节点推荐</strong>
+              <button onClick={() => setRelatedPanel(null)} style={miniBtn}>✕</button>
+            </div>
+            {relatedPanel.results.length === 0 ? (
+              <div style={{ fontSize: 13, opacity: 0.5 }}>暂无关联节点</div>
+            ) : relatedPanel.results.map(r => (
+              <div key={r.node_id} style={{
+                padding: '8px 10px', marginBottom: 6, background: 'rgba(137,220,235,0.06)',
+                border: '1px solid rgba(137,220,235,0.2)', borderRadius: 6,
+              }}>
+                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                  id: {r.node_id.slice(0, 8)}… · score: {r.score.toFixed(3)}
+                </div>
+                <div style={{ fontSize: 13, lineHeight: 1.5 }}>{r.snippet.slice(0, 120)}{r.snippet.length > 120 ? '…' : ''}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* P18-B：节点分享管理 */}
+      {shareModal && (
+        <div style={modalOverlay} onClick={() => setShareModal(null)}>
+          <div style={{ ...modalBox, minWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <strong style={{ color: '#f9e2af' }}>🔗 节点分享</strong>
+              <button onClick={() => setShareModal(null)} style={miniBtn}>✕</button>
+            </div>
+            <button
+              onClick={() => void createShare(shareModal.nodeId)}
+              style={{ ...miniBtn, marginBottom: 10, color: '#a6e3a1' }}
+            >+ 创建新分享链接</button>
+            {shareModal.shares.length === 0 ? (
+              <div style={{ fontSize: 13, opacity: 0.5 }}>暂无分享链接</div>
+            ) : shareModal.shares.map(s => (
+              <div key={s.id} style={{
+                padding: '8px 10px', marginBottom: 6,
+                background: s.revoked ? 'rgba(255,255,255,0.03)' : 'rgba(249,226,175,0.06)',
+                border: `1px solid ${s.revoked ? '#333' : 'rgba(249,226,175,0.25)'}`,
+                borderRadius: 6, opacity: s.revoked ? 0.5 : 1,
+              }}>
+                <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 4, color: '#89b4fa' }}>
+                  {s.url}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.6, display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <span>{s.revoked ? '已撤销' : s.expires_at ? `到期：${new Date(s.expires_at).toLocaleString('zh-CN')}` : '永久有效'}</span>
+                  {!s.revoked && (
+                    <>
+                      <button onClick={() => void copyText(s.url).then(ok => { if (ok) void modalAlert('已复制！') })} style={miniBtn}>复制</button>
+                      <button
+                        onClick={async () => {
+                          if (!(await modalConfirm('撤销此分享链接？', { danger: true }))) return
+                          await api.revokeNodeShare(s.id).catch(e => setErr((e as Error).message))
+                          void loadShares(shareModal.nodeId)
+                        }}
+                        style={{ ...miniBtn, color: '#f38ba8' }}
+                      >撤销</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* P18-C：节点模板选择器 */}
+      {templateModalOpen && (
+        <div style={modalOverlay} onClick={() => setTemplateModalOpen(false)}>
+          <div style={{ ...modalBox, minWidth: 460 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <strong style={{ color: '#cba6f7' }}>📋 选择节点模板</strong>
+              <button onClick={() => setTemplateModalOpen(false)} style={miniBtn}>✕</button>
+            </div>
+            {templatesBusy ? (
+              <div style={{ fontSize: 13, opacity: 0.5 }}>加载中…</div>
+            ) : templates.length === 0 ? (
+              <div style={{ fontSize: 13, opacity: 0.5 }}>暂无模板</div>
+            ) : templates.map(t => (
+              <div key={t.id} style={{
+                padding: '10px 12px', marginBottom: 8,
+                background: 'rgba(203,166,247,0.06)',
+                border: '1px solid rgba(203,166,247,0.2)',
+                borderRadius: 6, cursor: 'pointer',
+              }}
+                onClick={() => void createFromTemplate(t.id)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: 13 }}>{t.name}</strong>
+                  {t.is_system && <span style={{ fontSize: 10, color: '#cba6f7', opacity: 0.7 }}>系统</span>}
+                </div>
+                {t.description && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>{t.description}</div>}
+                <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>{t.content.slice(0, 80)}{t.content.length > 80 ? '…' : ''}</div>
+                {t.tags.length > 0 && (
+                  <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
+                    {t.tags.map(tag => <span key={tag} style={tagChip}>{tag}</span>)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+// P18 modal styles
+const modalOverlay: React.CSSProperties = {
+  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  zIndex: 500,
+}
+const modalBox: React.CSSProperties = {
+  background: '#111827', border: '1px solid rgba(255,255,255,0.15)',
+  borderRadius: 10, padding: 24, maxHeight: '80vh', overflowY: 'auto',
+  minWidth: 320, maxWidth: 560,
 }
 
 // P13-C：节点标签编辑器组件
