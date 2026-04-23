@@ -78,6 +78,10 @@ export function Home({ onLogout }: Props) {
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
   const [templates, setTemplates] = useState<NodeTemplate[]>([])
   const [templatesBusy, setTemplatesBusy] = useState(false)
+  const [tplCreateOpen, setTplCreateOpen] = useState(false)
+  const [tplForm, setTplForm] = useState({ name: '', content: '', description: '', tags: '' })
+  const [tplCreateBusy, setTplCreateBusy] = useState(false)
+  const [tplPreviewId, setTplPreviewId] = useState<string | null>(null)
   // P18-D：图谱快照
   const [snapshotPanelOpen, setSnapshotPanelOpen] = useState(false)
   const [snapshots, setSnapshots] = useState<LakeSnapshot[]>([])
@@ -1397,38 +1401,130 @@ export function Home({ onLogout }: Props) {
       )}
       {/* P18-C：节点模板选择器 */}
       {templateModalOpen && (
-        <div style={modalOverlay} onClick={() => setTemplateModalOpen(false)}>
-          <div style={{ ...modalBox, minWidth: 460 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <strong style={{ color: '#cba6f7' }}>📋 选择节点模板</strong>
-              <button onClick={() => setTemplateModalOpen(false)} style={miniBtn}>✕</button>
-            </div>
-            {templatesBusy ? (
-              <div style={{ fontSize: 13, opacity: 0.5 }}>加载中…</div>
-            ) : templates.length === 0 ? (
-              <div style={{ fontSize: 13, opacity: 0.5 }}>暂无模板</div>
-            ) : templates.map(t => (
-              <div key={t.id} style={{
-                padding: '10px 12px', marginBottom: 8,
-                background: 'rgba(203,166,247,0.06)',
-                border: '1px solid rgba(203,166,247,0.2)',
-                borderRadius: 6, cursor: 'pointer',
-              }}
-                onClick={() => void createFromTemplate(t.id)}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong style={{ fontSize: 13 }}>{t.name}</strong>
-                  {t.is_system && <span style={{ fontSize: 10, color: '#cba6f7', opacity: 0.7 }}>系统</span>}
-                </div>
-                {t.description && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>{t.description}</div>}
-                <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>{t.content.slice(0, 80)}{t.content.length > 80 ? '…' : ''}</div>
-                {t.tags.length > 0 && (
-                  <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
-                    {t.tags.map(tag => <span key={tag} style={tagChip}>{tag}</span>)}
-                  </div>
-                )}
+        <div style={modalOverlay} onClick={() => { setTemplateModalOpen(false); setTplCreateOpen(false); setTplPreviewId(null) }}>
+          <div style={{ ...modalBox, minWidth: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            {/* 标题栏 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
+              <strong style={{ color: '#cba6f7' }}>📋 节点模板库</strong>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => { setTplCreateOpen(v => !v); setTplPreviewId(null) }}
+                  style={{ ...miniBtn, color: tplCreateOpen ? '#cba6f7' : '#89b4fa' }}
+                >
+                  {tplCreateOpen ? '取消新建' : '+ 新建模板'}
+                </button>
+                <button onClick={() => { setTemplateModalOpen(false); setTplCreateOpen(false); setTplPreviewId(null) }} style={miniBtn}>✕</button>
               </div>
-            ))}
+            </div>
+
+            {/* 新建表单 */}
+            {tplCreateOpen && (
+              <div style={{ padding: '12px 14px', background: 'rgba(203,166,247,0.06)', border: '1px solid rgba(203,166,247,0.25)', borderRadius: 8, marginBottom: 12, flexShrink: 0 }}>
+                <div style={{ fontSize: 12, color: '#cba6f7', marginBottom: 8, fontWeight: 600 }}>新建自定义模板</div>
+                <input
+                  placeholder="模板名称（必填）"
+                  value={tplForm.name}
+                  onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))}
+                  style={{ ...tplInput, marginBottom: 6 }}
+                />
+                <textarea
+                  placeholder="模板内容（必填）"
+                  value={tplForm.content}
+                  onChange={e => setTplForm(f => ({ ...f, content: e.target.value }))}
+                  rows={4}
+                  style={{ ...tplInput, resize: 'vertical' }}
+                />
+                <input
+                  placeholder="描述（选填）"
+                  value={tplForm.description}
+                  onChange={e => setTplForm(f => ({ ...f, description: e.target.value }))}
+                  style={{ ...tplInput, marginTop: 6 }}
+                />
+                <input
+                  placeholder="标签，逗号分隔（选填）"
+                  value={tplForm.tags}
+                  onChange={e => setTplForm(f => ({ ...f, tags: e.target.value }))}
+                  style={{ ...tplInput, marginTop: 6 }}
+                />
+                <button
+                  disabled={tplCreateBusy || !tplForm.name.trim() || !tplForm.content.trim()}
+                  onClick={async () => {
+                    setTplCreateBusy(true)
+                    try {
+                      const tags = tplForm.tags.split(',').map(s => s.trim()).filter(Boolean)
+                      await api.createTemplate(tplForm.name.trim(), tplForm.content.trim(), tplForm.description.trim() || undefined, tags.length ? tags : undefined)
+                      setTplForm({ name: '', content: '', description: '', tags: '' })
+                      setTplCreateOpen(false)
+                      await api.listTemplates().then(r => setTemplates(r.templates))
+                    } catch (e) { void modalAlert((e as Error).message, { title: '创建失败' }) }
+                    finally { setTplCreateBusy(false) }
+                  }}
+                  style={{ ...miniBtn, marginTop: 8, color: '#cba6f7' }}
+                >
+                  {tplCreateBusy ? '保存中…' : '保存模板'}
+                </button>
+              </div>
+            )}
+
+            {/* 模板列表 */}
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {templatesBusy ? (
+                <div style={{ fontSize: 13, opacity: 0.5 }}>加载中…</div>
+              ) : templates.length === 0 ? (
+                <div style={{ fontSize: 13, opacity: 0.5 }}>暂无模板，点击「+ 新建模板」创建</div>
+              ) : templates.map(t => (
+                <div key={t.id} style={{
+                  padding: '10px 12px', marginBottom: 8,
+                  background: 'rgba(203,166,247,0.06)',
+                  border: `1px solid ${tplPreviewId === t.id ? 'rgba(203,166,247,0.5)' : 'rgba(203,166,247,0.2)'}`,
+                  borderRadius: 6,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: 13, cursor: 'pointer', flex: 1 }} onClick={() => setTplPreviewId(tplPreviewId === t.id ? null : t.id)}>{t.name}</strong>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {t.is_system && <span style={{ fontSize: 10, color: '#cba6f7', opacity: 0.7 }}>系统</span>}
+                      <button
+                        onClick={() => void createFromTemplate(t.id)}
+                        style={{ ...miniBtn, color: '#a6e3a1', fontSize: 11, padding: '2px 8px' }}
+                      >使用</button>
+                      {!t.is_system && (
+                        <button
+                          onClick={async () => {
+                            if (!await modalConfirm(`确认删除「${t.name}」？`, { title: '删除模板' })) return
+                            try {
+                              await api.deleteTemplate(t.id)
+                              setTemplates(prev => prev.filter(x => x.id !== t.id))
+                            } catch (e) { void modalAlert((e as Error).message, { title: '删除失败' }) }
+                          }}
+                          style={{ ...miniBtn, color: '#f38ba8', fontSize: 11, padding: '2px 6px' }}
+                        >删</button>
+                      )}
+                    </div>
+                  </div>
+                  {t.description && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>{t.description}</div>}
+
+                  {/* 内容预览 —— 点击模板名展开/折叠 */}
+                  {tplPreviewId === t.id ? (
+                    <div style={{
+                      marginTop: 8, fontSize: 12, lineHeight: 1.6,
+                      background: 'rgba(0,0,0,0.25)', borderRadius: 4, padding: '8px 10px',
+                      whiteSpace: 'pre-wrap', maxHeight: 200, overflowY: 'auto',
+                      color: '#cdd6f4', wordBreak: 'break-word',
+                    }}>{t.content}</div>
+                  ) : (
+                    <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4, cursor: 'pointer' }} onClick={() => setTplPreviewId(t.id)}>
+                      {t.content.slice(0, 120)}{t.content.length > 120 ? '… 点击展开' : ''}
+                    </div>
+                  )}
+
+                  {t.tags.length > 0 && (
+                    <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {t.tags.map(tag => <span key={tag} style={tagChip}>{tag}</span>)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -1514,6 +1610,12 @@ const tagChipBtn: React.CSSProperties = {
   fontSize: 10, padding: '1px 6px', cursor: 'pointer',
   background: 'rgba(255,255,255,0.05)', color: '#cdd6f4',
   border: '1px solid #555', borderRadius: 10,
+}
+
+const tplInput: React.CSSProperties = {
+  width: '100%', background: '#0a1929', border: '1px solid rgba(203,166,247,0.3)',
+  borderRadius: 4, color: '#cdd6f4', padding: '6px 10px', fontSize: 12,
+  fontFamily: 'inherit', boxSizing: 'border-box',
 }
 
 function statusColor(s: string) {
