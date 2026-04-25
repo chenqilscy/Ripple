@@ -20,11 +20,11 @@
 
 实现位置：
 
-- 通用客户端：[internal/llm/openai_compat.go](backend-go/internal/llm/openai_compat.go)
-- 智谱专用：[internal/llm/zhipu.go](backend-go/internal/llm/zhipu.go)
-- Claude Code：[internal/llm/claude_code.go](backend-go/internal/llm/claude_code.go)（主线，env `RIPPLE_CLAUDE_CODE_ENABLED=true` 启用）
-- Claude Code 启动侦测：[internal/llm/claude_code_detect.go](backend-go/internal/llm/claude_code_detect.go)
-- 路由 + 注册：[internal/llm/router.go](backend-go/internal/llm/router.go) / [internal/llm/registry.go](backend-go/internal/llm/registry.go)
+- 通用客户端：[internal/llm/openai_compat.go](../../backend-go/internal/llm/openai_compat.go)
+- 智谱专用：[internal/llm/zhipu.go](../../backend-go/internal/llm/zhipu.go)
+- Claude Code：[internal/llm/claude_code.go](../../backend-go/internal/llm/claude_code.go)（主线，env `RIPPLE_CLAUDE_CODE_ENABLED=true` 启用）
+- Claude Code 启动侦测：[internal/llm/claude_code_detect.go](../../backend-go/internal/llm/claude_code_detect.go)
+- 路由 + 注册：[internal/llm/router.go](../../backend-go/internal/llm/router.go) / [internal/llm/registry.go](../../backend-go/internal/llm/registry.go)
 
 ---
 
@@ -91,13 +91,13 @@ RIPPLE_LLM_FALLBACK=true
 
 Claude Code Provider 已主线编译（移除 `claude_code` build tag），通过环境变量 `RIPPLE_CLAUDE_CODE_ENABLED=true` 启用，调用本机已安装的 `claude` CLI 完成生成。配额异常（`quota` / `rate limit` / `usage limit` / `exhausted`）会被 stderr 关键字识别并以独立错误返回，便于上层熔断。
 
-实现：[claude_code.go](backend-go/internal/llm/claude_code.go) · 注册：[registry.go](backend-go/internal/llm/registry.go) `case "claude-code"`。
+实现：[claude_code.go](../../backend-go/internal/llm/claude_code.go) · 注册：[registry.go](../../backend-go/internal/llm/registry.go) `case "claude-code"`。
 
 > 合规提示：Claude Code 个人订阅不得用于商业多租户复用；生产启用前请人工核对 Anthropic ToS，并务必配合 §4.5 的速率限制与配额监控。
 
 ### 4.2 启动侦测
 
-主线代码 [claude_code_detect.go](backend-go/internal/llm/claude_code_detect.go) 提供 `ProbeClaudeCodeCLI(ctx, path)`，启动时会：
+主线代码 [claude_code_detect.go](../../backend-go/internal/llm/claude_code_detect.go) 提供 `ProbeClaudeCodeCLI(ctx, path)`，启动时会：
 
 - `exec.LookPath("claude")` 解析绝对路径
 - 跑 `claude --version` 验证可用（3 秒超时）
@@ -129,7 +129,7 @@ $env:RIPPLE_CLAUDE_CODE_CLI=1
 go test ./internal/llm/... -run TestProbeClaudeCodeCLI_Real -v
 ```
 
-详见 [claude_code_detect_test.go](backend-go/internal/llm/claude_code_detect_test.go)。
+详见 [claude_code_detect_test.go](../../backend-go/internal/llm/claude_code_detect_test.go)。
 
 ### 4.5 安全红线 + 配额监控
 
@@ -186,7 +186,7 @@ if sp, ok := provider.(llm.StreamProvider); ok { /* stream */ }
 - 内部用 `golang.org/x/time/rate` 标准 token bucket
 - `Generate` / `GenerateStream` 调用前先 `limiter.Wait(ctx)`；ctx cancel 立即返回错误
 - `Name()` / `Supports()` 透传给 inner Provider，对 Router 透明
-- 单元测试：[rate_limit_test.go](backend-go/internal/llm/rate_limit_test.go) 覆盖无限速绕过、burst 不阻塞、耗尽后阻塞、ctx cancel 退出
+- 单元测试：[rate_limit_test.go](../../backend-go/internal/llm/rate_limit_test.go) 覆盖无限速绕过、burst 不阻塞、耗尽后阻塞、ctx cancel 退出
 
 ---
 

@@ -3,7 +3,7 @@
 **版本：** v1.0
 **日期：** 2026‑04‑21
 **适用对象：** AI 算法 / 后端
-**地位：** 升级 [D7 AI Prompt 工程规范](./D7-AI-Prompt工程规范.md)：从单次调用 → 多 Agent 编排。借鉴"青萍与马具"反思的红蓝军对抗模式。
+**地位：** 升级 [D7 AI Prompt 工程规范](./AI-Prompt工程规范.md)：从单次调用 → 多 Agent 编排。借鉴"青萍与马具"反思的红蓝军对抗模式。
 
 ---
 
@@ -100,7 +100,7 @@ sequenceDiagram
 
 ### 3.1 Weaver（织网者）
 
-System Prompt 沿用 [D7 AI Prompt 规范 §二](./D7-AI-Prompt工程规范.md)，但增加：
+System Prompt 沿用 [D7 AI Prompt 规范 §二](./AI-Prompt工程规范.md)，但增加：
 - 上下文注入：候选节点列表、湖泊主题、用户最近 5 个节点
 - 输出 schema：批量 JSON `[{target_id, relation_type, reasoning, strength}]`
 
@@ -189,7 +189,7 @@ def call_llm_with_schema(prompt: str, schema: dict, max_retries: int = 1) -> dic
 
 约束：
 - 失败重试上限 **1 次**；二次失败必须静默丢弃，不允许向前端推送脏数据
-- 校验失败计数纳入 [G6 Metrics](G6-可观测性与监控.md) `ripple_ai_schema_violations_total`
+- 校验失败计数纳入 [G6 Metrics](可观测性与监控.md) `ripple_ai_schema_violations_total`
 - 长期失败率 > 5% 触发 Prompt 调优工单
 
 ## 六、Token 预算与成本压缩方案
@@ -235,7 +235,7 @@ def call_llm_with_schema(prompt: str, schema: dict, max_retries: int = 1) -> dic
 
 ### 6.5 Token 成本看板
 
-实时统计按 user/lake 维度归集，超阈值告警。详见 [G6 §四AI 指标](G6-可观测性与监控.md)。
+实时统计按 user/lake 维度归集，超阈值告警。详见 [G6 §四AI 指标](可观测性与监控.md)。
 
 ---
 
@@ -283,16 +283,16 @@ def call_llm_with_schema(prompt: str, schema: dict, max_retries: int = 1) -> dic
 }
 ```
 
-接 OpenTelemetry，看板见 [G6](./G6-可观测性与监控.md)。
+接 OpenTelemetry，看板见 [G6](./可观测性与监控.md)。
 
 ---
 
 ## 九、与其他文档的关系
 
-- 单次 Prompt 模板：[D7 AI Prompt 工程规范](./D7-AI-Prompt工程规范.md)
-- 节点状态触发：[G1 §三状态机](./G1-数据模型与权限设计.md)
-- 凝露事件源：[G2 §五](./G2-云霓-灵感采集模块设计.md)
-- 文档炸开：[G4 §四](./G4-文件存储与导入流水线.md)
+- 单次 Prompt 模板：[D7 AI Prompt 工程规范](./AI-Prompt工程规范.md)
+- 节点状态触发：[G1 §三状态机](./数据模型与权限设计.md)
+- 凝露事件源：[G2 §五](./云霓-灵感采集模块设计.md)
+- 文档炸开：[G4 §四](./文件存储与导入流水线.md)
 - 降级故事：[场景 9 潮汐异常](../user-story/story.md#场景九潮汐异常--ai-罢工时的体面)
 
 ---

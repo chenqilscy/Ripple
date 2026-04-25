@@ -11,16 +11,16 @@
 
 | # | 场景 | 主角 | 覆盖模块 | 关键价值 | 对应设计文档 |
 | :- | :--- | :--- | :--- | :--- | :--- |
-| 1 | 自由撰稿人的"灵感自救" | 阿树 | 云霓→造浪池→决堤口 | 碎片到成品 | [G2](../system-design/G2-云霓-灵感采集模块设计.md) · [D1](../system-design/D1-造浪池-Delta-View.md) · [G3](../system-design/G3-冰山-资产沉淀模块设计.md) |
-| 2 | 产品经理的"跨湖协作" | Lisa | 湖泊→跨湖连通→冰山 | 跨团队协作 | [G1](../system-design/G1-数据模型与权限设计.md) · [D5](../system-design/D5-多人实时协作.md) · [D6](../system-design/D6-跨湖连通设计.md) |
-| 3 | 大学生的"论文破局" | 小张 | 造浪池→探源→冰山 | 文献织网 | [G4](../system-design/G4-文件存储与导入流水线.md) · [G5](../system-design/G5-AI服务编排-织网工作流.md) |
-| 4 | 编剧的"剧情编织" | 老王 | 造浪池→分流/合流 | 非线性创作 | [D2](../system-design/D2-节点与连线状态机规范.md) · [G5](../system-design/G5-AI服务编排-织网工作流.md) |
-| 5 | **首次使用 · 一片湖的诞生** | 林夕 | 注册→引导→投石→固形 | 冷启动 onboarding | [G2](../system-design/G2-云霓-灵感采集模块设计.md) · [D1](../system-design/D1-造浪池-Delta-View.md) |
-| 6 | **移动端云霓 · 通勤捕梦** | 阿树 | 云霓 App→离线→凝露→同步 | 碎片采集闭环 | [G2](../system-design/G2-云霓-灵感采集模块设计.md) |
-| 7 | **误删恢复 · 蒸发并非永逝** | Lisa | 蒸发→迷雾区→还原 | 数据安全底线 | [G1 §三](../system-design/G1-数据模型与权限设计.md) |
-| 8 | **抛饵 · 让世界看见涟漪** | 老王 | 决堤口→公开链接→社区→回流 | 公开分享与传播 | [G3 §六](../system-design/G3-冰山-资产沉淀模块设计.md) · [G7](../system-design/G7-安全与合规.md) |
-| 9 | **潮汐异常 · AI 罢工时的体面** | 小张 | AI 降级→本地 fallback→恢复 | 降级体验 | [G5 §五·补](../system-design/G5-AI服务编排-织网工作流.md) · [G6](../system-design/G6-可观测性与监控.md) · [G11](../system-design/G11-可靠性与容灾.md) |
-| 10 | **冰山再用 · 老酒装新瓶** | 阿树 | 冰山→提取→引流→新湖 | 资产复用 | [G3 §六](../system-design/G3-冰山-资产沉淀模块设计.md) · [D6](../system-design/D6-跨湖连通设计.md) |
+| 1 | 自由撰稿人的"灵感自救" | 阿树 | 云霓→造浪池→决堤口 | 碎片到成品 | [G2](../system-design/云霓-灵感采集模块设计.md) · [D1](../system-design/造浪池-交互视图设计.md) · [G3](../system-design/冰山-资产沉淀模块设计.md) |
+| 2 | 产品经理的"跨湖协作" | Lisa | 湖泊→跨湖连通→冰山 | 跨团队协作 | [G1](../system-design/数据模型与权限设计.md) · [D5](../system-design/多人实时协作设计.md) · [D6](../system-design/跨湖连通设计.md) |
+| 3 | 大学生的"论文破局" | 小张 | 造浪池→探源→冰山 | 文献织网 | [G4](../system-design/文件存储与导入流水线.md) · [G5](../system-design/AI服务编排-织网工作流.md) |
+| 4 | 编剧的"剧情编织" | 老王 | 造浪池→分流/合流 | 非线性创作 | [D2](../system-design/节点与连线状态机规范.md) · [G5](../system-design/AI服务编排-织网工作流.md) |
+| 5 | **首次使用 · 一片湖的诞生** | 林夕 | 注册→引导→投石→固形 | 冷启动 onboarding | [G2](../system-design/云霓-灵感采集模块设计.md) · [D1](../system-design/造浪池-交互视图设计.md) |
+| 6 | **移动端云霓 · 通勤捕梦** | 阿树 | 云霓 App→离线→凝露→同步 | 碎片采集闭环 | [G2](../system-design/云霓-灵感采集模块设计.md) |
+| 7 | **误删恢复 · 蒸发并非永逝** | Lisa | 蒸发→迷雾区→还原 | 数据安全底线 | [G1 §三](../system-design/数据模型与权限设计.md) |
+| 8 | **抛饵 · 让世界看见涟漪** | 老王 | 决堤口→公开链接→社区→回流 | 公开分享与传播 | [G3 §六](../system-design/冰山-资产沉淀模块设计.md) · [G7](../system-design/安全与合规.md) |
+| 9 | **潮汐异常 · AI 罢工时的体面** | 小张 | AI 降级→本地 fallback→恢复 | 降级体验 | [G5 §五·补](../system-design/AI服务编排-织网工作流.md) · [G6](../system-design/可观测性与监控.md) · [G11](../system-design/可靠性与容灾.md) |
+| 10 | **冰山再用 · 老酒装新瓶** | 阿树 | 冰山→提取→引流→新湖 | 资产复用 | [G3 §六](../system-design/冰山-资产沉淀模块设计.md) · [D6](../system-design/跨湖连通设计.md) |
 
 ---
 
@@ -264,12 +264,12 @@ Lisa 创建了一个名为**「天枢」**（隐喻北斗七星之首）的**湖
 
 | 故事 | 反推出的必备能力 | 对应设计文档章节 |
 | :--- | :--- | :--- |
-| 5 onboarding | 本地 fallback 词库、首屏极简化 | [D1 §二交互](../system-design/D1-造浪池-Delta-View.md) · [G5 §6.3 本地 Embedding](../system-design/G5-AI服务编排-织网工作流.md) |
-| 6 移动端云霓 | 离线队列、凝露状态机、TTL 自动蒸发、跨端同步 | [G2 §二~§五](../system-design/G2-云霓-灵感采集模块设计.md) |
-| 7 误删恢复 | 软删 + 30 天 TTL、迷雾区 UI、连边一并恢复、跨湖通知 | [G1 §三状态机](../system-design/G1-数据模型与权限设计.md) · [D1 ☰菜单](../system-design/D1-造浪池-Delta-View.md) |
-| 8 公开分享 | 朦胧渲染模式、漂流瓶系统、链接三件套、内容审核 | [G3 §六决堤口](../system-design/G3-冰山-资产沉淀模块设计.md) · [G7 §5.4/§六](../system-design/G7-安全与合规.md) |
-| 9 AI 降级 | 三态服务、追溯补建、隐喻化错误信息 | [G5 §五·补](../system-design/G5-AI服务编排-织网工作流.md) · [G6 §四](../system-design/G6-可观测性与监控.md) · [G11](../system-design/G11-可靠性与容灾.md) |
-| 10 冰山再用 | REFERENCES 跨冰山、三角洲选择性导出、游魂节点 | [G3 §四灵感三角洲](../system-design/G3-冰山-资产沉淀模块设计.md) · [D6 §三 GHOST](../system-design/D6-跨湖连通设计.md) |
+| 5 onboarding | 本地 fallback 词库、首屏极简化 | [D1 §二交互](../system-design/造浪池-交互视图设计.md) · [G5 §6.3 本地 Embedding](../system-design/AI服务编排-织网工作流.md) |
+| 6 移动端云霓 | 离线队列、凝露状态机、TTL 自动蒸发、跨端同步 | [G2 §二~§五](../system-design/云霓-灵感采集模块设计.md) |
+| 7 误删恢复 | 软删 + 30 天 TTL、迷雾区 UI、连边一并恢复、跨湖通知 | [G1 §三状态机](../system-design/数据模型与权限设计.md) · [D1 ☰菜单](../system-design/造浪池-交互视图设计.md) |
+| 8 公开分享 | 朦胧渲染模式、漂流瓶系统、链接三件套、内容审核 | [G3 §六决堤口](../system-design/冰山-资产沉淀模块设计.md) · [G7 §5.4/§六](../system-design/安全与合规.md) |
+| 9 AI 降级 | 三态服务、追溯补建、隐喻化错误信息 | [G5 §五·补](../system-design/AI服务编排-织网工作流.md) · [G6 §四](../system-design/可观测性与监控.md) · [G11](../system-design/可靠性与容灾.md) |
+| 10 冰山再用 | REFERENCES 跨冰山、三角洲选择性导出、游魂节点 | [G3 §四灵感三角洲](../system-design/冰山-资产沉淀模块设计.md) · [D6 §三 GHOST](../system-design/跨湖连通设计.md) |
 
 > **本清单是 G1 / G2 / G3 / G5 / G7 设计文档的"验收标尺"**——任何设计文档须能完整支撑以上故事，否则视为不通过。
 
@@ -533,4 +533,6 @@ Lisa 创建了一个名为**「天枢」**（隐喻北斗七星之首）的**湖
 
 **文档状态：** 待 PM 验收
 **下一步：** 由老板裁决进入哪几份"待建"设计文档（参见 [00-设计缺失分析与路线图](../system-design/00-设计缺失分析与路线图.md)）。
+
+
 
