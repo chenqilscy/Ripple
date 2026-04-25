@@ -2,7 +2,7 @@
 
 > 把"灵感捕捉、织网、沉淀、分享"设计成**水的循环**的 AI 创作系统。
 
-**当前进度：M2 已收官（2025-Q4）** — 多人实时协作（Lake/Node/Edge + 邀请 + Presence + 节点版本）+ AI 造云（多 Provider 路由 + Claude Code 主线接入 + SSE 流式 + 速率限制） + 前端三件套 UI（F2/F3/F4）已上线。M3-S1 起：Space 工作空间 + 配额。
+**当前进度：M1~M11 已完成（2026-Q2）** — 已覆盖协作、AI 编织、空间与权限、通知、组织、模板、分享、Three.js 动效与部署链路；当前进入 **Phase 12 候选任务评估与收敛**。
 
 ---
 
@@ -64,7 +64,7 @@ npm run dev
 - spaces / space_members 表 + Space CRUD + 成员管理（OWNER/EDITOR/VIEWER）
 - M3-S2 起：PERMA 凝结 / 反馈事件 / 用户偏好画像
 
-完整路线见 [M3 设计白皮书](docs/system-design/M3-设计白皮书.md)。
+完整路线见 [M3 设计白皮书](docs/system-design/设计白皮书-M3.md)。
 
 ---
 
@@ -80,8 +80,8 @@ docs/
     ├── 系统约束规约.md                       硬约束（技术栈/版本/安全）
     ├── 约束变更日志.md                       重大决策记录
     ├── 自学习日志.md                         代理沉淀
-    ├── M2-收官总结.md                        M2 全交付摘要
-    ├── M3-设计白皮书.md                      M3 5 sprints 蓝图
+    ├── 收官总结-M2.md                        M2 全交付摘要
+    ├── 设计白皮书-M3.md                      M3 5 sprints 蓝图
     ├── 技术债清单.md                         TD-001..TD-013（含已偿还）
     ├── LLM-Provider-接入手册.md              新增 provider 步骤 / Claude Code 启用 / 流式 / 速率限制
     └── ...                                   其它专题（架构、Prompt 工程、动效引擎等）

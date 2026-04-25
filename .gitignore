@@ -46,3 +46,4 @@ logs/
 # Go binaries
 backend-go/server.exe
 backend-go/*.exe
+backend-go/bin/*.exe

@@ -1,7 +1,7 @@
 # Ripple 后端 · Go 实现
 
 > **状态**：骨架预览（占位）。等待老板提供中间件信息后启动正式实现。
-> **参考**：`docs/system-design/M1-Python-五轮审查报告.md` §Go 重写 12 项必做改进
+> **参考**：`docs/system-design/Python-五轮审查报告.md` §Go 重写 12 项必做改进
 
 ## 目录结构（计划）
 
