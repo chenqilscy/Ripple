@@ -1,6 +1,6 @@
 -- Ripple PG · Lake Invites (M2-F2)
 -- 用途：湖主/写者签发邀请 token，受邀者凭 token 加入。
--- 约束规约：docs/system-design/M2-路线图.md §F2
+-- 约束规约：docs/system-design/路线图-M2.md §F2
 
 BEGIN;
 

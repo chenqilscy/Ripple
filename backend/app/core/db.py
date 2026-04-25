@@ -1,6 +1,6 @@
 """数据库连接 · Neo4j + PostgreSQL + Redis
 
-实现参考：docs/system-design/G1-数据模型与权限设计.md
+实现参考：docs/system-design/数据模型与权限设计.md
 """
 
 from collections.abc import AsyncIterator

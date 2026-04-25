@@ -1,4 +1,4 @@
-"""JWT 鉴权 · 实现参考 G7-安全与合规.md"""
+"""JWT 鉴权 · 实现参考 安全与合规.md"""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any

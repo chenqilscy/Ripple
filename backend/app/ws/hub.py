@@ -1,4 +1,4 @@
-"""WebSocket Hub · 按湖分频道广播 · 参考 D5-多人实时协作.md"""
+"""WebSocket Hub · 按湖分频道广播 · 参考 多人实时协作设计.md"""
 
 from collections import defaultdict
 
