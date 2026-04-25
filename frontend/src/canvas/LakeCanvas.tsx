@@ -3,7 +3,7 @@ import * as THREE from 'three'
 
 /**
  * 湖面画布 · Three.js 最小实现
- * 参考 D1-造浪池-Delta-View.md + D3-流体动效引擎-WebGL.md
+ * 参考 造浪池-交互视图设计.md + 流体动效引擎-WebGL.md
  * M1：平面 + 鼠标涟漪；M2 接入 Perlin Noise 流场 + MeshLine 粒子流
  */
 export function LakeCanvas() {
@@ -81,3 +81,4 @@ export function LakeCanvas() {
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
 }
+
