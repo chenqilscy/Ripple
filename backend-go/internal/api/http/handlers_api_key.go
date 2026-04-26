@@ -76,10 +76,12 @@ func (h *APIKeyHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// rawKey 只返回一次，后端不再可重建
+	// 同时返回 raw_key（前端契约）和 key（旧字段，向后兼容）。
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":         key.ID,
 		"name":       key.Name,
-		"key":        rawKey, // only shown once
+		"raw_key":    rawKey, // only shown once
+		"key":        rawKey, // 兼容旧字段
 		"key_prefix": key.KeyPrefix,
 		"scopes":     key.Scopes,
 		"expires_at": key.ExpiresAt,
