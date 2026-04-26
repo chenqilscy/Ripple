@@ -445,7 +445,7 @@ func escapeLuceneQuery(q string) string {
 
 // --- 批量导入（P12-A）---
 
-const maxBatchImport = 100
+const maxBatchImport = 1000
 const maxNodeContentRunes = 10000
 
 // BatchImportItem 单个批量导入项。
