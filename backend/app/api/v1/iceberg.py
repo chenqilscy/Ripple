@@ -1,4 +1,4 @@
-"""冰山 (Iceberg) API 骨架 · 参考 G3-冰山-资产沉淀模块设计.md"""
+"""冰山 (Iceberg) API 骨架 · 参考 冰山-资产沉淀模块设计.md"""
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel

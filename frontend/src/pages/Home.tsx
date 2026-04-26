@@ -620,8 +620,9 @@ export function Home({ onLogout }: Props) {
       if (ttlIn === null) return
       const ttl = ttlIn.trim() ? parseInt(ttlIn.trim(), 10) : undefined
       const share = await api.createNodeShare(nodeId, ttl)
-      const ok = await copyText(share.url)
-      await modalAlert(`分享链接已创建\n\n${share.url}\n\n${ok ? '（已复制到剪贴板）' : '（请手动复制链接）'}`)
+      const publicURL = toPublicShareURL(share)
+      const ok = await copyText(publicURL)
+      await modalAlert(`分享链接已创建\n\n${publicURL}\n\n${ok ? '（已复制到剪贴板）' : '（请手动复制链接）'}`)
       void loadShares(nodeId)
     } catch (e) { setErr((e as Error).message) }
   }
@@ -1376,13 +1377,13 @@ export function Home({ onLogout }: Props) {
                 borderRadius: 6, opacity: s.revoked ? 0.5 : 1,
               }}>
                 <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 4, color: '#89b4fa' }}>
-                  {s.url}
+                  {toPublicShareURL(s)}
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.6, display: 'flex', gap: 12, alignItems: 'center' }}>
                   <span>{s.revoked ? '已撤销' : s.expires_at ? `到期：${new Date(s.expires_at).toLocaleString('zh-CN')}` : '永久有效'}</span>
                   {!s.revoked && (
                     <>
-                      <button onClick={() => void copyText(s.url).then(ok => { if (ok) void modalAlert('已复制！') })} style={miniBtn}>复制</button>
+                      <button onClick={() => void copyText(toPublicShareURL(s)).then(ok => { if (ok) void modalAlert('已复制！') })} style={miniBtn}>复制</button>
                       <button
                         onClick={async () => {
                           if (!(await modalConfirm('撤销此分享链接？', { danger: true }))) return
@@ -1446,6 +1447,19 @@ export function Home({ onLogout }: Props) {
                   onChange={e => setTplForm(f => ({ ...f, tags: e.target.value }))}
                   style={{ ...tplInput, marginTop: 6 }}
                 />
+                {tplForm.content.trim() && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>内容预览</div>
+                    <div style={{
+                      marginTop: 4, fontSize: 12, lineHeight: 1.6,
+                      background: 'rgba(0,0,0,0.25)', borderRadius: 4, padding: '8px 10px',
+                      whiteSpace: 'pre-wrap', maxHeight: 160, overflowY: 'auto',
+                      color: '#cdd6f4', wordBreak: 'break-word',
+                    }}>
+                      {tplForm.content}
+                    </div>
+                  </div>
+                )}
                 <button
                   disabled={tplCreateBusy || !tplForm.name.trim() || !tplForm.content.trim()}
                   onClick={async () => {
@@ -1483,6 +1497,10 @@ export function Home({ onLogout }: Props) {
                     <strong style={{ fontSize: 13, cursor: 'pointer', flex: 1 }} onClick={() => setTplPreviewId(tplPreviewId === t.id ? null : t.id)}>{t.name}</strong>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                       {t.is_system && <span style={{ fontSize: 10, color: '#cba6f7', opacity: 0.7 }}>系统</span>}
+                      <button
+                        onClick={() => setTplPreviewId(tplPreviewId === t.id ? null : t.id)}
+                        style={{ ...miniBtn, color: '#89b4fa', fontSize: 11, padding: '2px 6px' }}
+                      >{tplPreviewId === t.id ? '收起' : '预览'}</button>
                       <button
                         onClick={() => void createFromTemplate(t.id)}
                         style={{ ...miniBtn, color: '#a6e3a1', fontSize: 11, padding: '2px 8px' }}
@@ -1623,6 +1641,10 @@ function statusColor(s: string) {
 }
 function stateColor(s: string) {
   return ({ MIST: '#9ec5ee', DROP: '#52c41a', FROZEN: '#9bb', VAPOR: '#777', ERASED: '#444', GHOST: '#444' } as const)[s as 'MIST'] ?? '#888'
+}
+
+function toPublicShareURL(share: Pick<NodeShare, 'token'>): string {
+  return `${window.location.origin}/share/${encodeURIComponent(share.token)}`
 }
 
 const layout: React.CSSProperties = {

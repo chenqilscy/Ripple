@@ -1,4 +1,4 @@
-"""API v1 路由聚合 · 参考 D4-API网关设计.md"""
+"""API v1 路由聚合 · 参考 API网关设计.md"""
 
 from fastapi import APIRouter
 

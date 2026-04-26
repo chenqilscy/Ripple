@@ -1,5 +1,5 @@
 -- M3-S1: spaces + space_members
--- 引用：docs/system-design/M3-设计白皮书.md §2.1
+-- 引用：docs/system-design/设计白皮书-M3.md §2.1
 -- Lake↔Space 绑定留至 S1.5（涉及 Neo4j 端，单独 PR）
 
 BEGIN;

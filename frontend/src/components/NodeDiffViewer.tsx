@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { NodeRevision } from '../api/types'
 
 // -------- LCS 逐行 diff --------

@@ -48,6 +48,9 @@ export const api = {
             .then(t => { setToken(t.access_token); return t; });
     },
     logout() { setToken(null); },
+    me() {
+        return request('GET', '/api/v1/auth/me');
+    },
     // ---- Lakes ----
     listLakes(spaceId) {
         const q = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : '';
@@ -187,8 +190,183 @@ export const api = {
     attachmentURL(id) {
         return `${BASE}/api/v1/attachments/${id}`;
     },
+    // ---- API Keys (P10-A) ----
+    createAPIKey(name, scopes) {
+        return request('POST', '/api/v1/api_keys', { name, scopes: scopes ?? ['read_lake', 'read_node'] });
+    },
+    listAPIKeys() {
+        return request('GET', '/api/v1/api_keys');
+    },
+    revokeAPIKey(id) {
+        return request('DELETE', `/api/v1/api_keys/${id}`);
+    },
+    // ---- Audit Logs (P10-B) ----
+    listAuditLogs(resourceType, resourceId, limit = 50) {
+        const q = new URLSearchParams({ resource_type: resourceType, resource_id: resourceId, limit: String(limit) });
+        return request('GET', `/api/v1/audit_logs?${q}`);
+    },
+    // ---- Lake Members (P11-C) ----
+    listLakeMembers(lakeId) {
+        return request('GET', `/api/v1/lakes/${lakeId}/members`);
+    },
+    updateMemberRole(lakeId, userId, role) {
+        return request('PUT', `/api/v1/lakes/${lakeId}/members/${userId}/role`, { role });
+    },
+    removeLakeMember(lakeId, userId) {
+        return request('DELETE', `/api/v1/lakes/${lakeId}/members/${userId}`);
+    },
+    // ---- Full-text Search (P12-D) ----
+    searchNodes(q, lakeId, limit = 20) {
+        const params = new URLSearchParams({ q, lake_id: lakeId, limit: String(limit) });
+        return request('GET', `/api/v1/search?${params}`);
+    },
+    // ---- Batch Import (P12-A) ----
+    batchImportNodes(lakeId, nodes) {
+        return request('POST', `/api/v1/lakes/${lakeId}/nodes/batch`, { nodes });
+    },
+    // ---- Organizations (P12-C) ----
+    createOrg(name, slug, description) {
+        return request('POST', '/api/v1/organizations', { name, slug, description: description ?? '' });
+    },
+    listOrgs() {
+        return request('GET', '/api/v1/organizations');
+    },
+    getOrg(id) {
+        return request('GET', `/api/v1/organizations/${id}`);
+    },
+    listOrgMembers(orgId) {
+        return request('GET', `/api/v1/organizations/${orgId}/members`);
+    },
+    addOrgMember(orgId, userId, role) {
+        return request('POST', `/api/v1/organizations/${orgId}/members`, { user_id: userId, role });
+    },
+    updateOrgMemberRole(orgId, userId, role) {
+        return request('PATCH', `/api/v1/organizations/${orgId}/members/${userId}/role`, { role });
+    },
+    removeOrgMember(orgId, userId) {
+        return request('DELETE', `/api/v1/organizations/${orgId}/members/${userId}`);
+    },
+    // P13-A：湖归属组织
+    setLakeOrg(lakeId, orgId) {
+        return request('PATCH', `/api/v1/lakes/${lakeId}/org`, { org_id: orgId ?? '' });
+    },
+    listOrgLakes(orgId) {
+        return request('GET', `/api/v1/organizations/${orgId}/lakes`);
+    },
+    // P13-C：标签系统
+    getLakeTags(lakeId) {
+        return request('GET', `/api/v1/lakes/${lakeId}/tags`);
+    },
+    getNodeTags(nodeId) {
+        return request('GET', `/api/v1/nodes/${nodeId}/tags`);
+    },
+    setNodeTags(nodeId, tags) {
+        return request('PUT', `/api/v1/nodes/${nodeId}/tags`, { tags });
+    },
+    listNodesByTag(lakeId, tag) {
+        return request('GET', `/api/v1/lakes/${lakeId}/nodes/by_tag?tag=${encodeURIComponent(tag)}`);
+    },
+    // P13-D：内容导出
+    async exportLake(lakeId, format) {
+        const tok = getToken();
+        const resp = await fetch(`${BASE}/api/v1/lakes/${lakeId}/export?format=${format}`, {
+            headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+        });
+        if (!resp.ok)
+            throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lake-${lakeId}.${format === 'json' ? 'json' : 'md'}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    },
+    // P13-E：导入外部内容
+    async importLake(lakeId, file) {
+        const tok = getToken();
+        const form = new FormData();
+        form.append('file', file);
+        const resp = await fetch(`${BASE}/api/v1/lakes/${lakeId}/import`, {
+            method: 'POST',
+            headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+            body: form,
+        });
+        if (!resp.ok) {
+            const text = await resp.text().catch(() => '');
+            throw new Error(`HTTP ${resp.status}: ${text}`);
+        }
+        return resp.json();
+    },
+    // P14-C：节点批量操作
+    batchOperateNodes(lakeId, action, nodeIds) {
+        return request('POST', `/api/v1/lakes/${lakeId}/nodes/batch_op`, { action, node_ids: nodeIds });
+    },
+    // P16-B：AI 节点摘要
+    aiSummaryNode(nodeId) {
+        return request('POST', `/api/v1/nodes/${nodeId}/ai_summary`);
+    },
+    // P13-B：通知系统
+    listNotifications(limit = 20, before) {
+        const q = new URLSearchParams({ limit: String(limit) });
+        if (before !== undefined)
+            q.set('before', String(before));
+        return request('GET', `/api/v1/notifications?${q}`);
+    },
+    markNotificationRead(id) {
+        return request('POST', `/api/v1/notifications/${id}/read`);
+    },
+    markAllNotificationsRead() {
+        return request('POST', '/api/v1/notifications/read_all');
+    },
+    getUnreadNotificationCount() {
+        return request('GET', '/api/v1/notifications/unread_count');
+    },
     // ---- Weave Stream (SSE / M3 T4) ----
     // onEvent(eventName, payload) 回调；返回 abort 函数。
+    // ---- P18-A：节点关联推荐 ----
+    getRelatedNodes(nodeId, limit = 5) {
+        return request('GET', `/api/v1/nodes/${nodeId}/related?limit=${limit}`);
+    },
+    // ---- P18-C：节点模板库 ----
+    listTemplates() {
+        return request('GET', '/api/v1/templates');
+    },
+    createTemplate(name, content, description, tags) {
+        return request('POST', '/api/v1/templates', { name, content, description: description ?? '', tags: tags ?? [] });
+    },
+    deleteTemplate(id) {
+        return request('DELETE', `/api/v1/templates/${id}`);
+    },
+    createNodeFromTemplate(lakeId, template_id) {
+        return request('POST', `/api/v1/lakes/${lakeId}/nodes/from_template`, { template_id });
+    },
+    // ---- P18-D：图谱快照 ----
+    createSnapshot(lakeId, name, layout) {
+        return request('POST', `/api/v1/lakes/${lakeId}/snapshots`, { name, layout });
+    },
+    listSnapshots(lakeId) {
+        return request('GET', `/api/v1/lakes/${lakeId}/snapshots`);
+    },
+    deleteSnapshot(lakeId, snapshotId) {
+        return request('DELETE', `/api/v1/lakes/${lakeId}/snapshots/${snapshotId}`);
+    },
+    // ---- P18-B：节点外链分享 ----
+    createNodeShare(nodeId, ttl_hours) {
+        return request('POST', `/api/v1/nodes/${nodeId}/share`, ttl_hours ? { ttl_hours } : {});
+    },
+    listNodeShares(nodeId) {
+        return request('GET', `/api/v1/nodes/${nodeId}/shares`);
+    },
+    revokeNodeShare(id) {
+        return request('DELETE', `/api/v1/shares/${id}`);
+    },
+    // 公开访问（无鉴权）
+    getSharedNode(token) {
+        return request('GET', `/api/v1/share/${token}`);
+    },
     streamWeave(lakeID, prompt, onEvent) {
         const ctrl = new AbortController();
         const tok = getToken();

@@ -1,9 +1,9 @@
 """青萍 (Ripple) · FastAPI 应用入口
 
 实现参考：
-- docs/system-design/D0-技术架构总览.md
-- docs/system-design/D4-API网关设计.md
-- docs/system-design/D5-多人实时协作.md
+- docs/system-design/技术架构总览.md
+- docs/system-design/API网关设计.md
+- docs/system-design/多人实时协作设计.md
 - docs/MVP-范围与里程碑.md  §M1 骨架
 """
 
