@@ -18,8 +18,10 @@ function OrgMemberList({ org, currentUserId, onBack }) {
     const [error, setError] = useState(null);
     const [updating, setUpdating] = useState(null);
     const [addUserId, setAddUserId] = useState('');
+    const [addEmail, setAddEmail] = useState('');
     const [addRole, setAddRole] = useState('MEMBER');
     const [adding, setAdding] = useState(false);
+    const [addingEmail, setAddingEmail] = useState(false);
     // Lakes tab state
     const [lakes, setLakes] = useState([]);
     const [lakesLoading, setLakesLoading] = useState(false);
@@ -103,9 +105,28 @@ function OrgMemberList({ org, currentUserId, onBack }) {
             setAdding(false);
         }
     }, [org.id, addUserId, addRole, load]);
+    const handleAddByEmail = useCallback(async () => {
+        const email = addEmail.trim();
+        if (!email)
+            return;
+        setAddingEmail(true);
+        setError(null);
+        try {
+            await api.addOrgMemberByEmail(org.id, email, addRole);
+            setAddEmail('');
+            await load();
+        }
+        catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to invite by email');
+        }
+        finally {
+            setAddingEmail(false);
+        }
+    }, [org.id, addEmail, addRole, load]);
     return (_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 12 }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: 8 }, children: [_jsx("button", { onClick: onBack, style: btnStyle, children: "\u2190 Back" }), _jsx("span", { style: { color: '#c0d8f0', fontWeight: 600, fontSize: 14 }, children: org.name }), _jsx("button", { onClick: () => tab === 'members' ? void load() : void loadLakes(), disabled: loading || lakesLoading, style: { ...btnStyle, marginLeft: 'auto' }, children: (loading || lakesLoading) ? '...' : 'Refresh' })] }), error && _jsx(ErrorMsg, { children: error }), _jsxs("div", { style: { display: 'flex', gap: 6 }, children: [_jsx("button", { onClick: () => setTab('members'), style: { ...btnStyle, ...(tab === 'members' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }, children: "Members" }), _jsx("button", { onClick: () => setTab('lakes'), style: { ...btnStyle, ...(tab === 'lakes' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }, children: "Lakes" })] }), tab === 'members' && (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: [members.map(m => (_jsxs("div", { style: memberRowStyle, children: [_jsx("span", { style: { color: '#8ab0d0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: m.user_id }), isAdmin && m.role !== 'OWNER' && m.user_id !== currentUserId ? (_jsxs(_Fragment, { children: [_jsx("select", { value: m.role, disabled: updating === m.user_id, onChange: e => void handleRoleChange(m.user_id, e.target.value), style: selectStyle, children: INVITE_ROLE_OPTIONS.map(r => (_jsx("option", { value: r, children: r }, r))) }), _jsx("button", { disabled: updating === m.user_id, onClick: () => void handleRemove(m.user_id), style: { ...btnStyle, color: '#ff6b6b', borderColor: '#5a2222' }, children: "Remove" })] })) : (_jsx("span", { style: { color: ROLE_COLOR[m.role], fontSize: 11, padding: '2px 8px',
-                                            background: 'rgba(255,255,255,0.05)', borderRadius: 4 }, children: m.role }))] }, m.user_id))), members.length === 0 && !loading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "No members" }))] }), isAdmin && (_jsxs("div", { style: { display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }, children: [_jsx("input", { placeholder: "User ID to invite", value: addUserId, onChange: e => setAddUserId(e.target.value), onKeyDown: e => { if (e.key === 'Enter')
-                                    void handleAdd(); }, style: inputStyle }), _jsx("select", { value: addRole, onChange: e => setAddRole(e.target.value), style: selectStyle, children: INVITE_ROLE_OPTIONS.map(r => _jsx("option", { value: r, children: r }, r)) }), _jsx("button", { onClick: () => void handleAdd(), disabled: adding || !addUserId.trim(), style: btnStyle, children: adding ? '...' : 'Add' })] }))] })), tab === 'lakes' && (_jsxs(_Fragment, { children: [lakesError && _jsx(ErrorMsg, { children: lakesError }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: [lakes.map(l => (_jsxs("div", { style: memberRowStyle, children: [_jsx("span", { style: { color: '#c0d8f0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: l.name }), _jsxs("span", { style: { color: '#4a6a8e', fontSize: 10 }, children: [l.id.slice(0, 8), "\u2026"] })] }, l.id))), lakes.length === 0 && !lakesLoading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "No lakes linked to this organization" })), lakesLoading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "Loading\u2026" }))] })] }))] }));
+                                            background: 'rgba(255,255,255,0.05)', borderRadius: 4 }, children: m.role }))] }, m.user_id))), members.length === 0 && !loading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "No members" }))] }), isAdmin && (_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }, children: [_jsxs("div", { style: { display: 'flex', gap: 6, flexWrap: 'wrap' }, children: [_jsx("input", { placeholder: "User ID to invite", value: addUserId, onChange: e => setAddUserId(e.target.value), onKeyDown: e => { if (e.key === 'Enter')
+                                            void handleAdd(); }, style: inputStyle }), _jsx("select", { value: addRole, onChange: e => setAddRole(e.target.value), style: selectStyle, children: INVITE_ROLE_OPTIONS.map(r => _jsx("option", { value: r, children: r }, r)) }), _jsx("button", { onClick: () => void handleAdd(), disabled: adding || !addUserId.trim(), style: btnStyle, children: adding ? '...' : 'Add' })] }), _jsxs("div", { style: { display: 'flex', gap: 6, flexWrap: 'wrap' }, children: [_jsx("input", { type: "email", placeholder: "Email to invite", value: addEmail, onChange: e => setAddEmail(e.target.value), onKeyDown: e => { if (e.key === 'Enter')
+                                            void handleAddByEmail(); }, style: inputStyle }), _jsx("button", { onClick: () => void handleAddByEmail(), disabled: addingEmail || !addEmail.trim(), style: btnStyle, title: "Invite an already-registered user by email", children: addingEmail ? '...' : 'Invite by Email' })] })] }))] })), tab === 'lakes' && (_jsxs(_Fragment, { children: [lakesError && _jsx(ErrorMsg, { children: lakesError }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: [lakes.map(l => (_jsxs("div", { style: memberRowStyle, children: [_jsx("span", { style: { color: '#c0d8f0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: l.name }), _jsxs("span", { style: { color: '#4a6a8e', fontSize: 10 }, children: [l.id.slice(0, 8), "\u2026"] })] }, l.id))), lakes.length === 0 && !lakesLoading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "No lakes linked to this organization" })), lakesLoading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "Loading\u2026" }))] })] }))] }));
 }
 export default function OrgPanel({ currentUserId, onClose }) {
     const [orgs, setOrgs] = useState([]);

@@ -27,8 +27,10 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
   const [error, setError] = useState<string | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
   const [addUserId, setAddUserId] = useState('')
+  const [addEmail, setAddEmail] = useState('')
   const [addRole, setAddRole] = useState<OrgRole>('MEMBER')
   const [adding, setAdding] = useState(false)
+  const [addingEmail, setAddingEmail] = useState(false)
 
   // Lakes tab state
   const [lakes, setLakes] = useState<Lake[]>([])
@@ -109,6 +111,22 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
     }
   }, [org.id, addUserId, addRole, load])
 
+  const handleAddByEmail = useCallback(async () => {
+    const email = addEmail.trim()
+    if (!email) return
+    setAddingEmail(true)
+    setError(null)
+    try {
+      await api.addOrgMemberByEmail(org.id, email, addRole)
+      setAddEmail('')
+      await load()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to invite by email')
+    } finally {
+      setAddingEmail(false)
+    }
+  }, [org.id, addEmail, addRole, load])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -184,20 +202,40 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
           </div>
 
           {isAdmin && (
-            <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-              <input
-                placeholder="User ID to invite"
-                value={addUserId}
-                onChange={e => setAddUserId(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
-                style={inputStyle}
-              />
-              <select value={addRole} onChange={e => setAddRole(e.target.value as OrgRole)} style={selectStyle}>
-                {INVITE_ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-              <button onClick={() => void handleAdd()} disabled={adding || !addUserId.trim()} style={btnStyle}>
-                {adding ? '...' : 'Add'}
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <input
+                  placeholder="User ID to invite"
+                  value={addUserId}
+                  onChange={e => setAddUserId(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
+                  style={inputStyle}
+                />
+                <select value={addRole} onChange={e => setAddRole(e.target.value as OrgRole)} style={selectStyle}>
+                  {INVITE_ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <button onClick={() => void handleAdd()} disabled={adding || !addUserId.trim()} style={btnStyle}>
+                  {adding ? '...' : 'Add'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <input
+                  type="email"
+                  placeholder="Email to invite"
+                  value={addEmail}
+                  onChange={e => setAddEmail(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') void handleAddByEmail() }}
+                  style={inputStyle}
+                />
+                <button
+                  onClick={() => void handleAddByEmail()}
+                  disabled={addingEmail || !addEmail.trim()}
+                  style={btnStyle}
+                  title="Invite an already-registered user by email"
+                >
+                  {addingEmail ? '...' : 'Invite by Email'}
+                </button>
+              </div>
             </div>
           )}
         </>
