@@ -58,6 +58,8 @@ type Deps struct {
 	NodeShares    store.NodeShareRepository
 	// Memberships 用于快照权限校验；与 Lakes 配套注入。
 	Memberships   store.MembershipRepository
+	// Users 用于按 email 查找用户（P12-C Org by_email 邀请）。
+	Users         store.UserRepository
 }
 
 // NewRouter 装配 Chi 路由。
@@ -245,12 +247,13 @@ func NewRouter(d Deps) http.Handler {
 
 			// P12-C：组织
 			if d.Orgs != nil {
-				orgH := &OrgHandlers{Orgs: d.Orgs, Lakes: d.Lakes}
+				orgH := &OrgHandlers{Orgs: d.Orgs, Lakes: d.Lakes, Users: d.Users}
 				r.Post("/organizations", orgH.CreateOrg)
 				r.Get("/organizations", orgH.ListMyOrgs)
 				r.Get("/organizations/{id}", orgH.GetOrg)
 				r.Get("/organizations/{id}/members", orgH.ListMembers)
 				r.Post("/organizations/{id}/members", orgH.AddMember)
+				r.Post("/organizations/{id}/members/by_email", orgH.AddMemberByEmail)
 				r.Patch("/organizations/{id}/members/{userId}/role", orgH.UpdateMemberRole)
 				r.Delete("/organizations/{id}/members/{userId}", orgH.RemoveMember)
 				// P13-A：组织下的湖

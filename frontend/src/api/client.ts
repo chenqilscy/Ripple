@@ -263,6 +263,10 @@ export const api = {
   addOrgMember(orgId: string, userId: string, role: import('./types').OrgRole): Promise<void> {
     return request('POST', `/api/v1/organizations/${orgId}/members`, { user_id: userId, role })
   },
+  // P12-C：按 email 邀请已注册用户加入组织
+  addOrgMemberByEmail(orgId: string, email: string, role: import('./types').OrgRole): Promise<void> {
+    return request('POST', `/api/v1/organizations/${orgId}/members/by_email`, { email, role })
+  },
   updateOrgMemberRole(orgId: string, userId: string, role: import('./types').OrgRole): Promise<void> {
     return request('PATCH', `/api/v1/organizations/${orgId}/members/${userId}/role`, { role })
   },

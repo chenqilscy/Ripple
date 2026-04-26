@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
+	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -14,6 +16,7 @@ import (
 type OrgHandlers struct {
 	Orgs  *service.OrgService
 	Lakes *service.LakeService // P13-A：列出组织湖
+	Users store.UserRepository  // P12-C：Org by_email 邀请需要反查 user_id
 }
 
 type orgResp struct {
@@ -148,6 +151,49 @@ func (h *OrgHandlers) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Orgs.AddMember(r.Context(), u, id, body.UserID, domain.OrgRole(body.Role)); err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// AddMemberByEmail POST /api/v1/organizations/{id}/members/by_email
+// Body: {"email": "user@example.com", "role": "ADMIN|MEMBER"}
+// P12-C：按 email 邀请已注册用户加入组织。未注册用户返回 404（不暴露注册状态以外的细节）。
+func (h *OrgHandlers) AddMemberByEmail(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if h.Users == nil {
+		writeError(w, http.StatusServiceUnavailable, "users repository not configured")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	var body struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if body.Email == "" {
+		writeError(w, http.StatusBadRequest, "email required")
+		return
+	}
+	target, err := h.Users.GetByEmail(r.Context(), body.Email)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.Orgs.AddMember(r.Context(), u, id, target.ID, domain.OrgRole(body.Role)); err != nil {
 		writeError(w, mapDomainError(err), err.Error())
 		return
 	}

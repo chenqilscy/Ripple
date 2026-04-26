@@ -264,6 +264,7 @@ func main() {
 		LakeSnapshots: lakeSnapshotRepo,
 		NodeShares:    nodeShareRepo,
 		Memberships:   memberships,
+		Users:         users, // P12-C: Org by_email 邀请
 	})
 
 	srv := &http.Server{

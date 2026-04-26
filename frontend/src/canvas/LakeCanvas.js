@@ -72,4 +72,3 @@ export function LakeCanvas() {
     }, []);
     return _jsx("div", { ref: mountRef, style: { width: '100%', height: '100%' } });
 }
-

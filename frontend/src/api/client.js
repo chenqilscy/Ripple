@@ -240,6 +240,10 @@ export const api = {
     addOrgMember(orgId, userId, role) {
         return request('POST', `/api/v1/organizations/${orgId}/members`, { user_id: userId, role });
     },
+    // P12-C：按 email 邀请已注册用户加入组织
+    addOrgMemberByEmail(orgId, email, role) {
+        return request('POST', `/api/v1/organizations/${orgId}/members/by_email`, { email, role });
+    },
     updateOrgMemberRole(orgId, userId, role) {
         return request('PATCH', `/api/v1/organizations/${orgId}/members/${userId}/role`, { role });
     },
