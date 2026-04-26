@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +53,7 @@ func setup(t *testing.T) *integrationFixture {
 	if os.Getenv("RIPPLE_INTEGRATION") != "1" {
 		t.Skip("set RIPPLE_INTEGRATION=1 to enable httpapi integration tests")
 	}
+	loadIntegrationEnvFromDotEnv()
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -123,6 +126,53 @@ func setup(t *testing.T) *integrationFixture {
 	t.Cleanup(srv.Close)
 
 	return &integrationFixture{srv: srv, cfg: cfg}
+}
+
+// loadIntegrationEnvFromDotEnv 在集成测试场景下尽力加载 backend-go/.env。
+// 仅填充当前进程中尚未设置的 RIPPLE_* 变量，避免覆盖外部显式配置。
+func loadIntegrationEnvFromDotEnv() {
+	if os.Getenv("RIPPLE_PG_URL") != "" {
+		return
+	}
+
+	candidates := []string{
+		".env",
+		filepath.Clean("../../../.env"),
+		filepath.Clean("../../../../.env"),
+	}
+
+	var data []byte
+	for _, p := range candidates {
+		b, err := os.ReadFile(p)
+		if err == nil {
+			data = b
+			break
+		}
+	}
+	if len(data) == 0 {
+		return
+	}
+
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		i := strings.Index(line, "=")
+		if i <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:i])
+		if !strings.HasPrefix(key, "RIPPLE_") {
+			continue
+		}
+		if os.Getenv(key) != "" {
+			continue
+		}
+		val := strings.TrimSpace(line[i+1:])
+		val = strings.Trim(val, `"`)
+		_ = os.Setenv(key, val)
+	}
 }
 
 // do 发请求，自动带 Bearer token。返回 status + 反序列化结果。
