@@ -346,7 +346,7 @@ func (h *NodeHandlers) BatchImport(w http.ResponseWriter, r *http.Request) {
 }
 
 // BatchOperate POST /api/v1/lakes/{id}/nodes/batch_op  P14-C：批量节点操作。
-// 支持 action=evaporate（蒸发）和 action=condense（凝露）。最多 200 个节点。
+// 支持 action=evaporate（蒸发）、action=condense（凝露）和 action=erase（擦除）。最多 200 个节点。
 func (h *NodeHandlers) BatchOperate(w http.ResponseWriter, r *http.Request) {
 	u, ok := CurrentUser(r.Context())
 	if !ok {

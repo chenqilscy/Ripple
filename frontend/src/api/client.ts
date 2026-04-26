@@ -395,7 +395,7 @@ export const api = {
     return request('DELETE', `/api/v1/shares/${id}`)
   },
   // 公开访问（无鉴权）
-  getSharedNode(token: string): Promise<{ node: import('./types').NodeItem; share_id: string; expires_at: string }> {
+  getSharedNode(token: string): Promise<{ node: import('./types').NodeItem; share_id: string; expires_at: string | null }> {
     return request('GET', `/api/v1/share/${token}`)
   },
 

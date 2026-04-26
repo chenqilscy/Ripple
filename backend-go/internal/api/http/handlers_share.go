@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -26,17 +27,23 @@ type shareResp struct {
 	NodeID    string     `json:"node_id"`
 	Token     string     `json:"token"`
 	URL       string     `json:"url"`
+	PageURL   string     `json:"page_url"`
+	APIURL    string     `json:"api_url"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	Revoked   bool       `json:"revoked"`
 	CreatedAt time.Time  `json:"created_at"`
 }
 
 func toShareResp(s domain.NodeShare, baseURL string) shareResp {
+	pageURL := baseURL + "/share/" + s.Token
+	apiURL := baseURL + "/api/v1/share/" + s.Token
 	resp := shareResp{
 		ID:        s.ID,
 		NodeID:    s.NodeID,
 		Token:     s.Token,
-		URL:       baseURL + "/api/v1/share/" + s.Token,
+		URL:       pageURL,
+		PageURL:   pageURL,
+		APIURL:    apiURL,
 		Revoked:   s.Revoked,
 		CreatedAt: s.CreatedAt,
 	}
@@ -70,7 +77,10 @@ func (h *NodeShareHandlers) CreateShare(w http.ResponseWriter, r *http.Request) 
 	var req struct {
 		TTLHours int `json:"ttl_hours"` // 0 = never expires
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
 
 	token, err := generateToken()
 	if err != nil {
@@ -161,12 +171,16 @@ func (h *NodeShareHandlers) GetSharedNode(w http.ResponseWriter, r *http.Request
 	// Since this is a public endpoint, we must NOT reveal private lake info —
 	// only the node content is returned.
 	type publicNodeResp struct {
-		ID        string    `json:"id"`
-		Content   string    `json:"content"`
-		Type      string    `json:"type"`
-		State     string    `json:"state"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
+		Node struct {
+			ID        string    `json:"id"`
+			Content   string    `json:"content"`
+			Type      string    `json:"type"`
+			State     string    `json:"state"`
+			CreatedAt time.Time `json:"created_at"`
+			UpdatedAt time.Time `json:"updated_at"`
+		} `json:"node"`
+		ShareID   string     `json:"share_id"`
+		ExpiresAt *time.Time `json:"expires_at"`
 	}
 	// We use a "system" actor (empty string owner) bypass — the node service
 	// Get() checks membership, which is inappropriate for public shares.
@@ -179,14 +193,18 @@ func (h *NodeShareHandlers) GetSharedNode(w http.ResponseWriter, r *http.Request
 		writeError(w, mapDomainError(err), err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, publicNodeResp{
-		ID:        node.ID,
-		Content:   node.Content,
-		Type:      string(node.Type),
-		State:     string(node.State),
-		CreatedAt: node.CreatedAt,
-		UpdatedAt: node.UpdatedAt,
-	})
+	resp := publicNodeResp{ShareID: share.ID}
+	resp.Node.ID = node.ID
+	resp.Node.Content = node.Content
+	resp.Node.Type = string(node.Type)
+	resp.Node.State = string(node.State)
+	resp.Node.CreatedAt = node.CreatedAt
+	resp.Node.UpdatedAt = node.UpdatedAt
+	if !share.ExpiresAt.IsZero() {
+		exp := share.ExpiresAt
+		resp.ExpiresAt = &exp
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // baseURLFromRequest 从 request 中推导服务 base URL。
