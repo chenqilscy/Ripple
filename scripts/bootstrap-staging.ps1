@@ -10,8 +10,19 @@ function Write-Step($message) {
   Write-Host "`n== $message ==" -ForegroundColor Cyan
 }
 
+function Get-EnvOrDefault($name, $defaultValue) {
+  $value = [Environment]::GetEnvironmentVariable($name, "Process")
+  if ([string]::IsNullOrWhiteSpace($value)) {
+    return $defaultValue
+  }
+  return $value
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $composePath = Join-Path $repoRoot $ComposeFile
+$backendPort = Get-EnvOrDefault "STAGING_BACKEND_PORT" "18000"
+$frontendPort = Get-EnvOrDefault "STAGING_FRONTEND_PORT" "14173"
+$yjsPort = Get-EnvOrDefault "STAGING_YJS_PORT" "17790"
 
 if (-not (Test-Path $composePath)) {
   throw "compose file not found: $composePath"
@@ -48,7 +59,7 @@ try {
   docker @upArgs | Out-Host
 
   Write-Step "wait backend healthz"
-  $healthUrl = "http://127.0.0.1:18000/healthz"
+  $healthUrl = "http://127.0.0.1:$backendPort/healthz"
   $ok = $false
   for ($i = 0; $i -lt 40; $i++) {
     try {
@@ -67,13 +78,13 @@ try {
 
   if (-not $SkipSmoke) {
     Write-Step "phase13 smoke"
-    & (Join-Path $repoRoot "scripts\smoke\phase13-smoke.ps1") -Base "http://127.0.0.1:18000" | Out-Host
+    & (Join-Path $repoRoot "scripts\smoke\phase13-smoke.ps1") -Base "http://127.0.0.1:$backendPort" | Out-Host
   }
 
   Write-Step "done"
-  Write-Host "frontend: http://127.0.0.1:14173" -ForegroundColor Green
-  Write-Host "backend:  http://127.0.0.1:18000" -ForegroundColor Green
-  Write-Host "yjs:      ws://127.0.0.1:17790/yjs" -ForegroundColor Green
+  Write-Host "frontend: http://127.0.0.1:$frontendPort" -ForegroundColor Green
+  Write-Host "backend:  http://127.0.0.1:$backendPort" -ForegroundColor Green
+  Write-Host "yjs:      ws://127.0.0.1:$yjsPort/yjs" -ForegroundColor Green
 } finally {
   Pop-Location
 }

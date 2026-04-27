@@ -4,7 +4,7 @@
 > 适用版本：`v0.13.0` 灰度前  
 > 目标：把 Phase 13 的联调、性能、稳定性、运维、回滚条件收敛成单页准入门槛。
 
-> 最新回填：远端主机 `fn.cky` 已完成标准 staging bootstrap 与 smoke 一键验收；`backend`、`yjs-bridge`、frontend 均已通过真实 Docker 启动验证，`scripts/smoke/phase13-smoke.ps1 -Base http://fn.cky:18000` 全绿。TD-04 也已在远端 Linux 客户端完成诊断 + clean rerun：`docs/dev/TD-04-WS-loadtest-report-20260427-142214.md` 负责根因收口，`docs/dev/TD-04-WS-loadtest-report-20260427-142125.md` 记录到 `1000 / 1000` 成功、`p95 175.797ms`、`p99 192.333ms`，WS 准入门槛现已满足。2026-04-27 当天的 Redis / Neo4j / yjs-bridge 故障演练也已完成并回填到 `docs/dev/Phase13-故障演练验收记录-20260427.md`；同日补跑的全文检索 `10k` 基线 `p95 66.4085ms`、`p99 117.9482ms`，详见 `docs/dev/Phase13-全文检索10k基线-20260427.md`。批量导入 `1000` 行时延验收也已通过，详见 `docs/dev/Phase13-batch-import-1000-baseline-20260427-213021.md`。staging 非破坏回收演练与远端实际回收也已通过，见 `docs/dev/Phase13-staging-teardown-20260427.md`。当前剩余事项为回滚验收、手册完整重新拉起复现。
+> 最新回填：远端主机 `fn.cky` 已完成标准 staging bootstrap 与 smoke 一键验收；`backend`、`yjs-bridge`、frontend 均已通过真实 Docker 启动验证，`scripts/smoke/phase13-smoke.ps1 -Base http://fn.cky:18000` 全绿。TD-04 也已在远端 Linux 客户端完成诊断 + clean rerun：`docs/dev/TD-04-WS-loadtest-report-20260427-142214.md` 负责根因收口，`docs/dev/TD-04-WS-loadtest-report-20260427-142125.md` 记录到 `1000 / 1000` 成功、`p95 175.797ms`、`p99 192.333ms`，WS 准入门槛现已满足。2026-04-27 当天的 Redis / Neo4j / yjs-bridge 故障演练也已完成并回填到 `docs/dev/Phase13-故障演练验收记录-20260427.md`；同日补跑的全文检索 `10k` 基线 `p95 66.4085ms`、`p99 117.9482ms`，详见 `docs/dev/Phase13-全文检索10k基线-20260427.md`。批量导入 `1000` 行时延验收也已通过，详见 `docs/dev/Phase13-batch-import-1000-baseline-20260427-213021.md`。staging 非破坏回收演练、远端实际回收、回收后重新拉起与 smoke 均已通过，见 `docs/dev/Phase13-staging-teardown-20260427.md` 与 `docs/dev/Phase13-staging-rebootstrap-smoke-20260427.md`。当前剩余事项为回滚验收。
 
 ---
 
@@ -43,7 +43,7 @@
 | staging 启动 | `bootstrap-staging.ps1` 在干净机器可执行 | ✅ | 已在 `fn.cky` 上完成标准 bootstrap 一键验收，`docker compose down && up -d --build` 后 `/healthz` 与 `phase13-smoke.ps1` 全绿；`migrate` 空库探测与 frontend Docker build/访问均已验证 |
 | staging 回收 | `teardown-staging.ps1` 可清理容器与卷 | ✅ | 已完成非破坏 dry-run 与远端实际回收；实际回收记录见 `docs/dev/Phase13-staging-teardown-20260427.md` |
 | 指标 | `/metrics` 可抓取 | ✅ | 已用于 TD-04 补采样，Prometheus 文本格式可直接 `curl` 抓取 |
-| 手册 | 非作者按文档独立完成一次拉起与回收 | △ | 已按手册复现 dry-run 与实际回收；完整重新拉起复现仍需独立窗口 |
+| 手册 | 非作者按文档独立完成一次拉起与回收 | ✅ | 已复现 dry-run、实际回收、回收后重新拉起与 smoke；端口冲突处理已回填到手册 |
 
 ## 5. 回滚准入
 

@@ -36,6 +36,20 @@ $env:JWT_SECRET="replace-me-with-at-least-32-chars"
 - 后端：`http://127.0.0.1:18000`
 - Yjs：`ws://127.0.0.1:17790/yjs`
 
+若联调机已有共享中间件或历史容器占用默认端口，可在执行前覆盖端口：
+
+```powershell
+$env:STAGING_PG_PORT="25432"
+$env:STAGING_REDIS_PORT="26379"
+$env:STAGING_BACKEND_PORT="18000"
+$env:STAGING_YJS_PORT="17790"
+$env:STAGING_FRONTEND_PORT="14173"
+
+./scripts/bootstrap-staging.ps1 -NoBuild
+```
+
+覆盖 `STAGING_BACKEND_PORT` 后，脚本会自动使用该端口执行 `/healthz` 与 smoke。
+
 若只想拉起环境，不执行冒烟：
 
 ```powershell

@@ -7,7 +7,7 @@
 ## 1. 执行前确认
 
 1. 机器已安装 Docker。
-2. 端口 `14173`、`15432`、`16379`、`17474`、`17687`、`17790`、`18000` 未被占用。
+2. 端口 `14173`、`15432`、`16379`、`17474`、`17687`、`17790`、`18000` 未被占用；如存在共享中间件或历史容器，可用 `STAGING_PG_PORT`、`STAGING_REDIS_PORT`、`STAGING_FRONTEND_PORT`、`STAGING_BACKEND_PORT`、`STAGING_YJS_PORT` 覆盖。
 3. 当前工作区已拉到 `main` 最新提交。
 4. PowerShell 会话已注入：`PG_PASSWORD`、`NEO4J_PASSWORD`、`REDIS_PASSWORD`、`JWT_SECRET`。
 
@@ -23,6 +23,14 @@ git pull --ff-only origin main
 ./scripts/drill-staging.ps1 -Scenario redis -DurationSeconds 15
 ./scripts/drill-staging.ps1 -Scenario neo4j -DurationSeconds 15
 ./scripts/drill-staging.ps1 -Scenario yjs-bridge -DurationSeconds 15
+```
+
+端口冲突示例：
+
+```powershell
+$env:STAGING_PG_PORT="25432"
+$env:STAGING_REDIS_PORT="26379"
+./scripts/bootstrap-staging.ps1 -NoBuild
 ```
 
 ## 3. 回填项目
