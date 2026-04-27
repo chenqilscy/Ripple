@@ -132,6 +132,23 @@ $env:STAGING_FRONTEND_PORT="14173"
 
 该脚本默认要求干净工作树，并在切换目标 ref 前自动执行 teardown，再重新 bootstrap。
 
+远端 GitHub clone 不稳定时，使用本地源码包兜底：
+
+```powershell
+git archive --format=tar -o ripple-<ref>.tar <ref>
+scp ripple-<ref>.tar admin@fn.cky:/home/admin/
+```
+
+远端解包后建议固定 compose project 名，避免目录名变化导致镜像、网络、卷名称漂移：
+
+```bash
+export COMPOSE_PROJECT_NAME=ripple
+docker compose -f docker-compose.staging.yml down --remove-orphans -v
+docker compose -f docker-compose.staging.yml up -d --no-build
+```
+
+注意：若 `/home/admin/Ripple` 中存在 root-owned 文件，禁止静默 `rm -rf` 失败后继续假定 canonical 路径已恢复。应先修复目录权限，或明确从新的干净目录拉起并记录运行路径。
+
 ---
 
 ## 6. 常见问题
@@ -142,3 +159,5 @@ $env:STAGING_FRONTEND_PORT="14173"
 | `healthz` 一直不绿 | 用 `docker compose -f docker-compose.staging.yml logs backend` 检查启动错误 |
 | 冒烟卡在建湖后搜索 | 检查 Neo4j 是否健康、outbox 是否已处理 |
 | 故障演练后未恢复 | 先执行 `teardown-staging.ps1` 再 `bootstrap-staging.ps1 -SkipSmoke` |
+| 远端 GitHub clone TLS 失败 | 改用本地 `git archive` + `scp` 上传源码包 |
+| 回滚后 compose 找不到镜像 | 固定 `COMPOSE_PROJECT_NAME=ripple`，避免目录名引起镜像名漂移 |
