@@ -98,6 +98,14 @@ $env:JWT_SECRET="replace-me-with-at-least-32-chars"
 3. 若涉及 schema 变更，先在独立窗口验证 down 迁移。
 4. 回滚后重新执行 `phase13-smoke.ps1` 确认恢复。
 
+若要在 staging 做一次 Git ref 级别回滚演练：
+
+```powershell
+./scripts/rollback-staging.ps1 -Ref <stable-ref>
+```
+
+该脚本默认要求干净工作树，并在切换目标 ref 前自动执行 teardown，再重新 bootstrap。
+
 ---
 
 ## 6. 常见问题

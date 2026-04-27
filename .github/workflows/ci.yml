@@ -42,6 +42,7 @@ jobs:
   integration:
     name: Integration (Phase 13)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       GOTOOLCHAIN: local
       PG_PASSWORD: ripple_ci_pg
@@ -77,11 +78,11 @@ jobs:
         run: |
           set -euo pipefail
           for i in {1..40}; do
-            if docker compose -f docker-compose.staging.yml ps --format json | grep -q '"Health":"healthy"'; then
-              healthy_count=$(docker compose -f docker-compose.staging.yml ps --format json | grep -c '"Health":"healthy"' || true)
-              if [ "$healthy_count" -ge 3 ]; then
-                exit 0
-              fi
+            pg=$(docker inspect -f '{{.State.Health.Status}}' ripple-staging-postgres 2>/dev/null || true)
+            neo=$(docker inspect -f '{{.State.Health.Status}}' ripple-staging-neo4j 2>/dev/null || true)
+            redis=$(docker inspect -f '{{.State.Health.Status}}' ripple-staging-redis 2>/dev/null || true)
+            if [ "$pg" = "healthy" ] && [ "$neo" = "healthy" ] && [ "$redis" = "healthy" ]; then
+              exit 0
             fi
             sleep 3
           done
@@ -106,6 +107,7 @@ jobs:
   staging-smoke:
     name: Staging Bootstrap Smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       PG_PASSWORD: ripple_ci_pg
       NEO4J_PASSWORD: ripple_ci_neo4j
