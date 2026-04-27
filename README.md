@@ -2,7 +2,7 @@
 
 > 把"灵感捕捉、织网、沉淀、分享"设计成**水的循环**的 AI 创作系统。
 
-**当前进度：M1~M11 已完成（2026-Q2）** — 已覆盖协作、AI 编织、空间与权限、通知、组织、模板、分享、Three.js 动效与部署链路；当前进入 **Phase 12 候选任务评估与收敛**。
+**当前进度：M1~M12 已完成（2026-Q2）** — 已覆盖协作、AI 编织、空间与权限、通知、组织、模板、分享、Three.js 动效与部署链路；当前进入 **Phase 13 启动测试与发布准备**。
 
 ---
 
@@ -41,6 +41,26 @@ npm run dev
 
 # 浏览器打开 http://localhost:5173 注册账号即可
 ```
+
+### Phase 13 联调环境（一键）
+
+已装 Docker 的机器可直接使用：
+
+```powershell
+# 先在当前 PowerShell 注入必要变量
+$env:PG_PASSWORD="replace-me"
+$env:NEO4J_PASSWORD="replace-me"
+$env:REDIS_PASSWORD="replace-me"
+$env:JWT_SECRET="replace-me-with-at-least-32-chars"
+
+# 拉起 staging 环境并执行冒烟
+./scripts/bootstrap-staging.ps1
+
+# 回收环境（默认删卷）
+./scripts/teardown-staging.ps1
+```
+
+启动后默认地址：前端 `http://127.0.0.1:14173`，后端 `http://127.0.0.1:18000`。
 
 ---
 
@@ -99,7 +119,7 @@ docs/
 
 ## CI
 
-GitHub Actions（`.github/workflows/ci.yml`）：每次 push/PR 跑后端 `go vet + build + test -race` 和前端 `tsc + build`。
+GitHub Actions（`.github/workflows/ci.yml`）：每次 push/PR 跑后端 `go vet + build + test -race`、前端 `tsc + build`，以及 Phase 13 联调中间件集成测试矩阵。
 
 ---
 

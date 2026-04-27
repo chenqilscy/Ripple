@@ -39,6 +39,70 @@ jobs:
           GOTOOLCHAIN: local
         run: go test ./internal/... -count=1 -race -timeout 120s
 
+  integration:
+    name: Integration (Phase 13)
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+      PG_PASSWORD: ripple_ci_pg
+      NEO4J_PASSWORD: ripple_ci_neo4j
+      REDIS_PASSWORD: ripple_ci_redis
+      JWT_SECRET: ripple_ci_jwt_secret_0123456789abcdef
+      RIPPLE_INTEGRATION: '1'
+      RIPPLE_PG_URL: postgres://ripple:ripple_ci_pg@127.0.0.1:15432/ripple?sslmode=disable
+      RIPPLE_NEO4J_URI: bolt://127.0.0.1:17687
+      RIPPLE_NEO4J_USER: neo4j
+      RIPPLE_NEO4J_PASS: ripple_ci_neo4j
+      RIPPLE_NEO4J_DATABASE: neo4j
+      RIPPLE_REDIS_ADDR: 127.0.0.1:16379
+      RIPPLE_REDIS_PASS: ripple_ci_redis
+      RIPPLE_BROKER_KIND: redis
+      RIPPLE_JWT_SECRET: ripple_ci_jwt_secret_0123456789abcdef
+      RIPPLE_CORS_ORIGINS: http://localhost:5173
+      RIPPLE_ENV: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: backend-go/go.sum
+
+      - name: Start middleware
+        run: docker compose -f docker-compose.staging.yml up -d postgres neo4j redis
+
+      - name: Wait for middleware
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..40}; do
+            if docker compose -f docker-compose.staging.yml ps --format json | grep -q '"Health":"healthy"'; then
+              healthy_count=$(docker compose -f docker-compose.staging.yml ps --format json | grep -c '"Health":"healthy"' || true)
+              if [ "$healthy_count" -ge 3 ]; then
+                exit 0
+              fi
+            fi
+            sleep 3
+          done
+          docker compose -f docker-compose.staging.yml ps
+          exit 1
+
+      - name: Apply PG migrations
+        working-directory: backend-go
+        run: go run ./cmd/migrate
+
+      - name: Init Neo4j constraints
+        run: docker compose -f docker-compose.staging.yml run --rm neo4j-init
+
+      - name: Run HTTP integration tests
+        working-directory: backend-go
+        run: go test ./internal/api/http/... -run TestIntegration -count=1 -v -timeout 240s
+
+      - name: Teardown middleware
+        if: always()
+        run: docker compose -f docker-compose.staging.yml down -v
+
   frontend:
     name: Frontend (Vite + TS)
     runs-on: ubuntu-latest
