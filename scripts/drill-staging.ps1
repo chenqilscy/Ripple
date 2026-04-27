@@ -25,7 +25,17 @@ function Get-ServiceName([string]$name) {
   }
 }
 
+function Get-ContainerName([string]$name) {
+  switch ($name) {
+    "redis" { return "ripple-staging-redis" }
+    "neo4j" { return "ripple-staging-neo4j" }
+    "yjs-bridge" { return "ripple-staging-yjs-bridge" }
+    default { throw "unsupported scenario: $name" }
+  }
+}
+
 $service = Get-ServiceName $Scenario
+$container = Get-ContainerName $Scenario
 
 Push-Location $repoRoot
 try {
@@ -42,6 +52,14 @@ try {
 
   Write-Host "Starting $service ..." -ForegroundColor Green
   docker compose -f $ComposeFile up -d $service | Out-Host
+
+  for ($i = 0; $i -lt 20; $i++) {
+    $state = docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $container 2>$null
+    if ($state -eq 'healthy' -or $state -eq 'running') {
+      break
+    }
+    Start-Sleep -Seconds 2
+  }
 
   Write-Host "Recovery triggered. Check healthz and smoke results manually." -ForegroundColor Green
 } finally {

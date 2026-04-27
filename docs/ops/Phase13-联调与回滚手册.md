@@ -55,6 +55,8 @@ $env:JWT_SECRET="replace-me-with-at-least-32-chars"
 ./scripts/smoke/phase13-smoke.ps1 -Base http://127.0.0.1:18000
 ```
 
+若要执行第一次完整联调，请按 [../dev/Phase13-真实联调执行清单.md](../dev/Phase13-真实联调执行清单.md) 逐项回填。
+
 ---
 
 ## 4. 故障演练

@@ -17,6 +17,7 @@ function Invoke-Json($Method, $Uri, $Body, $Token) {
 
 $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $email = "phase13+$ts@ripple.local"
+$inviteEmail = "phase13-invite+$ts@ripple.local"
 $password = "Phase13-password-123"
 
 Write-Host "== health =="
@@ -38,6 +39,13 @@ $login = Invoke-Json POST "$Base/api/v1/auth/login" @{
   password = $password
 } $null
 $token = $login.access_token
+
+Write-Host "== register invited user =="
+$null = Invoke-Json POST "$Base/api/v1/auth/register" @{
+  email = $inviteEmail
+  password = $password
+  display_name = "Phase13 Invitee"
+} $null
 
 Write-Host "== create lake =="
 $lake = Invoke-Json POST "$Base/api/v1/lakes" @{
@@ -90,7 +98,7 @@ $org = Invoke-Json POST "$Base/api/v1/organizations" @{
 } $token
 
 $invite = Invoke-Json POST "$Base/api/v1/organizations/$($org.id)/members/by_email" @{
-  email = $email
+  email = $inviteEmail
   role = "MEMBER"
 } $token
 
