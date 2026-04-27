@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
@@ -14,6 +16,7 @@ import (
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/time/rate"
 )
 
 // NodeShareHandlers P18-B：节点外链分享。
@@ -26,6 +29,69 @@ const (
 	shareTokenLength = 43
 	maxShareTTLHours = 24 * 365
 )
+
+var defaultShareLimiter = newShareRateLimiter(2, 20, 10*time.Minute)
+
+type shareRateLimiter struct {
+	mu        sync.Mutex
+	entries   map[string]*shareRateEntry
+	limit     rate.Limit
+	burst     int
+	ttl       time.Duration
+	lastSweep time.Time
+	now       func() time.Time
+}
+
+type shareRateEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+func newShareRateLimiter(rps float64, burst int, ttl time.Duration) *shareRateLimiter {
+	if rps <= 0 {
+		rps = 1
+	}
+	if burst <= 0 {
+		burst = 1
+	}
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	return &shareRateLimiter{
+		entries: make(map[string]*shareRateEntry),
+		limit:   rate.Limit(rps),
+		burst:   burst,
+		ttl:     ttl,
+		now:     time.Now,
+	}
+}
+
+func (l *shareRateLimiter) allow(key string) bool {
+	if key == "" {
+		key = "unknown"
+	}
+	now := l.now()
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.lastSweep.IsZero() || now.Sub(l.lastSweep) >= time.Minute {
+		for k, e := range l.entries {
+			if now.Sub(e.lastSeen) > l.ttl {
+				delete(l.entries, k)
+			}
+		}
+		l.lastSweep = now
+	}
+
+	entry := l.entries[key]
+	if entry == nil {
+		entry = &shareRateEntry{limiter: rate.NewLimiter(l.limit, l.burst)}
+		l.entries[key] = entry
+	}
+	entry.lastSeen = now
+	return entry.limiter.AllowN(now, 1)
+}
 
 type shareResp struct {
 	ID        string     `json:"id"`
@@ -154,6 +220,11 @@ func (h *NodeShareHandlers) RevokeShare(w http.ResponseWriter, r *http.Request) 
 
 // GetSharedNode GET /api/v1/share/{token} — 公开端点，无需鉴权。
 func (h *NodeShareHandlers) GetSharedNode(w http.ResponseWriter, r *http.Request) {
+	if !defaultShareLimiter.allow(clientIP(r)) {
+		writeError(w, http.StatusTooManyRequests, "too many share requests")
+		return
+	}
+
 	token := chi.URLParam(r, "token")
 	if !isShareTokenFormat(token) {
 		writeError(w, http.StatusNotFound, "share not found")
@@ -241,4 +312,11 @@ func isShareTokenFormat(token string) bool {
 		return false
 	}
 	return true
+}
+
+func clientIP(r *http.Request) string {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
 }
