@@ -16,7 +16,7 @@ import (
 type OrgHandlers struct {
 	Orgs  *service.OrgService
 	Lakes *service.LakeService // P13-A：列出组织湖
-	Users store.UserRepository  // P12-C：Org by_email 邀请需要反查 user_id
+	Users store.UserRepository // P12-C：Org by_email 邀请需要反查 user_id
 }
 
 type orgResp struct {
@@ -42,6 +42,32 @@ type orgMemberResp struct {
 	UserID   string    `json:"user_id"`
 	Role     string    `json:"role"`
 	JoinedAt time.Time `json:"joined_at"`
+}
+
+type orgQuotaResp struct {
+	OrgID          string    `json:"org_id"`
+	MaxMembers     int64     `json:"max_members"`
+	MaxLakes       int64     `json:"max_lakes"`
+	MaxNodes       int64     `json:"max_nodes"`
+	MaxAttachments int64     `json:"max_attachments"`
+	MaxAPIKeys     int64     `json:"max_api_keys"`
+	MaxStorageMB   int64     `json:"max_storage_mb"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func toOrgQuotaResp(q *domain.OrgQuota) orgQuotaResp {
+	return orgQuotaResp{
+		OrgID:          q.OrgID,
+		MaxMembers:     q.MaxMembers,
+		MaxLakes:       q.MaxLakes,
+		MaxNodes:       q.MaxNodes,
+		MaxAttachments: q.MaxAttachments,
+		MaxAPIKeys:     q.MaxAPIKeys,
+		MaxStorageMB:   q.MaxStorageMB,
+		CreatedAt:      q.CreatedAt,
+		UpdatedAt:      q.UpdatedAt,
+	}
 }
 
 // CreateOrg POST /api/v1/organizations
@@ -106,6 +132,58 @@ func (h *OrgHandlers) GetOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toOrgResp(org))
+}
+
+// GetOrgQuota GET /api/v1/organizations/{id}/quota
+func (h *OrgHandlers) GetOrgQuota(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	quota, err := h.Orgs.GetQuota(r.Context(), u, id)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toOrgQuotaResp(quota))
+}
+
+// UpdateOrgQuota PATCH /api/v1/organizations/{id}/quota
+func (h *OrgHandlers) UpdateOrgQuota(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	r.Body = http.MaxBytesReader(w, r.Body, 2*1024)
+	var body struct {
+		MaxMembers     *int64 `json:"max_members"`
+		MaxLakes       *int64 `json:"max_lakes"`
+		MaxNodes       *int64 `json:"max_nodes"`
+		MaxAttachments *int64 `json:"max_attachments"`
+		MaxAPIKeys     *int64 `json:"max_api_keys"`
+		MaxStorageMB   *int64 `json:"max_storage_mb"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	quota, err := h.Orgs.UpdateQuota(r.Context(), u, id, service.UpdateOrgQuotaInput{
+		MaxMembers:     body.MaxMembers,
+		MaxLakes:       body.MaxLakes,
+		MaxNodes:       body.MaxNodes,
+		MaxAttachments: body.MaxAttachments,
+		MaxAPIKeys:     body.MaxAPIKeys,
+		MaxStorageMB:   body.MaxStorageMB,
+	})
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toOrgQuotaResp(quota))
 }
 
 // ListMembers GET /api/v1/organizations/{id}/members

@@ -25,8 +25,8 @@ import (
 
 	httpapi "github.com/chenqilscy/ripple/backend-go/internal/api/http"
 	"github.com/chenqilscy/ripple/backend-go/internal/config"
-	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 	"github.com/chenqilscy/ripple/backend-go/internal/llm"
+	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
 	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
@@ -87,9 +87,10 @@ func main() {
 	spaceRepo := store.NewSpaceRepository(pg)
 	permaRepo := store.NewPermaNodeRepository(pg)
 	docStateRepo := store.NewNodeDocStateRepository(pg) // P8-A/B/C
-	apiKeyRepo := store.NewAPIKeyRepository(pg)          // P10-A
-	auditLogRepo := store.NewAuditLogRepository(pg)      // P10-B
-	orgRepo := store.NewOrgRepository(pg)                // P12-C
+	apiKeyRepo := store.NewAPIKeyRepository(pg)         // P10-A
+	auditLogRepo := store.NewAuditLogRepository(pg)     // P10-B
+	orgRepo := store.NewOrgRepository(pg)               // P12-C
+	orgQuotaRepo := store.NewOrgQuotaRepository(pg)     // P14-A
 
 	// P10-B：启动时清理 30 天以前的审计日志（非阻塞）
 	go func() {
@@ -117,9 +118,11 @@ func main() {
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
 	spaceSvc := service.NewSpaceService(spaceRepo)
-	orgSvc := service.NewOrgService(orgRepo)               // P12-C
-	notifRepo := store.NewNotificationRepository(pg)        // P13-B
-	tagRepo := store.NewTagRepository(pg)                   // P13-C
+	orgSvc := service.NewOrgService(orgRepo).
+		WithQuotaRepository(orgQuotaRepo).
+		WithAuditLogRepository(auditLogRepo) // P12-C / P14-A
+	notifRepo := store.NewNotificationRepository(pg) // P13-B
+	tagRepo := store.NewTagRepository(pg)            // P13-C
 	// P18：新仓库
 	nodeTemplateRepo := store.NewNodeTemplateRepository(pg) // P18-C
 	lakeSnapshotRepo := store.NewLakeSnapshotRepository(pg) // P18-D
@@ -236,13 +239,13 @@ func main() {
 	wsTokenH := &httpapi.WsTokenHandlers{JWT: jwt}
 
 	router := httpapi.NewRouter(httpapi.Deps{
-		Auth:        authSvc,
-		Lakes:       lakeSvc,
-		Nodes:       nodeSvc,
-		Edges:       edgeSvc,
-		Invites:     inviteSvc,
-		Clouds:      cloudSvc,
-		Spaces:      spaceSvc,
+		Auth:           authSvc,
+		Lakes:          lakeSvc,
+		Nodes:          nodeSvc,
+		Edges:          edgeSvc,
+		Invites:        inviteSvc,
+		Clouds:         cloudSvc,
+		Spaces:         spaceSvc,
 		Crystallize:    crystallizeSvc,
 		Recommender:    recommenderSvc,
 		Feedback:       feedbackRepo,
@@ -327,7 +330,6 @@ func runHealthCheck() int {
 	}
 	return 0
 }
-
 
 // newBroker 按 cfg.BrokerKind 选择 memory 或 redis 实现。
 func newBroker(cfg *config.Config, rds *redis.Client, logger zerolog.Logger) realtime.Broker {

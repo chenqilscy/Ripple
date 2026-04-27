@@ -22,3 +22,6 @@ var ErrAlreadyExists = errors.New("already exists")
 
 // ErrInvalidInput 输入校验失败。
 var ErrInvalidInput = errors.New("invalid input")
+
+// ErrQuotaExceeded 资源配额不足。
+var ErrQuotaExceeded = errors.New("quota exceeded")

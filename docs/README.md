@@ -44,6 +44,7 @@
 | [Phase13-准入清单](launch/Phase13-准入清单.md) | 灰度前单页准入门槛 |
 | [Phase13-联调与回滚手册](ops/Phase13-联调与回滚手册.md) | staging 拉起 / 回收 / 故障演练 |
 | [Phase13-rollback-acceptance-20260427](dev/Phase13-rollback-acceptance-20260427.md) | Phase 13 应用回滚、数据库 down/up 与 CI 验收记录 |
+| [Phase14-A-技术方案评审-20260427](dev/Phase14-A-技术方案评审-20260427.md) | Org 配额数据模型第一切片评审与验证记录 |
 | [Phase13-故障演练验收记录模板](dev/Phase13-故障演练验收记录模板.md) | 演练结果记录模板 |
 
 ### Layer 2 · 系统设计 (`docs/system-design/`)

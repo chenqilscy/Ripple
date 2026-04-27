@@ -26,25 +26,25 @@ type Deps struct {
 	Crystallize *service.CrystallizeService
 	Recommender *service.RecommenderService
 	// Feedback 仓库（与 Recommender 配套；为 nil 则不挂载 /feedback /recommendations）
-	Feedback    store.FeedbackRepository
+	Feedback store.FeedbackRepository
 	// Attachments M4-B：本地 FS 附件；为 nil 则不挂载 /attachments
 	Attachments *AttachmentHandlers
 	Presence    *presence.Service
 	WS          *WSHandlers
 	// WsToken 非 nil 时挂载 POST /ws_token（P7-B ws-only 短期 token）。
-	WsToken     *WsTokenHandlers
+	WsToken *WsTokenHandlers
 	// DocStates 非 nil 时挂载 GET/PUT /nodes/{id}/doc_state（P8-C Y.Doc 快照）。
-	DocStates   store.NodeDocStateRepository
+	DocStates store.NodeDocStateRepository
 	// APIKeys 非 nil 时挂载 /api_keys 端点并开启 ApiKey 鉴权（P10-A）。
-	APIKeys     store.APIKeyRepository
+	APIKeys store.APIKeyRepository
 	// AuditLogs 非 nil 时挂载 GET /audit_logs（P10-B）。
-	AuditLogs   store.AuditLogRepository
+	AuditLogs store.AuditLogRepository
 	// Orgs 非 nil 时挂载 /organizations 端点（P12-C）。
-	Orgs        *service.OrgService
+	Orgs *service.OrgService
 	// Notifications 非 nil 时挂载 /notifications 端点（P13-B）。
 	Notifications *service.NotificationService
 	// Tags 非 nil 时挂载节点标签端点（P13-C）。
-	Tags        *service.TagService
+	Tags *service.TagService
 	// LLMRouter 可选：提供则挂载 SSE 流式编织端点。
 	LLMRouter   llm.StreamProvider
 	CORSOrigins []string
@@ -55,11 +55,11 @@ type Deps struct {
 	// P18-D：图谱快照；非 nil 时挂载 /lakes/{id}/snapshots 端点。
 	LakeSnapshots store.LakeSnapshotRepository
 	// P18-B：节点外链分享；非 nil 时挂载 /nodes/{id}/share 端点。
-	NodeShares    store.NodeShareRepository
+	NodeShares store.NodeShareRepository
 	// Memberships 用于快照权限校验；与 Lakes 配套注入。
-	Memberships   store.MembershipRepository
+	Memberships store.MembershipRepository
 	// Users 用于按 email 查找用户（P12-C Org by_email 邀请）。
-	Users         store.UserRepository
+	Users store.UserRepository
 }
 
 // NewRouter 装配 Chi 路由。
@@ -134,7 +134,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/lakes/{id}/space", lakeH.Move)
 			r.Get("/lakes/{id}/nodes", nodeH.ListByLake)
 			r.Post("/lakes/{id}/nodes/batch", nodeH.BatchImport)
-				r.Post("/lakes/{id}/nodes/batch_op", nodeH.BatchOperate) // P14-C
+			r.Post("/lakes/{id}/nodes/batch_op", nodeH.BatchOperate) // P14-C
 
 			r.Post("/nodes", nodeH.Create)
 			r.Get("/nodes/{id}", nodeH.Get)
@@ -251,6 +251,8 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/organizations", orgH.CreateOrg)
 				r.Get("/organizations", orgH.ListMyOrgs)
 				r.Get("/organizations/{id}", orgH.GetOrg)
+				r.Get("/organizations/{id}/quota", orgH.GetOrgQuota)
+				r.Patch("/organizations/{id}/quota", orgH.UpdateOrgQuota)
 				r.Get("/organizations/{id}/members", orgH.ListMembers)
 				r.Post("/organizations/{id}/members", orgH.AddMember)
 				r.Post("/organizations/{id}/members/by_email", orgH.AddMemberByEmail)

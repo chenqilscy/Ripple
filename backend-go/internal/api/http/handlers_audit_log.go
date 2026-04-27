@@ -98,7 +98,7 @@ func (h *AuditLogHandlers) verifyResourceAccess(ctx context.Context, actor *doma
 		}
 		_, _, err := h.Lakes.Get(ctx, actor, resourceID)
 		return err
-	case "organization", "org":
+	case "organization", "org", "org_quota":
 		if h.Orgs == nil {
 			return domain.ErrPermissionDenied
 		}

@@ -15,16 +15,17 @@ type AuditLog struct {
 
 // 预定义 Action 常量，避免字符串硬编码。
 const (
-	AuditNodeCreate      = "node.create"
-	AuditNodeDelete      = "node.delete"
-	AuditNodeUpdate      = "node.update"
-	AuditNodeCondense    = "node.condense"
-	AuditNodeEvaporate   = "node.evaporate"
-	AuditEdgeCreate      = "edge.create"
-	AuditEdgeDelete      = "edge.delete"
-	AuditLakeMemberAdd   = "lake_member.add"
+	AuditNodeCreate       = "node.create"
+	AuditNodeDelete       = "node.delete"
+	AuditNodeUpdate       = "node.update"
+	AuditNodeCondense     = "node.condense"
+	AuditNodeEvaporate    = "node.evaporate"
+	AuditEdgeCreate       = "edge.create"
+	AuditEdgeDelete       = "edge.delete"
+	AuditLakeMemberAdd    = "lake_member.add"
 	AuditLakeMemberUpdate = "lake_member.update"
 	AuditLakeMemberRemove = "lake_member.remove"
-	AuditAPIKeyCreate    = "api_key.create"
-	AuditAPIKeyRevoke    = "api_key.revoke"
+	AuditAPIKeyCreate     = "api_key.create"
+	AuditAPIKeyRevoke     = "api_key.revoke"
+	AuditOrgQuotaUpdate   = "org_quota.update"
 )

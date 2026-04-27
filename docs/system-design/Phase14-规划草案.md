@@ -1,7 +1,7 @@
 # Phase 14 规划草案
 
 > 文档层级：`docs/system-design/*.md`，承接 `docs/system-design/整体任务清单.md`。
-> 状态：草案，等待决策者裁决。
+> 状态：草案已裁决第一切片；P14-A Org 配额数据模型已进入实现。
 
 ## 1. 阶段定位
 
@@ -42,10 +42,13 @@ Phase 13 已完成可信交付闭环：远端 staging、性能基线、故障演
 
 ### Sprint 14.1：配额数据模型
 
-- 新增 `org_quotas` / `org_usage_snapshots` 或等价表；
-- 定义默认免费配额；
-- OrgService 增加 `GetQuota` / `UpdateQuota` / `CheckQuota`；
-- 单测覆盖边界值与无配额默认值。
+- ✅ 新增 `org_quotas` / `org_usage_snapshots` 表；
+- ✅ 定义默认免费配额；
+- ✅ OrgService 增加 `GetQuota` / `UpdateQuota` / `CheckQuota`；
+- ✅ 单测覆盖权限、边界值、审计写入与溢出保护；
+- ✅ HTTP 第一切片：`GET/PATCH /api/v1/organizations/{id}/quota`。
+
+评审记录：`docs/dev/Phase14-A-技术方案评审-20260427.md`。
 
 ### Sprint 14.2：配额拦截点
 

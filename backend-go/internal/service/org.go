@@ -17,7 +17,9 @@ var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`)
 
 // OrgService 组织与成员管理（P12-C）。
 type OrgService struct {
-	orgs store.OrgRepository
+	orgs   store.OrgRepository
+	quotas store.OrgQuotaRepository
+	audit  store.AuditLogRepository
 }
 
 // NewOrgService 构造。
@@ -25,11 +27,33 @@ func NewOrgService(orgs store.OrgRepository) *OrgService {
 	return &OrgService{orgs: orgs}
 }
 
+// WithQuotaRepository 注入组织配额仓储（P14-A）。
+func (s *OrgService) WithQuotaRepository(quotas store.OrgQuotaRepository) *OrgService {
+	s.quotas = quotas
+	return s
+}
+
+// WithAuditLogRepository 注入审计日志仓储，用于记录配额变更。
+func (s *OrgService) WithAuditLogRepository(audit store.AuditLogRepository) *OrgService {
+	s.audit = audit
+	return s
+}
+
 // CreateOrgInput 创建组织入参。
 type CreateOrgInput struct {
 	Name        string
 	Slug        string
 	Description string
+}
+
+// UpdateOrgQuotaInput 更新组织配额入参。nil 表示该维度不变。
+type UpdateOrgQuotaInput struct {
+	MaxMembers     *int64
+	MaxLakes       *int64
+	MaxNodes       *int64
+	MaxAttachments *int64
+	MaxAPIKeys     *int64
+	MaxStorageMB   *int64
 }
 
 // CreateOrg 创建组织并将 actor 设为 OWNER。
@@ -67,6 +91,130 @@ func (s *OrgService) GetOrg(ctx context.Context, actor *domain.User, orgID strin
 // ListMyOrgs 列出 actor 所在的组织。
 func (s *OrgService) ListMyOrgs(ctx context.Context, actor *domain.User) ([]domain.Organization, error) {
 	return s.orgs.ListByUser(ctx, actor.ID)
+}
+
+// GetQuota 获取组织配额。调用者需是组织成员。
+func (s *OrgService) GetQuota(ctx context.Context, actor *domain.User, orgID string) (*domain.OrgQuota, error) {
+	if err := s.requireMember(ctx, actor.ID, orgID); err != nil {
+		return nil, err
+	}
+	if s.quotas == nil {
+		return domain.DefaultOrgQuota(orgID), nil
+	}
+	return s.quotas.EnsureDefault(ctx, orgID)
+}
+
+// UpdateQuota 更新组织配额。调用者需是 ADMIN+。
+func (s *OrgService) UpdateQuota(ctx context.Context, actor *domain.User, orgID string, in UpdateOrgQuotaInput) (*domain.OrgQuota, error) {
+	if s.quotas == nil {
+		return nil, fmt.Errorf("%w: quota repository not configured", domain.ErrInvalidInput)
+	}
+	if err := s.requireAdmin(ctx, actor.ID, orgID); err != nil {
+		return nil, err
+	}
+	current, err := s.quotas.EnsureDefault(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	next := *current
+	if err := applyQuotaUpdate(&next, in); err != nil {
+		return nil, err
+	}
+	next.UpdatedAt = time.Now().UTC()
+	if err := s.quotas.Update(ctx, &next); err != nil {
+		return nil, err
+	}
+	if s.audit != nil {
+		if err := s.audit.Write(ctx, &domain.AuditLog{
+			ID:           platform.NewID(),
+			ActorID:      actor.ID,
+			Action:       domain.AuditOrgQuotaUpdate,
+			ResourceType: "org_quota",
+			ResourceID:   orgID,
+			Detail: map[string]any{
+				"before": quotaAuditDetail(current),
+				"after":  quotaAuditDetail(&next),
+			},
+			CreatedAt: time.Now().UTC(),
+		}); err != nil {
+			return nil, fmt.Errorf("quota updated but audit failed: %w", err)
+		}
+	}
+	return &next, nil
+}
+
+// CheckQuota 检查某个资源维度是否会超限。used 是当前用量，delta 是即将新增的用量。
+func (s *OrgService) CheckQuota(ctx context.Context, orgID string, key domain.OrgQuotaKey, used, delta int64) error {
+	if used < 0 || delta < 0 {
+		return fmt.Errorf("%w: quota usage must be non-negative", domain.ErrInvalidInput)
+	}
+	const maxInt64 = int64(^uint64(0) >> 1)
+	if delta > maxInt64-used {
+		return fmt.Errorf("%w: org %s %s quota usage overflow", domain.ErrQuotaExceeded, orgID, key)
+	}
+	quota := domain.DefaultOrgQuota(orgID)
+	if s.quotas != nil {
+		q, err := s.quotas.EnsureDefault(ctx, orgID)
+		if err != nil {
+			return err
+		}
+		quota = q
+	}
+	limit, err := quota.LimitFor(key)
+	if err != nil {
+		return err
+	}
+	if used+delta > limit {
+		return fmt.Errorf("%w: org %s %s quota %d would be exceeded by %d", domain.ErrQuotaExceeded, orgID, key, limit, used+delta)
+	}
+	return nil
+}
+
+func applyQuotaUpdate(q *domain.OrgQuota, in UpdateOrgQuotaInput) error {
+	changed := false
+	if in.MaxMembers != nil {
+		if *in.MaxMembers < 1 {
+			return fmt.Errorf("%w: max_members must be >= 1", domain.ErrInvalidInput)
+		}
+		q.MaxMembers = *in.MaxMembers
+		changed = true
+	}
+	updates := []struct {
+		name string
+		in   *int64
+		set  func(int64)
+	}{
+		{name: "max_lakes", in: in.MaxLakes, set: func(v int64) { q.MaxLakes = v }},
+		{name: "max_nodes", in: in.MaxNodes, set: func(v int64) { q.MaxNodes = v }},
+		{name: "max_attachments", in: in.MaxAttachments, set: func(v int64) { q.MaxAttachments = v }},
+		{name: "max_api_keys", in: in.MaxAPIKeys, set: func(v int64) { q.MaxAPIKeys = v }},
+		{name: "max_storage_mb", in: in.MaxStorageMB, set: func(v int64) { q.MaxStorageMB = v }},
+	}
+	for _, u := range updates {
+		if u.in == nil {
+			continue
+		}
+		if *u.in < 0 {
+			return fmt.Errorf("%w: %s must be >= 0", domain.ErrInvalidInput, u.name)
+		}
+		u.set(*u.in)
+		changed = true
+	}
+	if !changed {
+		return fmt.Errorf("%w: no quota fields provided", domain.ErrInvalidInput)
+	}
+	return nil
+}
+
+func quotaAuditDetail(q *domain.OrgQuota) map[string]int64 {
+	return map[string]int64{
+		"max_members":     q.MaxMembers,
+		"max_lakes":       q.MaxLakes,
+		"max_nodes":       q.MaxNodes,
+		"max_attachments": q.MaxAttachments,
+		"max_api_keys":    q.MaxAPIKeys,
+		"max_storage_mb":  q.MaxStorageMB,
+	}
 }
 
 // ListMembers 列出组织成员（需是成员）。
