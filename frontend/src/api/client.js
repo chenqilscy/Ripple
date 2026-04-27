@@ -1,7 +1,7 @@
 // apiClient · 与 Ripple Go 后端通信的轻量封装。
 // 持久化 access_token 到 localStorage（key=ripple.token），
 // 401 时清除 token 并触发 onUnauthorized 回调（由上层 UI 路由到登录页）。
-const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
+const BASE = import.meta.env.VITE_API_BASE ?? '';
 const TOKEN_KEY = 'ripple.token';
 let onUnauthorizedCb = null;
 export function onUnauthorized(cb) { onUnauthorizedCb = cb; }

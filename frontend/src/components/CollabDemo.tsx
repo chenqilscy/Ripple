@@ -15,8 +15,8 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
 // P7-F：后端 API 基地址优先读 Vite 环境变量（与 api/client.ts 保持一致）。
-const DEFAULT_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
-const DEFAULT_BRIDGE_URL = (import.meta.env.VITE_YJS_BRIDGE_URL as string | undefined) ?? 'ws://localhost:7790/yjs'
+const DEFAULT_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
+const DEFAULT_BRIDGE_URL = (import.meta.env.VITE_YJS_BRIDGE_URL as string | undefined) ?? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/yjs`
 
 interface Props {
   lakeId: string;

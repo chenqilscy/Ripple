@@ -1,5 +1,5 @@
 // Smoke：注册→登录→创建湖→看见湖（P6-E 真实跑通版本）
-// 依赖：后端 :8000 已启动；前端 dev :5173 已启动。
+// 依赖：后端 :8000 已启动；前端 dev :5234 已启动。
 import { test, expect } from '@playwright/test'
 
 const TS = Date.now()

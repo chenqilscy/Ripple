@@ -14,8 +14,8 @@ import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 // P7-F：后端 API 基地址优先读 Vite 环境变量（与 api/client.ts 保持一致）。
-const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
-const DEFAULT_BRIDGE_URL = import.meta.env.VITE_YJS_BRIDGE_URL ?? 'ws://localhost:7790/yjs';
+const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE ?? '';
+const DEFAULT_BRIDGE_URL = import.meta.env.VITE_YJS_BRIDGE_URL ?? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/yjs`;
 /** 防抖：延迟 delay 毫秒后执行 fn（返回取消函数）。 */
 function debounce(fn, delay) {
     let timer = null;

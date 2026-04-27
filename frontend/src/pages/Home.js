@@ -19,6 +19,12 @@ import OfflineBar from '../components/OfflineBar';
 import NotificationBell from '../components/NotificationBell';
 import { LakeWS } from '../api/wsClient';
 const EDGE_KINDS = ['relates', 'derives', 'opposes', 'refines', 'groups', 'custom'];
+const LAKE_READY_INITIAL_DELAY_MS = 1000;
+const LAKE_READY_ATTEMPTS = 30;
+const LAKE_READY_DELAY_MS = 200;
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 export function Home({ onLogout }) {
     const [lakes, setLakes] = useState([]);
     const [active, setActive] = useState(null);
@@ -209,6 +215,20 @@ export function Home({ onLogout }) {
         catch (e) {
             setErr(e.message);
         }
+    }
+    async function waitLakeReady(lake) {
+        let lastErr = null;
+        await delay(LAKE_READY_INITIAL_DELAY_MS);
+        for (let i = 0; i < LAKE_READY_ATTEMPTS; i++) {
+            try {
+                return await api.getLake(lake.id);
+            }
+            catch (e) {
+                lastErr = e;
+                await delay(LAKE_READY_DELAY_MS);
+            }
+        }
+        throw lastErr instanceof Error ? lastErr : new Error('lake projection not ready');
     }
     async function loadNodes(lakeId) {
         try {
@@ -479,9 +499,10 @@ export function Home({ onLogout }) {
         setBusy(true);
         setErr(null);
         try {
-            const lake = await api.createLake(newLakeName.trim(), '', false, currentSpaceId || undefined);
+            const created = await api.createLake(newLakeName.trim(), '', false, currentSpaceId || undefined);
+            const lake = await waitLakeReady(created);
             setNewLakeName('');
-            setLakes([lake, ...lakes]);
+            setLakes(prev => [lake, ...prev.filter(x => x.id !== lake.id)]);
             setActive(lake);
         }
         catch (e) {

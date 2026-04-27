@@ -23,6 +23,13 @@ import { LakeWS } from '../api/wsClient'
 interface Props { onLogout: () => void }
 
 const EDGE_KINDS: EdgeKind[] = ['relates', 'derives', 'opposes', 'refines', 'groups', 'custom']
+const LAKE_READY_INITIAL_DELAY_MS = 1000
+const LAKE_READY_ATTEMPTS = 30
+const LAKE_READY_DELAY_MS = 200
+
+function delay(ms: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, ms))
+}
 
 export function Home({ onLogout }: Props) {
   const [lakes, setLakes] = useState<Lake[]>([])
@@ -220,6 +227,20 @@ export function Home({ onLogout }: Props) {
         setActive(r.lakes[0])
       }
     } catch (e) { setErr((e as Error).message) }
+  }
+
+  async function waitLakeReady(lake: Lake): Promise<Lake> {
+    let lastErr: unknown = null
+    await delay(LAKE_READY_INITIAL_DELAY_MS)
+    for (let i = 0; i < LAKE_READY_ATTEMPTS; i++) {
+      try {
+        return await api.getLake(lake.id)
+      } catch (e) {
+        lastErr = e
+        await delay(LAKE_READY_DELAY_MS)
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('lake projection not ready')
   }
 
   async function loadNodes(lakeId: string) {
@@ -427,9 +448,10 @@ export function Home({ onLogout }: Props) {
     if (!newLakeName.trim()) return
     setBusy(true); setErr(null)
     try {
-      const lake = await api.createLake(newLakeName.trim(), '', false, currentSpaceId || undefined)
+      const created = await api.createLake(newLakeName.trim(), '', false, currentSpaceId || undefined)
+      const lake = await waitLakeReady(created)
       setNewLakeName('')
-      setLakes([lake, ...lakes])
+      setLakes(prev => [lake, ...prev.filter(x => x.id !== lake.id)])
       setActive(lake)
     } catch (e) { setErr((e as Error).message) }
     finally { setBusy(false) }

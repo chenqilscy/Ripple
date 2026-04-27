@@ -14,12 +14,19 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
+    <script type="module">
       // PWA · M4-T4
+      // 只在生产构建中注册 Service Worker；开发环境主动注销旧 SW，避免缓存的生产 HTML 劫持 Vite dev server。
       if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW register failed:', e));
-        });
+        if (import.meta.env.PROD) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW register failed:', e));
+          });
+        } else {
+          navigator.serviceWorker.getRegistrations()
+            .then((regs) => Promise.all(regs.map((reg) => reg.unregister())))
+            .catch((e) => console.warn('SW unregister failed:', e));
+        }
       }
     </script>
   </body>

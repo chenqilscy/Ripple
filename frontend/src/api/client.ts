@@ -8,7 +8,7 @@ import type {
   Lake, NodeItem, NodeRevision, NodeType, PermaNode, Space, SpaceMember, User,
 } from './types'
 
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
 const TOKEN_KEY = 'ripple.token'
 
 let onUnauthorizedCb: (() => void) | null = null

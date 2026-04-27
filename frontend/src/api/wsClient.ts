@@ -33,8 +33,8 @@ export class LakeWS {
   connect() {
     if (this.closed) return
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    // 与 client.ts 保持一致：默认 dev 走 8000
-    const host = (import.meta.env.VITE_API_HOST as string | undefined) ?? `${window.location.hostname}:8000`
+    // 与 client.ts 保持一致：默认走同源 /api，交给 Vite/nginx 代理。
+    const host = (import.meta.env.VITE_API_HOST as string | undefined) ?? window.location.host
     const url = `${proto}//${host}/api/v1/lakes/${encodeURIComponent(this.lakeId)}/ws?access_token=${encodeURIComponent(this.token)}`
     const ws = new WebSocket(url)
     this.ws = ws
