@@ -57,6 +57,8 @@ $env:JWT_SECRET="replace-me-with-at-least-32-chars"
 
 若要执行第一次完整联调，请按 [../dev/Phase13-真实联调执行清单.md](../dev/Phase13-真实联调执行清单.md) 逐项回填。
 
+执行完成后，再按 [../dev/Phase13-联调结果回填模板.md](../dev/Phase13-联调结果回填模板.md) 把结果写回任务清单与准入清单。
+
 ---
 
 ## 4. 故障演练

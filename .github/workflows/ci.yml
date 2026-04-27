@@ -100,6 +100,10 @@ jobs:
         working-directory: backend-go
         run: go test ./internal/api/http/... -run TestIntegration -count=1 -v -timeout 240s
 
+      - name: Dump middleware logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.staging.yml logs postgres neo4j redis
+
       - name: Teardown middleware
         if: always()
         run: docker compose -f docker-compose.staging.yml down -v
@@ -130,6 +134,11 @@ jobs:
           set -euo pipefail
           curl -fsS http://127.0.0.1:14173/ >/dev/null
           curl -fsS http://127.0.0.1:18000/metrics >/dev/null
+
+      - name: Dump staging logs on failure
+        if: failure()
+        shell: bash
+        run: docker compose -f docker-compose.staging.yml logs backend frontend yjs-bridge postgres neo4j redis
 
       - name: Teardown staging
         if: always()
