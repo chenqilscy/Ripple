@@ -44,6 +44,8 @@
 | [Phase13-准入清单](launch/Phase13-准入清单.md) | 灰度前单页准入门槛 |
 | [Phase13-联调与回滚手册](ops/Phase13-联调与回滚手册.md) | staging 拉起 / 回收 / 故障演练 |
 | [Phase13-rollback-acceptance-20260427](dev/Phase13-rollback-acceptance-20260427.md) | Phase 13 应用回滚、数据库 down/up 与 CI 验收记录 |
+| [Phase13-canonical-path-repair-20260428](dev/Phase13-canonical-path-repair-20260428.md) | 远端 `/home/admin/Ripple` 标准源码路径权限修复记录 |
+| [v0.13.0-release-notes](dev/v0.13.0-release-notes.md) | Phase 13 灰度准入版本发布说明 |
 | [Phase14-A-技术方案评审-20260427](dev/Phase14-A-技术方案评审-20260427.md) | Org 配额数据模型第一切片评审与验证记录 |
 | [Phase13-故障演练验收记录模板](dev/Phase13-故障演练验收记录模板.md) | 演练结果记录模板 |
 
