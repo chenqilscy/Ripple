@@ -103,6 +103,37 @@ jobs:
         if: always()
         run: docker compose -f docker-compose.staging.yml down -v
 
+  staging-smoke:
+    name: Staging Bootstrap Smoke
+    runs-on: ubuntu-latest
+    env:
+      PG_PASSWORD: ripple_ci_pg
+      NEO4J_PASSWORD: ripple_ci_neo4j
+      REDIS_PASSWORD: ripple_ci_redis
+      JWT_SECRET: ripple_ci_jwt_secret_0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap staging
+        shell: pwsh
+        run: ./scripts/bootstrap-staging.ps1 -SkipSmoke
+
+      - name: Run smoke
+        shell: pwsh
+        run: ./scripts/smoke/phase13-smoke.ps1 -Base http://127.0.0.1:18000
+
+      - name: Check frontend and metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:14173/ >/dev/null
+          curl -fsS http://127.0.0.1:18000/metrics >/dev/null
+
+      - name: Teardown staging
+        if: always()
+        shell: pwsh
+        run: ./scripts/teardown-staging.ps1
+
   frontend:
     name: Frontend (Vite + TS)
     runs-on: ubuntu-latest
