@@ -1,0 +1,160 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ripple-staging-postgres
+    environment:
+      POSTGRES_USER: ${PG_USER:-ripple}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?PG_PASSWORD is required}
+      POSTGRES_DB: ripple
+    ports:
+      - "15432:5432"
+    volumes:
+      - staging_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-ripple} -d ripple"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  neo4j:
+    image: neo4j:5.23-community
+    container_name: ripple-staging-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+    ports:
+      - "17474:7474"
+      - "17687:7687"
+    volumes:
+      - staging_neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: ripple-staging-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports:
+      - "16379:6379"
+    volumes:
+      - staging_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  migrate:
+    image: golang:1.23-alpine
+    container_name: ripple-staging-migrate
+    working_dir: /workspace/backend-go
+    environment:
+      RIPPLE_PG_URL: postgres://${PG_USER:-ripple}:${PG_PASSWORD}@postgres:5432/ripple?sslmode=disable
+      GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+      GOTOOLCHAIN: local
+    command: sh -lc "go run ./cmd/migrate"
+    volumes:
+      - ./backend-go:/workspace/backend-go
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  neo4j-init:
+    image: neo4j:5.23-community
+    container_name: ripple-staging-neo4j-init
+    working_dir: /workspace
+    environment:
+      RIPPLE_NEO4J_URI: bolt://neo4j:7687
+      RIPPLE_NEO4J_USER: neo4j
+      RIPPLE_NEO4J_PASS: ${NEO4J_PASSWORD}
+      RIPPLE_NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+    command: >-
+      sh -lc "cypher-shell -a $$RIPPLE_NEO4J_URI -u $$RIPPLE_NEO4J_USER -p $$RIPPLE_NEO4J_PASS -d $$RIPPLE_NEO4J_DATABASE -f /workspace/backend-go/scripts/neo4j_constraints.cypher"
+    volumes:
+      - .:/workspace
+    depends_on:
+      neo4j:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend-go
+      dockerfile: Dockerfile
+    container_name: ripple-staging-backend
+    environment:
+      RIPPLE_ENV: ${APP_ENV:-staging}
+      RIPPLE_HTTP_ADDR: :8000
+      RIPPLE_PG_URL: postgres://${PG_USER:-ripple}:${PG_PASSWORD}@postgres:5432/ripple?sslmode=disable
+      RIPPLE_NEO4J_URI: bolt://neo4j:7687
+      RIPPLE_NEO4J_USER: neo4j
+      RIPPLE_NEO4J_PASS: ${NEO4J_PASSWORD}
+      RIPPLE_NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      RIPPLE_REDIS_ADDR: redis:6379
+      RIPPLE_REDIS_PASS: ${REDIS_PASSWORD}
+      RIPPLE_BROKER_KIND: redis
+      RIPPLE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      RIPPLE_CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4173,http://127.0.0.1:4173}
+      RIPPLE_UPLOAD_DIR: /app/data/uploads
+      RIPPLE_METRICS_ENABLED: "true"
+      RIPPLE_LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "18000:8000"
+    volumes:
+      - staging_upload_data:/app/data/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      neo4j-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  yjs-bridge:
+    image: node:20-alpine
+    container_name: ripple-staging-yjs-bridge
+    working_dir: /workspace/backend-go
+    environment:
+      PORT: 7790
+      YJS_BRIDGE_API_URL: http://backend:8000
+      YJS_BRIDGE_REDIS_ADDR: redis:6379
+      YJS_BRIDGE_REDIS_PASS: ${REDIS_PASSWORD}
+      YJS_BRIDGE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      YJS_BRIDGE_ALLOWED_ORIGINS: ${CORS_ORIGINS:-http://localhost:4173,http://127.0.0.1:4173}
+      YJS_BRIDGE_REQUIRE_AUTH: "true"
+    command: sh -lc "apk add --no-cache go && go run ./cmd/yjs-bridge"
+    ports:
+      - "17790:7790"
+    volumes:
+      - ./backend-go:/workspace/backend-go
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: http://localhost:18000
+    container_name: ripple-staging-frontend
+    ports:
+      - "14173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  staging_pg_data:
+  staging_neo4j_data:
+  staging_redis_data:
+  staging_upload_data:
