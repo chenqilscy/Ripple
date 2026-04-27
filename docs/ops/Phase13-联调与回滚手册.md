@@ -83,6 +83,14 @@ $env:JWT_SECRET="replace-me-with-at-least-32-chars"
 
 ## 5. 回滚 / 回收
 
+非破坏演练（只打印将执行的命令，不停容器、不删卷）：
+
+```powershell
+./scripts/teardown-staging.ps1 -KeepVolumes -DryRun
+```
+
+> 非作者首次复现时先跑 `-DryRun`；确认 compose 文件、路径与参数无误后，再进入实际回收窗口。
+
 完整回收（删除卷）：
 
 ```powershell
