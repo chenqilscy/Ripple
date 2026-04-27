@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -19,13 +21,19 @@ import (
 //	DELETE /api/v1/api_keys/{id}   撤销
 type APIKeyHandlers struct {
 	Repo store.APIKeyRepository
+	Orgs *service.OrgService
 }
 
 // createAPIKeyReq 创建 API Key 请求体。
 type createAPIKeyReq struct {
 	Name          string   `json:"name"`
+	OrgID         string   `json:"org_id"`
 	Scopes        []string `json:"scopes"`
 	ExpiresInDays int      `json:"expires_in_days"` // 0 = 永不过期
+}
+
+type apiKeyOrgCounter interface {
+	CountByOrg(ctx context.Context, orgID string) (int64, error)
 }
 
 // Create POST /api/v1/api_keys
@@ -48,6 +56,30 @@ func (h *APIKeyHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	if len(req.Scopes) == 0 {
 		req.Scopes = []string{"read_lake", "read_node"}
 	}
+	if req.OrgID != "" {
+		if h.Orgs == nil {
+			writeError(w, http.StatusServiceUnavailable, "org service not configured")
+			return
+		}
+		if _, err := h.Orgs.GetQuota(r.Context(), actor, req.OrgID); err != nil {
+			writeError(w, mapDomainError(err), err.Error())
+			return
+		}
+		counter, ok := h.Repo.(apiKeyOrgCounter)
+		if !ok {
+			writeError(w, http.StatusServiceUnavailable, "api key quota counter not configured")
+			return
+		}
+		used, err := counter.CountByOrg(r.Context(), req.OrgID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "count api keys failed")
+			return
+		}
+		if err := h.Orgs.CheckQuota(r.Context(), req.OrgID, domain.OrgQuotaAPIKeys, used, 1); err != nil {
+			writeError(w, mapDomainError(err), err.Error())
+			return
+		}
+	}
 
 	rawKey, prefix, salt, hash, err := store.GenerateAPIKey()
 	if err != nil {
@@ -58,6 +90,7 @@ func (h *APIKeyHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	key := &domain.APIKey{
 		ID:        uuid.NewString(),
 		OwnerID:   actor.ID,
+		OrgID:     req.OrgID,
 		Name:      req.Name,
 		KeyPrefix: prefix,
 		KeyHash:   hash,
@@ -79,6 +112,7 @@ func (h *APIKeyHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	// 同时返回 raw_key（前端契约）和 key（旧字段，向后兼容）。
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":         key.ID,
+		"org_id":     key.OrgID,
 		"name":       key.Name,
 		"raw_key":    rawKey, // only shown once
 		"key":        rawKey, // 兼容旧字段
@@ -105,6 +139,7 @@ func (h *APIKeyHandlers) List(w http.ResponseWriter, r *http.Request) {
 
 	type keyView struct {
 		ID         string     `json:"id"`
+		OrgID      string     `json:"org_id,omitempty"`
 		Name       string     `json:"name"`
 		KeyPrefix  string     `json:"key_prefix"`
 		Scopes     []string   `json:"scopes"`
@@ -116,6 +151,7 @@ func (h *APIKeyHandlers) List(w http.ResponseWriter, r *http.Request) {
 	for _, k := range keys {
 		out = append(out, keyView{
 			ID:         k.ID,
+			OrgID:      k.OrgID,
 			Name:       k.Name,
 			KeyPrefix:  "rpl_" + k.KeyPrefix + "...", // 脱敏展示
 			Scopes:     k.Scopes,

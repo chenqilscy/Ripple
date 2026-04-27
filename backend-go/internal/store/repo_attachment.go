@@ -14,6 +14,7 @@ import (
 type Attachment struct {
 	ID        string
 	UserID    string
+	OrgID     string
 	NodeID    string // 可空
 	MIME      string
 	SizeBytes int64
@@ -40,9 +41,9 @@ func NewAttachmentRepository(pool *pgxpool.Pool) AttachmentRepository {
 
 func (r *attachmentRepoPG) Insert(ctx context.Context, a *Attachment) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO attachments (id, user_id, node_id, mime, size_bytes, file_path, sha256, created_at)
-		VALUES ($1, $2, NULLIF($3,''), $4, $5, $6, $7, $8)`,
-		a.ID, a.UserID, a.NodeID, a.MIME, a.SizeBytes, a.FilePath, a.SHA256, a.CreatedAt,
+		INSERT INTO attachments (id, user_id, org_id, node_id, mime, size_bytes, file_path, sha256, created_at)
+		VALUES ($1, $2, $3, NULLIF($4,''), $5, $6, $7, $8, $9)`,
+		a.ID, a.UserID, a.OrgID, a.NodeID, a.MIME, a.SizeBytes, a.FilePath, a.SHA256, a.CreatedAt,
 	)
 	return err
 }
@@ -51,9 +52,9 @@ func (r *attachmentRepoPG) GetByID(ctx context.Context, id string) (*Attachment,
 	a := Attachment{}
 	var nodeID *string
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, user_id, node_id, mime, size_bytes, file_path, sha256, created_at
+		SELECT id, user_id, coalesce(org_id, '') AS org_id, node_id, mime, size_bytes, file_path, sha256, created_at
 		FROM attachments WHERE id = $1`, id).
-		Scan(&a.ID, &a.UserID, &nodeID, &a.MIME, &a.SizeBytes, &a.FilePath, &a.SHA256, &a.CreatedAt)
+		Scan(&a.ID, &a.UserID, &a.OrgID, &nodeID, &a.MIME, &a.SizeBytes, &a.FilePath, &a.SHA256, &a.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
@@ -70,9 +71,9 @@ func (r *attachmentRepoPG) GetBySHA(ctx context.Context, userID, sha string) (*A
 	a := Attachment{}
 	var nodeID *string
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, user_id, node_id, mime, size_bytes, file_path, sha256, created_at
+		SELECT id, user_id, coalesce(org_id, '') AS org_id, node_id, mime, size_bytes, file_path, sha256, created_at
 		FROM attachments WHERE user_id = $1 AND sha256 = $2`, userID, sha).
-		Scan(&a.ID, &a.UserID, &nodeID, &a.MIME, &a.SizeBytes, &a.FilePath, &a.SHA256, &a.CreatedAt)
+		Scan(&a.ID, &a.UserID, &a.OrgID, &nodeID, &a.MIME, &a.SizeBytes, &a.FilePath, &a.SHA256, &a.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
@@ -87,7 +88,7 @@ func (r *attachmentRepoPG) GetBySHA(ctx context.Context, userID, sha string) (*A
 
 func (r *attachmentRepoPG) ListByNode(ctx context.Context, nodeID string) ([]Attachment, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, user_id, node_id, mime, size_bytes, file_path, sha256, created_at
+		SELECT id, user_id, coalesce(org_id, '') AS org_id, node_id, mime, size_bytes, file_path, sha256, created_at
 		FROM attachments WHERE node_id = $1 ORDER BY created_at DESC`, nodeID)
 	if err != nil {
 		return nil, err
@@ -97,7 +98,7 @@ func (r *attachmentRepoPG) ListByNode(ctx context.Context, nodeID string) ([]Att
 	for rows.Next() {
 		a := Attachment{}
 		var nID *string
-		if err := rows.Scan(&a.ID, &a.UserID, &nID, &a.MIME, &a.SizeBytes, &a.FilePath, &a.SHA256, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.UserID, &a.OrgID, &nID, &a.MIME, &a.SizeBytes, &a.FilePath, &a.SHA256, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		if nID != nil {
@@ -106,6 +107,22 @@ func (r *attachmentRepoPG) ListByNode(ctx context.Context, nodeID string) ([]Att
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+func (r *attachmentRepoPG) CountByOrg(ctx context.Context, orgID string) (int64, error) {
+	var n int64
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM attachments WHERE org_id = $1`, orgID).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (r *attachmentRepoPG) SumSizeByOrg(ctx context.Context, orgID string) (int64, error) {
+	var n int64
+	if err := r.pool.QueryRow(ctx, `SELECT coalesce(SUM(size_bytes), 0) FROM attachments WHERE org_id = $1`, orgID).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (r *attachmentRepoPG) Delete(ctx context.Context, id string) error {

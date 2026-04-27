@@ -236,6 +236,20 @@ func (s *OrgService) AddMember(ctx context.Context, actor *domain.User, orgID, t
 	if err := s.requireAdmin(ctx, actor.ID, orgID); err != nil {
 		return err
 	}
+	if _, err := s.orgs.GetMemberRole(ctx, orgID, targetUserID); err == nil {
+		return nil
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+	if s.quotas != nil {
+		members, err := s.orgs.ListMembers(ctx, orgID)
+		if err != nil {
+			return err
+		}
+		if err := s.CheckQuota(ctx, orgID, domain.OrgQuotaMembers, int64(len(members)), 1); err != nil {
+			return err
+		}
+	}
 	m := &domain.OrgMember{
 		OrgID:    orgID,
 		UserID:   targetUserID,

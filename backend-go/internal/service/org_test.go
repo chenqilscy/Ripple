@@ -74,7 +74,11 @@ func (s *stubOrgRepo) GetMemberRole(_ context.Context, _ string, userID string) 
 	return r, nil
 }
 func (s *stubOrgRepo) ListMembers(_ context.Context, _ string) ([]domain.OrgMember, error) {
-	return nil, nil
+	out := make([]domain.OrgMember, 0, len(s.roles))
+	for userID, role := range s.roles {
+		out = append(out, domain.OrgMember{OrgID: "org-1", UserID: userID, Role: role, JoinedAt: time.Now()})
+	}
+	return out, nil
 }
 func (s *stubOrgRepo) UpdateMemberRole(_ context.Context, _, _ string, _ domain.OrgRole) error {
 	return nil
@@ -194,6 +198,20 @@ func TestOrgService_CheckQuota_GuardsOverflow(t *testing.T) {
 	maxInt64 := int64(^uint64(0) >> 1)
 
 	err := svc.CheckQuota(context.Background(), "org-1", domain.OrgQuotaNodes, maxInt64, 1)
+	if !errors.Is(err, domain.ErrQuotaExceeded) {
+		t.Fatalf("want ErrQuotaExceeded, got %v", err)
+	}
+}
+
+func TestOrgService_AddMember_EnforcesMemberQuota(t *testing.T) {
+	repo := &stubOrgRepo{roles: map[string]domain.OrgRole{
+		"admin-1": domain.OrgRoleAdmin,
+		"user-1":  domain.OrgRoleMember,
+	}}
+	quotas := &stubOrgQuotaRepo{quota: &domain.OrgQuota{OrgID: "org-1", MaxMembers: 2}}
+	svc := NewOrgService(repo).WithQuotaRepository(quotas)
+
+	err := svc.AddMember(context.Background(), &domain.User{ID: "admin-1"}, "org-1", "user-2", domain.OrgRoleMember)
 	if !errors.Is(err, domain.ErrQuotaExceeded) {
 		t.Fatalf("want ErrQuotaExceeded, got %v", err)
 	}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -21,8 +23,9 @@ import (
 // AttachmentHandlers M4-B 节点附件（本地文件系统存储）。
 //
 // 端点：
-//   POST /api/v1/attachments       multipart 上传，字段 file + 可选 node_id
-//   GET  /api/v1/attachments/{id}  鉴权后回传二进制
+//
+//	POST /api/v1/attachments       multipart 上传，字段 file + 可选 node_id
+//	GET  /api/v1/attachments/{id}  鉴权后回传二进制
 //
 // 安全：
 //   - MaxBytesReader 限制请求体（UploadMaxMB）
@@ -33,6 +36,17 @@ type AttachmentHandlers struct {
 	UploadDir   string
 	MaxBytes    int64
 	AllowedMIME map[string]bool
+	Nodes       *service.NodeService
+	Lakes       *service.LakeService
+	Orgs        *service.OrgService
+}
+
+type attachmentOrgCounter interface {
+	CountByOrg(ctx context.Context, orgID string) (int64, error)
+}
+
+type attachmentOrgSizer interface {
+	SumSizeByOrg(ctx context.Context, orgID string) (int64, error)
 }
 
 // NewAttachmentHandlers 装配。
@@ -84,6 +98,13 @@ func (h *AttachmentHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	nodeID := r.FormValue("node_id")
+	orgID, err := h.resolveAttachmentOrg(r.Context(), u, nodeID)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+
 	// M5-T3 安全加固：嗅探前 512 字节 magic bytes，拒绝伪造的 Content-Type
 	sniffBuf := make([]byte, 512)
 	nSniff, _ := io.ReadFull(file, sniffBuf)
@@ -132,14 +153,24 @@ func (h *AttachmentHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 	// 去重：同 user 同 sha 已存在 → 删新文件，返回旧记录
 	if existing, err := h.Repo.GetBySHA(r.Context(), u.ID, sha); err == nil {
 		_ = os.Remove(absPath)
-		writeJSON(w, http.StatusOK, attachmentToDTO(existing))
+		if existing.OrgID == orgID && existing.NodeID == nodeID {
+			writeJSON(w, http.StatusOK, attachmentToDTO(existing))
+			return
+		}
+		writeError(w, http.StatusConflict, "file already uploaded in a different attachment scope")
+		return
+	}
+	if err := h.checkAttachmentQuota(r.Context(), orgID, written); err != nil {
+		_ = os.Remove(absPath)
+		writeError(w, mapDomainError(err), err.Error())
 		return
 	}
 
 	att := &store.Attachment{
 		ID:        uuid.NewString(),
 		UserID:    u.ID,
-		NodeID:    r.FormValue("node_id"),
+		OrgID:     orgID,
+		NodeID:    nodeID,
 		MIME:      mime,
 		SizeBytes: written,
 		FilePath:  relPath,
@@ -152,6 +183,57 @@ func (h *AttachmentHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, attachmentToDTO(att))
+}
+
+func (h *AttachmentHandlers) resolveAttachmentOrg(ctx context.Context, actor *domain.User, nodeID string) (string, error) {
+	if nodeID == "" || h.Nodes == nil || h.Lakes == nil {
+		return "", nil
+	}
+	node, err := h.Nodes.Get(ctx, actor, nodeID)
+	if err != nil {
+		return "", err
+	}
+	lake, _, err := h.Lakes.Get(ctx, actor, node.LakeID)
+	if err != nil {
+		return "", err
+	}
+	return lake.OrgID, nil
+}
+
+func (h *AttachmentHandlers) checkAttachmentQuota(ctx context.Context, orgID string, sizeBytes int64) error {
+	if orgID == "" || h.Orgs == nil {
+		return nil
+	}
+	counter, ok := h.Repo.(attachmentOrgCounter)
+	if !ok {
+		return fmt.Errorf("%w: attachment quota counter not configured", domain.ErrInvalidInput)
+	}
+	usedCount, err := counter.CountByOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if err := h.Orgs.CheckQuota(ctx, orgID, domain.OrgQuotaAttachments, usedCount, 1); err != nil {
+		return err
+	}
+	sizer, ok := h.Repo.(attachmentOrgSizer)
+	if !ok {
+		return fmt.Errorf("%w: attachment storage quota counter not configured", domain.ErrInvalidInput)
+	}
+	usedBytes, err := sizer.SumSizeByOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	usedMB := bytesToQuotaMB(usedBytes)
+	totalMB := bytesToQuotaMB(usedBytes + sizeBytes)
+	return h.Orgs.CheckQuota(ctx, orgID, domain.OrgQuotaStorageMB, usedMB, totalMB-usedMB)
+}
+
+func bytesToQuotaMB(n int64) int64 {
+	if n <= 0 {
+		return 0
+	}
+	const mb = int64(1024 * 1024)
+	return (n + mb - 1) / mb
 }
 
 // Download GET /api/v1/attachments/{id}
@@ -231,6 +313,7 @@ func safeExt(name, mime string) string {
 func attachmentToDTO(a *store.Attachment) map[string]any {
 	return map[string]any{
 		"id":         a.ID,
+		"org_id":     a.OrgID,
 		"node_id":    a.NodeID,
 		"mime":       a.MIME,
 		"size_bytes": a.SizeBytes,

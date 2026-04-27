@@ -209,8 +209,8 @@ export const api = {
   },
 
   // ---- API Keys (P10-A) ----
-  createAPIKey(name: string, scopes?: string[]): Promise<APIKeyCreated> {
-    return request('POST', '/api/v1/api_keys', { name, scopes: scopes ?? ['read_lake', 'read_node'] })
+  createAPIKey(name: string, scopes?: string[], orgId?: string): Promise<APIKeyCreated> {
+    return request('POST', '/api/v1/api_keys', { name, scopes: scopes ?? ['read_lake', 'read_node'], org_id: orgId ?? '' })
   },
   listAPIKeys(): Promise<{ keys: APIKeyItem[] }> {
     return request('GET', '/api/v1/api_keys')
@@ -279,6 +279,12 @@ export const api = {
   },
   listOrgLakes(orgId: string): Promise<{ lakes: Lake[] }> {
     return request('GET', `/api/v1/organizations/${orgId}/lakes`)
+  },
+  getOrgQuota(orgId: string): Promise<import('./types').OrgQuota> {
+    return request('GET', `/api/v1/organizations/${orgId}/quota`)
+  },
+  updateOrgQuota(orgId: string, patch: import('./types').OrgQuotaPatch): Promise<import('./types').OrgQuota> {
+    return request('PATCH', `/api/v1/organizations/${orgId}/quota`, patch)
   },
 
   // P13-C：标签系统

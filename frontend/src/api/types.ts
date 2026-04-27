@@ -163,6 +163,7 @@ export interface PermaNode {
 // ---- API Keys (P10-A) ----
 export interface APIKeyItem {
   id: string
+  org_id?: string
   name: string
   key_prefix: string   // "rpl_XXXXXXXXXXXXXXXX..." (掩码)
   scopes: string[]
@@ -220,6 +221,22 @@ export interface OrgMember {
   role: OrgRole
   joined_at: string
 }
+
+export interface OrgQuota {
+  org_id: string
+  max_members: number
+  max_lakes: number
+  max_nodes: number
+  max_attachments: number
+  max_api_keys: number
+  max_storage_mb: number
+  created_at: string
+  updated_at: string
+}
+
+export type OrgQuotaPatch = Partial<Pick<OrgQuota,
+  'max_members' | 'max_lakes' | 'max_nodes' | 'max_attachments' | 'max_api_keys' | 'max_storage_mb'
+>>
 
 // ---- P18-A：节点关联推荐 ----
 export interface NodeSearchResult {

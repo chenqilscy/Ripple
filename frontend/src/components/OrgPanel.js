@@ -26,6 +26,19 @@ function OrgMemberList({ org, currentUserId, onBack }) {
     const [lakes, setLakes] = useState([]);
     const [lakesLoading, setLakesLoading] = useState(false);
     const [lakesError, setLakesError] = useState(null);
+    // Quota tab state
+    const [quota, setQuota] = useState(null);
+    const [quotaDraft, setQuotaDraft] = useState({
+        max_members: '',
+        max_lakes: '',
+        max_nodes: '',
+        max_attachments: '',
+        max_api_keys: '',
+        max_storage_mb: '',
+    });
+    const [quotaLoading, setQuotaLoading] = useState(false);
+    const [quotaSaving, setQuotaSaving] = useState(false);
+    const [quotaError, setQuotaError] = useState(null);
     const currentMember = members.find(m => m.user_id === currentUserId);
     const isAdmin = currentMember?.role === 'OWNER' || currentMember?.role === 'ADMIN';
     const load = useCallback(async () => {
@@ -56,9 +69,33 @@ function OrgMemberList({ org, currentUserId, onBack }) {
             setLakesLoading(false);
         }
     }, [org.id]);
+    const loadQuota = useCallback(async () => {
+        setQuotaLoading(true);
+        setQuotaError(null);
+        try {
+            const q = await api.getOrgQuota(org.id);
+            setQuota(q);
+            setQuotaDraft({
+                max_members: String(q.max_members),
+                max_lakes: String(q.max_lakes),
+                max_nodes: String(q.max_nodes),
+                max_attachments: String(q.max_attachments),
+                max_api_keys: String(q.max_api_keys),
+                max_storage_mb: String(q.max_storage_mb),
+            });
+        }
+        catch (e) {
+            setQuotaError(e instanceof Error ? e.message : 'Failed to load quota');
+        }
+        finally {
+            setQuotaLoading(false);
+        }
+    }, [org.id]);
     useEffect(() => { void load(); }, [load]);
     useEffect(() => { if (tab === 'lakes')
         void loadLakes(); }, [tab, loadLakes]);
+    useEffect(() => { if (tab === 'quota')
+        void loadQuota(); }, [tab, loadQuota]);
     const handleRoleChange = useCallback(async (userId, newRole) => {
         setUpdating(userId);
         setError(null);
@@ -123,11 +160,57 @@ function OrgMemberList({ org, currentUserId, onBack }) {
             setAddingEmail(false);
         }
     }, [org.id, addEmail, addRole, load]);
-    return (_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 12 }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: 8 }, children: [_jsx("button", { onClick: onBack, style: btnStyle, children: "\u2190 Back" }), _jsx("span", { style: { color: '#c0d8f0', fontWeight: 600, fontSize: 14 }, children: org.name }), _jsx("button", { onClick: () => tab === 'members' ? void load() : void loadLakes(), disabled: loading || lakesLoading, style: { ...btnStyle, marginLeft: 'auto' }, children: (loading || lakesLoading) ? '...' : 'Refresh' })] }), error && _jsx(ErrorMsg, { children: error }), _jsxs("div", { style: { display: 'flex', gap: 6 }, children: [_jsx("button", { onClick: () => setTab('members'), style: { ...btnStyle, ...(tab === 'members' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }, children: "Members" }), _jsx("button", { onClick: () => setTab('lakes'), style: { ...btnStyle, ...(tab === 'lakes' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }, children: "Lakes" })] }), tab === 'members' && (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: [members.map(m => (_jsxs("div", { style: memberRowStyle, children: [_jsx("span", { style: { color: '#8ab0d0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: m.user_id }), isAdmin && m.role !== 'OWNER' && m.user_id !== currentUserId ? (_jsxs(_Fragment, { children: [_jsx("select", { value: m.role, disabled: updating === m.user_id, onChange: e => void handleRoleChange(m.user_id, e.target.value), style: selectStyle, children: INVITE_ROLE_OPTIONS.map(r => (_jsx("option", { value: r, children: r }, r))) }), _jsx("button", { disabled: updating === m.user_id, onClick: () => void handleRemove(m.user_id), style: { ...btnStyle, color: '#ff6b6b', borderColor: '#5a2222' }, children: "Remove" })] })) : (_jsx("span", { style: { color: ROLE_COLOR[m.role], fontSize: 11, padding: '2px 8px',
+    const handleSaveQuota = useCallback(async () => {
+        const patch = {};
+        for (const [key, value] of Object.entries(quotaDraft)) {
+            const trimmed = value.trim();
+            if (trimmed === '')
+                continue;
+            const n = Number(trimmed);
+            if (!Number.isFinite(n) || !Number.isInteger(n)) {
+                setQuotaError(`${key} must be an integer`);
+                return;
+            }
+            patch[key] = n;
+        }
+        if (Object.keys(patch).length === 0) {
+            setQuotaError('No quota fields to update');
+            return;
+        }
+        setQuotaSaving(true);
+        setQuotaError(null);
+        try {
+            const next = await api.updateOrgQuota(org.id, patch);
+            setQuota(next);
+            setQuotaDraft({
+                max_members: String(next.max_members),
+                max_lakes: String(next.max_lakes),
+                max_nodes: String(next.max_nodes),
+                max_attachments: String(next.max_attachments),
+                max_api_keys: String(next.max_api_keys),
+                max_storage_mb: String(next.max_storage_mb),
+            });
+        }
+        catch (e) {
+            setQuotaError(e instanceof Error ? e.message : 'Failed to update quota');
+        }
+        finally {
+            setQuotaSaving(false);
+        }
+    }, [org.id, quotaDraft]);
+    return (_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 12 }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: 8 }, children: [_jsx("button", { onClick: onBack, style: btnStyle, children: "\u2190 Back" }), _jsx("span", { style: { color: '#c0d8f0', fontWeight: 600, fontSize: 14 }, children: org.name }), _jsx("button", { onClick: () => tab === 'members' ? void load() : tab === 'lakes' ? void loadLakes() : void loadQuota(), disabled: loading || lakesLoading || quotaLoading, style: { ...btnStyle, marginLeft: 'auto' }, children: (loading || lakesLoading || quotaLoading) ? '...' : 'Refresh' })] }), error && _jsx(ErrorMsg, { children: error }), _jsxs("div", { style: { display: 'flex', gap: 6 }, children: [_jsx("button", { onClick: () => setTab('members'), style: { ...btnStyle, ...(tab === 'members' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }, children: "Members" }), _jsx("button", { onClick: () => setTab('lakes'), style: { ...btnStyle, ...(tab === 'lakes' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }, children: "Lakes" }), _jsx("button", { onClick: () => setTab('quota'), style: { ...btnStyle, ...(tab === 'quota' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }, children: "Quota" })] }), tab === 'members' && (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: [members.map(m => (_jsxs("div", { style: memberRowStyle, children: [_jsx("span", { style: { color: '#8ab0d0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: m.user_id }), isAdmin && m.role !== 'OWNER' && m.user_id !== currentUserId ? (_jsxs(_Fragment, { children: [_jsx("select", { value: m.role, disabled: updating === m.user_id, onChange: e => void handleRoleChange(m.user_id, e.target.value), style: selectStyle, children: INVITE_ROLE_OPTIONS.map(r => (_jsx("option", { value: r, children: r }, r))) }), _jsx("button", { disabled: updating === m.user_id, onClick: () => void handleRemove(m.user_id), style: { ...btnStyle, color: '#ff6b6b', borderColor: '#5a2222' }, children: "Remove" })] })) : (_jsx("span", { style: { color: ROLE_COLOR[m.role], fontSize: 11, padding: '2px 8px',
                                             background: 'rgba(255,255,255,0.05)', borderRadius: 4 }, children: m.role }))] }, m.user_id))), members.length === 0 && !loading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "No members" }))] }), isAdmin && (_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }, children: [_jsxs("div", { style: { display: 'flex', gap: 6, flexWrap: 'wrap' }, children: [_jsx("input", { placeholder: "User ID to invite", value: addUserId, onChange: e => setAddUserId(e.target.value), onKeyDown: e => { if (e.key === 'Enter')
                                             void handleAdd(); }, style: inputStyle }), _jsx("select", { value: addRole, onChange: e => setAddRole(e.target.value), style: selectStyle, children: INVITE_ROLE_OPTIONS.map(r => _jsx("option", { value: r, children: r }, r)) }), _jsx("button", { onClick: () => void handleAdd(), disabled: adding || !addUserId.trim(), style: btnStyle, children: adding ? '...' : 'Add' })] }), _jsxs("div", { style: { display: 'flex', gap: 6, flexWrap: 'wrap' }, children: [_jsx("input", { type: "email", placeholder: "Email to invite", value: addEmail, onChange: e => setAddEmail(e.target.value), onKeyDown: e => { if (e.key === 'Enter')
-                                            void handleAddByEmail(); }, style: inputStyle }), _jsx("button", { onClick: () => void handleAddByEmail(), disabled: addingEmail || !addEmail.trim(), style: btnStyle, title: "Invite an already-registered user by email", children: addingEmail ? '...' : 'Invite by Email' })] })] }))] })), tab === 'lakes' && (_jsxs(_Fragment, { children: [lakesError && _jsx(ErrorMsg, { children: lakesError }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: [lakes.map(l => (_jsxs("div", { style: memberRowStyle, children: [_jsx("span", { style: { color: '#c0d8f0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: l.name }), _jsxs("span", { style: { color: '#4a6a8e', fontSize: 10 }, children: [l.id.slice(0, 8), "\u2026"] })] }, l.id))), lakes.length === 0 && !lakesLoading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "No lakes linked to this organization" })), lakesLoading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "Loading\u2026" }))] })] }))] }));
+                                            void handleAddByEmail(); }, style: inputStyle }), _jsx("button", { onClick: () => void handleAddByEmail(), disabled: addingEmail || !addEmail.trim(), style: btnStyle, title: "Invite an already-registered user by email", children: addingEmail ? '...' : 'Invite by Email' })] })] }))] })), tab === 'lakes' && (_jsxs(_Fragment, { children: [lakesError && _jsx(ErrorMsg, { children: lakesError }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: [lakes.map(l => (_jsxs("div", { style: memberRowStyle, children: [_jsx("span", { style: { color: '#c0d8f0', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, children: l.name }), _jsxs("span", { style: { color: '#4a6a8e', fontSize: 10 }, children: [l.id.slice(0, 8), "\u2026"] })] }, l.id))), lakes.length === 0 && !lakesLoading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "No lakes linked to this organization" })), lakesLoading && (_jsx("div", { style: { color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 12 }, children: "Loading\u2026" }))] })] })), tab === 'quota' && (_jsxs(_Fragment, { children: [quotaError && _jsx(ErrorMsg, { children: quotaError }), quotaLoading && _jsx("div", { style: { color: '#4a6a8e', fontSize: 12, padding: 12 }, children: "Loading quota\u2026" }), quota && (_jsxs("div", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }, children: [quotaFields.map(f => (_jsxs("label", { style: { display: 'flex', flexDirection: 'column', gap: 4, color: '#8ab0d0', fontSize: 11 }, children: [f.label, _jsx("input", { type: "number", min: f.key === 'max_members' ? 1 : 0, value: quotaDraft[f.key], disabled: !isAdmin || quotaSaving, onChange: e => setQuotaDraft(prev => ({ ...prev, [f.key]: e.target.value })), style: inputStyle })] }, f.key))), _jsxs("div", { style: { gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8 }, children: [_jsxs("span", { style: { color: '#4a6a8e', fontSize: 11, flex: 1 }, children: ["Updated ", new Date(quota.updated_at).toLocaleString()] }), isAdmin ? (_jsx("button", { onClick: () => void handleSaveQuota(), disabled: quotaSaving, style: btnStyle, children: quotaSaving ? 'Saving…' : 'Save quota' })) : (_jsx("span", { style: { color: '#4a6a8e', fontSize: 11 }, children: "Read-only" }))] })] }))] }))] }));
 }
+const quotaFields = [
+    { key: 'max_members', label: 'Members' },
+    { key: 'max_lakes', label: 'Lakes' },
+    { key: 'max_nodes', label: 'Nodes' },
+    { key: 'max_attachments', label: 'Attachments' },
+    { key: 'max_api_keys', label: 'API Keys' },
+    { key: 'max_storage_mb', label: 'Storage (MB)' },
+];
 export default function OrgPanel({ currentUserId, onClose }) {
     const [orgs, setOrgs] = useState([]);
     const [loading, setLoading] = useState(false);

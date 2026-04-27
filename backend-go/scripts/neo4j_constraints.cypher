@@ -9,6 +9,9 @@
 CREATE CONSTRAINT lake_id_unique IF NOT EXISTS
     FOR (l:Lake) REQUIRE l.id IS UNIQUE;
 
+CREATE INDEX lake_org IF NOT EXISTS
+    FOR (l:Lake) ON (l.org_id);
+
 CREATE CONSTRAINT node_id_unique IF NOT EXISTS
     FOR (n:Node) REQUIRE n.id IS UNIQUE;
 

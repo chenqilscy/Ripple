@@ -1,7 +1,7 @@
 # Phase 14 规划草案
 
 > 文档层级：`docs/system-design/*.md`，承接 `docs/system-design/整体任务清单.md`。
-> 状态：草案已裁决第一切片；P14-A Org 配额数据模型已进入实现。
+> 状态：草案已裁决主线；Sprint 14.1 数据模型与 Sprint 14.2 配额拦截点已实现。
 
 ## 1. 阶段定位
 
@@ -52,11 +52,14 @@ Phase 13 已完成可信交付闭环：远端 staging、性能基线、故障演
 
 ### Sprint 14.2：配额拦截点
 
-- 建湖；
-- 邀请成员；
-- 上传附件；
-- 创建 API Key；
-- 节点批量导入。
+- ✅ 湖归属组织绑定：`SetLakeOrg` 校验 `max_lakes`；
+- ✅ 邀请 / 添加成员：`AddMember` 校验 `max_members`；
+- ✅ 上传附件：节点归属组织下校验 `max_attachments` 与 `max_storage_mb`；
+- ✅ 创建 API Key：提供 `org_id` 时校验 `max_api_keys`；
+- ✅ 节点创建与批量导入：校验 `max_nodes`；
+- ✅ 前端 Org 运营面板新增 `Quota` Tab，可读 / 可调配额。
+
+交付记录：`docs/dev/Phase14-2-配额拦截点-20260428.md`。
 
 ### Sprint 14.3：运营台 API 与 UI
 

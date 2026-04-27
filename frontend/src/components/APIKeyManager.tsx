@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { api, type APIKeyCreated, type APIKeyItem } from '../api/client'
+import { api } from '../api/client'
+import type { APIKeyCreated, APIKeyItem, Organization } from '../api/types'
 
 /** P11-A：API Key 管理面板 */
 export default function APIKeyManager() {
@@ -8,6 +9,8 @@ export default function APIKeyManager() {
   const [err, setErr] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [orgs, setOrgs] = useState<Organization[]>([])
+  const [orgId, setOrgId] = useState('')
   const [newKeyResult, setNewKeyResult] = useState<APIKeyCreated | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -25,6 +28,9 @@ export default function APIKeyManager() {
   }
 
   useEffect(() => { void load() }, [])
+  useEffect(() => {
+    api.listOrgs().then(res => setOrgs(res.organizations ?? [])).catch(() => setOrgs([]))
+  }, [])
 
   async function handleCreate() {
     const name = newName.trim()
@@ -32,7 +38,7 @@ export default function APIKeyManager() {
     setCreating(true)
     setErr(null)
     try {
-      const created = await api.createAPIKey(name)
+      const created = await api.createAPIKey(name, undefined, orgId || undefined)
       setNewKeyResult(created)
       setNewName('')
       void load()
@@ -103,6 +109,10 @@ export default function APIKeyManager() {
           disabled={creating}
           style={inputStyle}
         />
+        <select value={orgId} onChange={e => setOrgId(e.target.value)} disabled={creating} style={selectStyle}>
+          <option value="">个人 Key</option>
+          {orgs.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
+        </select>
         <button onClick={handleCreate} disabled={creating || !newName.trim()} style={btnStyle('#a6e3a1')}>
           {creating ? '创建中…' : '+ 创建'}
         </button>
@@ -121,6 +131,7 @@ export default function APIKeyManager() {
             <tr style={{ color: '#6c7086', textAlign: 'left' }}>
               <th style={thStyle}>名称</th>
               <th style={thStyle}>前缀</th>
+              <th style={thStyle}>组织</th>
               <th style={thStyle}>权限域</th>
               <th style={thStyle}>最后使用</th>
               <th style={thStyle}>创建时间</th>
@@ -132,6 +143,7 @@ export default function APIKeyManager() {
               <tr key={k.id} style={{ borderBottom: '1px solid #313244' }}>
                 <td style={tdStyle}>{k.name}</td>
                 <td style={{ ...tdStyle, fontFamily: 'monospace', color: '#89dceb' }}>{k.key_prefix}</td>
+                <td style={{ ...tdStyle, color: '#6c7086' }}>{k.org_id ? shortID(k.org_id) : '个人'}</td>
                 <td style={tdStyle}>{k.scopes.join(', ')}</td>
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{k.last_used_at ? fmtDate(k.last_used_at) : '—'}</td>
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{fmtDate(k.created_at)}</td>
@@ -153,6 +165,10 @@ function fmtDate(s: string) {
   return new Date(s).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+function shortID(s: string) {
+  return `${s.slice(0, 8)}…`
+}
+
 function btnStyle(color: string, small = false): React.CSSProperties {
   return {
     background: 'transparent', border: `1px solid ${color}`, color,
@@ -164,6 +180,11 @@ function btnStyle(color: string, small = false): React.CSSProperties {
 const inputStyle: React.CSSProperties = {
   flex: 1, background: '#1e1e2e', border: '1px solid #45475a', borderRadius: 4,
   color: '#cdd6f4', padding: '5px 10px', fontSize: 13,
+}
+
+const selectStyle: React.CSSProperties = {
+  background: '#1e1e2e', border: '1px solid #45475a', borderRadius: 4,
+  color: '#cdd6f4', padding: '5px 10px', fontSize: 13, minWidth: 140,
 }
 
 const thStyle: React.CSSProperties = {

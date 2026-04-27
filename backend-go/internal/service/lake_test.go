@@ -152,7 +152,7 @@ func (r *memOutboxRepo) EnqueueInTx(_ context.Context, _ pgx.Tx, eventType strin
 func (r *memOutboxRepo) Dequeue(_ context.Context, _ int) ([]store.OutboxEvent, error) {
 	return r.events, nil
 }
-func (r *memOutboxRepo) MarkDone(_ context.Context, _ int64) error   { return nil }
+func (r *memOutboxRepo) MarkDone(_ context.Context, _ int64) error             { return nil }
 func (r *memOutboxRepo) MarkFailed(_ context.Context, _ int64, _ string) error { return nil }
 
 // Fake TxRunner：直接调 fn(nil)，等同于不走真正事务。
@@ -167,6 +167,21 @@ func newLakeSvc() (*LakeService, *memLakeRepo, *memMembershipRepo, *memOutboxRep
 	memberships := newMemMembershipRepo()
 	outbox := newMemOutboxRepo()
 	return NewLakeService(lakes, memberships, outbox, fakeTxRunner{}), lakes, memberships, outbox
+}
+
+func TestLakeService_SetLakeOrg_EnforcesOrgLakeQuota(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, _ := newLakeSvc()
+	lakes.data["lake-1"] = &domain.Lake{ID: "lake-1", OwnerID: "u"}
+	lakes.data["lake-2"] = &domain.Lake{ID: "lake-2", OwnerID: "u", OrgID: "org-1"}
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-1", Role: domain.RoleOwner})
+	orgs := NewOrgService(&stubOrgRepo{roles: map[string]domain.OrgRole{"u": domain.OrgRoleAdmin}}).
+		WithQuotaRepository(&stubOrgQuotaRepo{quota: &domain.OrgQuota{OrgID: "org-1", MaxLakes: 1}})
+
+	_, err := svc.SetLakeOrg(ctx, &domain.User{ID: "u"}, "lake-1", "org-1", orgs)
+	if !errors.Is(err, domain.ErrQuotaExceeded) {
+		t.Fatalf("want ErrQuotaExceeded, got %v", err)
+	}
 }
 
 func TestLake_Create_EnqueuesOutboxAndMembership(t *testing.T) {

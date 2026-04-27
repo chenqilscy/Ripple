@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { Lake, OrgMember, OrgRole, Organization } from '../api/types'
+import type { Lake, OrgMember, OrgQuota, OrgQuotaPatch, OrgRole, Organization } from '../api/types'
 
 const ROLE_COLOR: Record<OrgRole, string> = {
   OWNER:  '#f5a623',
@@ -21,7 +21,7 @@ interface MemberListProps {
 }
 
 function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
-  const [tab, setTab] = useState<'members' | 'lakes'>('members')
+  const [tab, setTab] = useState<'members' | 'lakes' | 'quota'>('members')
   const [members, setMembers] = useState<OrgMember[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,6 +36,20 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
   const [lakes, setLakes] = useState<Lake[]>([])
   const [lakesLoading, setLakesLoading] = useState(false)
   const [lakesError, setLakesError] = useState<string | null>(null)
+
+  // Quota tab state
+  const [quota, setQuota] = useState<OrgQuota | null>(null)
+  const [quotaDraft, setQuotaDraft] = useState<Record<keyof OrgQuotaPatch, string>>({
+    max_members: '',
+    max_lakes: '',
+    max_nodes: '',
+    max_attachments: '',
+    max_api_keys: '',
+    max_storage_mb: '',
+  })
+  const [quotaLoading, setQuotaLoading] = useState(false)
+  const [quotaSaving, setQuotaSaving] = useState(false)
+  const [quotaError, setQuotaError] = useState<string | null>(null)
 
   const currentMember = members.find(m => m.user_id === currentUserId)
   const isAdmin = currentMember?.role === 'OWNER' || currentMember?.role === 'ADMIN'
@@ -66,8 +80,30 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
     }
   }, [org.id])
 
+  const loadQuota = useCallback(async () => {
+    setQuotaLoading(true)
+    setQuotaError(null)
+    try {
+      const q = await api.getOrgQuota(org.id)
+      setQuota(q)
+      setQuotaDraft({
+        max_members: String(q.max_members),
+        max_lakes: String(q.max_lakes),
+        max_nodes: String(q.max_nodes),
+        max_attachments: String(q.max_attachments),
+        max_api_keys: String(q.max_api_keys),
+        max_storage_mb: String(q.max_storage_mb),
+      })
+    } catch (e: unknown) {
+      setQuotaError(e instanceof Error ? e.message : 'Failed to load quota')
+    } finally {
+      setQuotaLoading(false)
+    }
+  }, [org.id])
+
   useEffect(() => { void load() }, [load])
   useEffect(() => { if (tab === 'lakes') void loadLakes() }, [tab, loadLakes])
+  useEffect(() => { if (tab === 'quota') void loadQuota() }, [tab, loadQuota])
 
   const handleRoleChange = useCallback(async (userId: string, newRole: OrgRole) => {
     setUpdating(userId)
@@ -127,6 +163,42 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
     }
   }, [org.id, addEmail, addRole, load])
 
+  const handleSaveQuota = useCallback(async () => {
+    const patch: OrgQuotaPatch = {}
+    for (const [key, value] of Object.entries(quotaDraft) as [keyof OrgQuotaPatch, string][]) {
+      const trimmed = value.trim()
+      if (trimmed === '') continue
+      const n = Number(trimmed)
+      if (!Number.isFinite(n) || !Number.isInteger(n)) {
+        setQuotaError(`${key} must be an integer`)
+        return
+      }
+      patch[key] = n
+    }
+    if (Object.keys(patch).length === 0) {
+      setQuotaError('No quota fields to update')
+      return
+    }
+    setQuotaSaving(true)
+    setQuotaError(null)
+    try {
+      const next = await api.updateOrgQuota(org.id, patch)
+      setQuota(next)
+      setQuotaDraft({
+        max_members: String(next.max_members),
+        max_lakes: String(next.max_lakes),
+        max_nodes: String(next.max_nodes),
+        max_attachments: String(next.max_attachments),
+        max_api_keys: String(next.max_api_keys),
+        max_storage_mb: String(next.max_storage_mb),
+      })
+    } catch (e: unknown) {
+      setQuotaError(e instanceof Error ? e.message : 'Failed to update quota')
+    } finally {
+      setQuotaSaving(false)
+    }
+  }, [org.id, quotaDraft])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -134,9 +206,9 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
         <span style={{ color: '#c0d8f0', fontWeight: 600, fontSize: 14 }}>
           {org.name}
         </span>
-        <button onClick={() => tab === 'members' ? void load() : void loadLakes()} disabled={loading || lakesLoading}
+        <button onClick={() => tab === 'members' ? void load() : tab === 'lakes' ? void loadLakes() : void loadQuota()} disabled={loading || lakesLoading || quotaLoading}
           style={{ ...btnStyle, marginLeft: 'auto' }}>
-          {(loading || lakesLoading) ? '...' : 'Refresh'}
+          {(loading || lakesLoading || quotaLoading) ? '...' : 'Refresh'}
         </button>
       </div>
 
@@ -155,6 +227,12 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
           style={{ ...btnStyle, ...(tab === 'lakes' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }}
         >
           Lakes
+        </button>
+        <button
+          onClick={() => setTab('quota')}
+          style={{ ...btnStyle, ...(tab === 'quota' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }}
+        >
+          Quota
         </button>
       </div>
 
@@ -264,9 +342,54 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
           </div>
         </>
       )}
+
+      {tab === 'quota' && (
+        <>
+          {quotaError && <ErrorMsg>{quotaError}</ErrorMsg>}
+          {quotaLoading && <div style={{ color: '#4a6a8e', fontSize: 12, padding: 12 }}>Loading quota…</div>}
+          {quota && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {quotaFields.map(f => (
+                <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 4, color: '#8ab0d0', fontSize: 11 }}>
+                  {f.label}
+                  <input
+                    type="number"
+                    min={f.key === 'max_members' ? 1 : 0}
+                    value={quotaDraft[f.key]}
+                    disabled={!isAdmin || quotaSaving}
+                    onChange={e => setQuotaDraft(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </label>
+              ))}
+              <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#4a6a8e', fontSize: 11, flex: 1 }}>
+                  Updated {new Date(quota.updated_at).toLocaleString()}
+                </span>
+                {isAdmin ? (
+                  <button onClick={() => void handleSaveQuota()} disabled={quotaSaving} style={btnStyle}>
+                    {quotaSaving ? 'Saving…' : 'Save quota'}
+                  </button>
+                ) : (
+                  <span style={{ color: '#4a6a8e', fontSize: 11 }}>Read-only</span>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
+
+const quotaFields: { key: keyof OrgQuotaPatch; label: string }[] = [
+  { key: 'max_members', label: 'Members' },
+  { key: 'max_lakes', label: 'Lakes' },
+  { key: 'max_nodes', label: 'Nodes' },
+  { key: 'max_attachments', label: 'Attachments' },
+  { key: 'max_api_keys', label: 'API Keys' },
+  { key: 'max_storage_mb', label: 'Storage (MB)' },
+]
 
 interface Props {
   currentUserId: string

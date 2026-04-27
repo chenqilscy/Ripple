@@ -7,17 +7,18 @@ import "time"
 // - prefix（16 hex chars）：明文存储，用于快速前缀查找。
 // - secret（64 hex chars）：SHA-256(key_salt + secret) 后存储，只在创建时返回一次。
 type APIKey struct {
-	ID          string
-	OwnerID     string
-	Name        string
-	KeyPrefix   string     // 16 hex chars，明文存储（用于 DB 查找）
-	KeyHash     string     // hex(SHA-256(KeySalt + rawSecret))
-	KeySalt     string     // 32 hex chars（16 random bytes）
-	Scopes      []string   // e.g. ["read_lake","write_node"]
-	LastUsedAt  *time.Time
-	ExpiresAt   *time.Time
-	RevokedAt   *time.Time
-	CreatedAt   time.Time
+	ID         string
+	OwnerID    string
+	OrgID      string
+	Name       string
+	KeyPrefix  string   // 16 hex chars，明文存储（用于 DB 查找）
+	KeyHash    string   // hex(SHA-256(KeySalt + rawSecret))
+	KeySalt    string   // 32 hex chars（16 random bytes）
+	Scopes     []string // e.g. ["read_lake","write_node"]
+	LastUsedAt *time.Time
+	ExpiresAt  *time.Time
+	RevokedAt  *time.Time
+	CreatedAt  time.Time
 }
 
 // IsValid 判断 key 是否有效（未撤销、未过期）。

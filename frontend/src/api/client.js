@@ -191,8 +191,8 @@ export const api = {
         return `${BASE}/api/v1/attachments/${id}`;
     },
     // ---- API Keys (P10-A) ----
-    createAPIKey(name, scopes) {
-        return request('POST', '/api/v1/api_keys', { name, scopes: scopes ?? ['read_lake', 'read_node'] });
+    createAPIKey(name, scopes, orgId) {
+        return request('POST', '/api/v1/api_keys', { name, scopes: scopes ?? ['read_lake', 'read_node'], org_id: orgId ?? '' });
     },
     listAPIKeys() {
         return request('GET', '/api/v1/api_keys');
@@ -256,6 +256,12 @@ export const api = {
     },
     listOrgLakes(orgId) {
         return request('GET', `/api/v1/organizations/${orgId}/lakes`);
+    },
+    getOrgQuota(orgId) {
+        return request('GET', `/api/v1/organizations/${orgId}/quota`);
+    },
+    updateOrgQuota(orgId, patch) {
+        return request('PATCH', `/api/v1/organizations/${orgId}/quota`, patch);
     },
     // P13-C：标签系统
     getLakeTags(lakeId) {

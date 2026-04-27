@@ -6,8 +6,9 @@
 // 优雅关停：捕获 SIGINT/SIGTERM，先关 HTTP 再关数据库连接。
 //
 // 命令行 flag：
-//   --healthcheck : 仅探测 http://127.0.0.1:$HTTP_ADDR/healthz，
-//                   返回 0 表示健康，1 表示异常。供 Dockerfile HEALTHCHECK 使用。
+//
+//	--healthcheck : 仅探测 http://127.0.0.1:$HTTP_ADDR/healthz，
+//	                返回 0 表示健康，1 表示异常。供 Dockerfile HEALTHCHECK 使用。
 package main
 
 import (
@@ -140,7 +141,9 @@ func main() {
 
 	presenceSvc := presence.NewService(rds, broker, 0)
 
-	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker).WithRevisions(nodeRevs)
+	nodeSvc := service.NewNodeService(nodes, memberships, lakes, broker).
+		WithRevisions(nodeRevs).
+		WithOrgService(orgSvc)
 	edgeSvc := service.NewEdgeService(edges, nodes, memberships, lakes, broker)
 	inviteSvc := service.NewInviteService(invites, memberships, lakes)
 	cloudSvc := service.NewCloudService(cloudTasks, nodes, lakes)
@@ -226,6 +229,9 @@ func main() {
 			logger.Fatal().Err(err).Msg("attachment handlers init failed")
 		}
 		attachmentH = ah
+		attachmentH.Nodes = nodeSvc
+		attachmentH.Lakes = lakeSvc
+		attachmentH.Orgs = orgSvc
 	}
 
 	wsH := &httpapi.WSHandlers{

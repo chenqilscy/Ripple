@@ -22,6 +22,7 @@ type NodeService struct {
 	revisions   store.NodeRevisionRepository // 可空：未接入时 Create/UpdateContent 不写历史
 	memberships store.MembershipRepository
 	lakes       store.LakeRepository
+	orgs        *OrgService
 	broker      realtime.Broker // 可空（单测场景）
 }
 
@@ -39,6 +40,16 @@ func NewNodeService(
 func (s *NodeService) WithRevisions(revs store.NodeRevisionRepository) *NodeService {
 	s.revisions = revs
 	return s
+}
+
+// WithOrgService 注入组织服务，用于组织配额检查（P14.2）。
+func (s *NodeService) WithOrgService(orgs *OrgService) *NodeService {
+	s.orgs = orgs
+	return s
+}
+
+type nodeOrgCounter interface {
+	CountByOrg(ctx context.Context, orgID string) (int64, error)
 }
 
 // publish 非阻塞广播；broker 为 nil 时跳过。
@@ -77,6 +88,9 @@ func (s *NodeService) Create(ctx context.Context, actor *domain.User, in CreateN
 		return nil, fmt.Errorf("%w: invalid type", domain.ErrInvalidInput)
 	}
 	if err := s.requireWrite(ctx, actor, in.LakeID); err != nil {
+		return nil, err
+	}
+	if err := s.checkNodeQuota(ctx, in.LakeID, 1); err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC()
@@ -176,6 +190,19 @@ func (s *NodeService) Condense(ctx context.Context, actor *domain.User, nodeID s
 	}
 	// 目标校验：actor 在 target lake 必须有写权限。
 	if err := s.requireWrite(ctx, actor, target); err != nil {
+		return nil, err
+	}
+	delta := int64(1)
+	if n.LakeID == target {
+		delta = 0
+	} else if n.LakeID != "" {
+		if sourceLake, err := s.lakes.GetByID(ctx, n.LakeID); err == nil {
+			if targetLake, err := s.lakes.GetByID(ctx, target); err == nil && sourceLake.OrgID != "" && sourceLake.OrgID == targetLake.OrgID {
+				delta = 0
+			}
+		}
+	}
+	if err := s.checkNodeQuota(ctx, target, delta); err != nil {
 		return nil, err
 	}
 	if err := n.Condense(time.Now().UTC(), target); err != nil {
@@ -514,10 +541,35 @@ func (s *NodeService) BatchImportNodes(ctx context.Context, actor *domain.User, 
 	if len(nodes) == 0 {
 		return &BatchImportResult{}, nil
 	}
+	if err := s.checkNodeQuota(ctx, lakeID, int64(len(nodes))); err != nil {
+		return nil, err
+	}
 	if err := s.nodes.BatchCreate(ctx, nodes); err != nil {
 		return nil, err
 	}
 	return &BatchImportResult{Created: len(nodes), Nodes: nodes}, nil
+}
+
+func (s *NodeService) checkNodeQuota(ctx context.Context, lakeID string, delta int64) error {
+	if s.orgs == nil || delta <= 0 {
+		return nil
+	}
+	lake, err := s.lakes.GetByID(ctx, lakeID)
+	if err != nil {
+		return err
+	}
+	if lake.OrgID == "" {
+		return nil
+	}
+	counter, ok := s.nodes.(nodeOrgCounter)
+	if !ok {
+		return fmt.Errorf("%w: node quota counter not configured", domain.ErrInvalidInput)
+	}
+	used, err := counter.CountByOrg(ctx, lake.OrgID)
+	if err != nil {
+		return err
+	}
+	return s.orgs.CheckQuota(ctx, lake.OrgID, domain.OrgQuotaNodes, used, delta)
 }
 
 // BatchOperate P14-C：对多个节点执行同一操作（evaporate / condense）。

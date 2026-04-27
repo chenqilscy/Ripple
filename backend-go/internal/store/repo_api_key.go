@@ -111,13 +111,13 @@ func NewAPIKeyRepository(pool *pgxpool.Pool) APIKeyRepository {
 }
 
 const sqlInsertAPIKey = `
-INSERT INTO api_keys (id, owner_id, name, key_prefix, key_hash, key_salt, scopes, expires_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO api_keys (id, owner_id, org_id, name, key_prefix, key_hash, key_salt, scopes, expires_at, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
 func (r *apiKeyRepoPG) Create(ctx context.Context, key *domain.APIKey) error {
 	_, err := r.pool.Exec(ctx, sqlInsertAPIKey,
-		key.ID, key.OwnerID, key.Name,
+		key.ID, key.OwnerID, key.OrgID, key.Name,
 		key.KeyPrefix, key.KeyHash, key.KeySalt,
 		key.Scopes, key.ExpiresAt, key.CreatedAt,
 	)
@@ -128,7 +128,7 @@ func (r *apiKeyRepoPG) Create(ctx context.Context, key *domain.APIKey) error {
 }
 
 const sqlSelectAPIKeyByPrefix = `
-SELECT id, owner_id, name, key_prefix, key_hash, key_salt,
+SELECT id, owner_id, coalesce(org_id, '') AS org_id, name, key_prefix, key_hash, key_salt,
        scopes, last_used_at, expires_at, revoked_at, created_at
 FROM   api_keys
 WHERE  key_prefix = $1
@@ -140,7 +140,7 @@ func (r *apiKeyRepoPG) GetByPrefix(ctx context.Context, prefix string) (*domain.
 }
 
 const sqlListAPIKeysByOwner = `
-SELECT id, owner_id, name, key_prefix, key_hash, key_salt,
+SELECT id, owner_id, coalesce(org_id, '') AS org_id, name, key_prefix, key_hash, key_salt,
        scopes, last_used_at, expires_at, revoked_at, created_at
 FROM   api_keys
 WHERE  owner_id = $1 AND revoked_at IS NULL
@@ -162,6 +162,18 @@ func (r *apiKeyRepoPG) ListByOwner(ctx context.Context, ownerID string) ([]*doma
 		out = append(out, k)
 	}
 	return out, rows.Err()
+}
+
+const sqlCountAPIKeysByOrg = `
+SELECT COUNT(*) FROM api_keys WHERE org_id = $1 AND revoked_at IS NULL
+`
+
+func (r *apiKeyRepoPG) CountByOrg(ctx context.Context, orgID string) (int64, error) {
+	var n int64
+	if err := r.pool.QueryRow(ctx, sqlCountAPIKeysByOrg, orgID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("api_keys count by org: %w", err)
+	}
+	return n, nil
 }
 
 const sqlRevokeAPIKey = `
@@ -194,7 +206,7 @@ func (r *apiKeyRepoPG) UpdateLastUsed(ctx context.Context, id string, t time.Tim
 func scanAPIKey(row interface{ Scan(...any) error }) (*domain.APIKey, error) {
 	k := &domain.APIKey{}
 	err := row.Scan(
-		&k.ID, &k.OwnerID, &k.Name,
+		&k.ID, &k.OwnerID, &k.OrgID, &k.Name,
 		&k.KeyPrefix, &k.KeyHash, &k.KeySalt,
 		&k.Scopes, &k.LastUsedAt, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt,
 	)

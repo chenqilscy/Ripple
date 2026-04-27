@@ -226,7 +226,7 @@ func NewRouter(d Deps) http.Handler {
 
 			// P10-A：API Key 管理
 			if d.APIKeys != nil {
-				apiKeyH := &APIKeyHandlers{Repo: d.APIKeys}
+				apiKeyH := &APIKeyHandlers{Repo: d.APIKeys, Orgs: d.Orgs}
 				r.Post("/api_keys", apiKeyH.Create)
 				r.Get("/api_keys", apiKeyH.List)
 				r.Delete("/api_keys/{id}", apiKeyH.Revoke)

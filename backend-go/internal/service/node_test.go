@@ -9,9 +9,14 @@ import (
 )
 
 // memNodeRepo 实现 NodeRepository。
-type memNodeRepo struct{ data map[string]*domain.Node }
+type memNodeRepo struct {
+	data      map[string]*domain.Node
+	orgCounts map[string]int64
+}
 
-func newMemNodeRepo() *memNodeRepo { return &memNodeRepo{data: map[string]*domain.Node{}} }
+func newMemNodeRepo() *memNodeRepo {
+	return &memNodeRepo{data: map[string]*domain.Node{}, orgCounts: map[string]int64{}}
+}
 func (r *memNodeRepo) Create(_ context.Context, n *domain.Node) error {
 	if _, ok := r.data[n.ID]; ok {
 		return domain.ErrAlreadyExists
@@ -60,6 +65,9 @@ func (r *memNodeRepo) BatchCreate(_ context.Context, nodes []*domain.Node) error
 		r.data[n.ID] = n
 	}
 	return nil
+}
+func (r *memNodeRepo) CountByOrg(_ context.Context, orgID string) (int64, error) {
+	return r.orgCounts[orgID], nil
 }
 func (r *memNodeRepo) FindRelated(_ context.Context, nodeID, lakeID, keyword string, limit int) ([]domain.NodeSearchResult, error) {
 	return []domain.NodeSearchResult{}, nil
@@ -174,5 +182,51 @@ func TestNode_Create_InvalidType(t *testing.T) {
 		CreateNodeInput{LakeID: "lake-1", Content: "hi", Type: "WRONG"})
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestNode_Create_EnforcesOrgNodeQuota(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, nodes := newNodeSvc(t)
+	lakes.data["lake-1"] = &domain.Lake{ID: "lake-1", OwnerID: "u", OrgID: "org-1"}
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-1", Role: domain.RoleOwner})
+	nodes.orgCounts["org-1"] = 1
+	svc.WithOrgService(NewOrgService(&stubOrgRepo{roles: map[string]domain.OrgRole{}}).
+		WithQuotaRepository(&stubOrgQuotaRepo{quota: &domain.OrgQuota{OrgID: "org-1", MaxNodes: 1}}))
+
+	_, err := svc.Create(ctx, &domain.User{ID: "u"}, CreateNodeInput{LakeID: "lake-1", Content: "hi", Type: domain.NodeTypeText})
+	if !errors.Is(err, domain.ErrQuotaExceeded) {
+		t.Fatalf("want ErrQuotaExceeded, got %v", err)
+	}
+}
+
+func TestNode_Condense_EnforcesOrgNodeQuota(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, nodes := newNodeSvc(t)
+	lakes.data["lake-1"] = &domain.Lake{ID: "lake-1", OwnerID: "u", OrgID: "org-1"}
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-1", Role: domain.RoleOwner})
+	nodes.data["mist-1"] = &domain.Node{ID: "mist-1", OwnerID: "u", State: domain.StateMist, Type: domain.NodeTypeText}
+	nodes.orgCounts["org-1"] = 1
+	svc.WithOrgService(NewOrgService(&stubOrgRepo{roles: map[string]domain.OrgRole{}}).
+		WithQuotaRepository(&stubOrgQuotaRepo{quota: &domain.OrgQuota{OrgID: "org-1", MaxNodes: 1}}))
+
+	_, err := svc.Condense(ctx, &domain.User{ID: "u"}, "mist-1", "lake-1")
+	if !errors.Is(err, domain.ErrQuotaExceeded) {
+		t.Fatalf("want ErrQuotaExceeded, got %v", err)
+	}
+}
+
+func TestNode_Condense_DoesNotDoubleCountSameLakeQuota(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, nodes := newNodeSvc(t)
+	lakes.data["lake-1"] = &domain.Lake{ID: "lake-1", OwnerID: "u", OrgID: "org-1"}
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-1", Role: domain.RoleOwner})
+	nodes.data["mist-1"] = &domain.Node{ID: "mist-1", LakeID: "lake-1", OwnerID: "u", State: domain.StateMist, Type: domain.NodeTypeText}
+	nodes.orgCounts["org-1"] = 1
+	svc.WithOrgService(NewOrgService(&stubOrgRepo{roles: map[string]domain.OrgRole{}}).
+		WithQuotaRepository(&stubOrgQuotaRepo{quota: &domain.OrgQuota{OrgID: "org-1", MaxNodes: 1}}))
+
+	if _, err := svc.Condense(ctx, &domain.User{ID: "u"}, "mist-1", "lake-1"); err != nil {
+		t.Fatalf("same lake condense should not double-count quota: %v", err)
 	}
 }

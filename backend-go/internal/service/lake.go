@@ -221,6 +221,13 @@ func (s *LakeService) SetLakeOrg(ctx context.Context, actor *domain.User, lakeID
 	if _, err := s.requireRole(ctx, actor, lakeID, domain.RoleOwner); err != nil {
 		return nil, err
 	}
+	current, err := s.lakes.GetByID(ctx, lakeID)
+	if err != nil {
+		return nil, err
+	}
+	if orgID != "" && orgs == nil {
+		return nil, fmt.Errorf("%w: org service not configured", domain.ErrInvalidInput)
+	}
 	if orgID != "" && orgs != nil {
 		ok, err := orgs.IsMember(ctx, actor.ID, orgID)
 		if err != nil {
@@ -228,6 +235,15 @@ func (s *LakeService) SetLakeOrg(ctx context.Context, actor *domain.User, lakeID
 		}
 		if !ok {
 			return nil, domain.ErrPermissionDenied
+		}
+		if current.OrgID != orgID {
+			lakes, err := s.lakes.ListByOrg(ctx, orgID)
+			if err != nil {
+				return nil, err
+			}
+			if err := orgs.CheckQuota(ctx, orgID, domain.OrgQuotaLakes, int64(len(lakes)), 1); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return s.lakes.UpdateOrgID(ctx, lakeID, orgID)

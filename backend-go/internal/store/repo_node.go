@@ -140,6 +140,44 @@ func (r *nodeRepoNeo) ListByLake(ctx context.Context, lakeID string, includeVapo
 	return out.([]domain.Node), nil
 }
 
+const cypherCountNodesByOrg = `
+MATCH (l:Lake {org_id: $org_id})
+MATCH (n:Node {lake_id: l.id})
+WHERE n.state <> 'ERASED'
+RETURN count(n) AS count
+`
+
+func (r *nodeRepoNeo) CountByOrg(ctx context.Context, orgID string) (int64, error) {
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	out, err := sess.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		rec, err := tx.Run(ctx, cypherCountNodesByOrg, map[string]any{"org_id": orgID})
+		if err != nil {
+			return nil, err
+		}
+		if !rec.Next(ctx) {
+			return int64(0), nil
+		}
+		vals := rec.Record().Values
+		if len(vals) == 0 {
+			return int64(0), nil
+		}
+		switch v := vals[0].(type) {
+		case int64:
+			return v, nil
+		case int:
+			return int64(v), nil
+		default:
+			return int64(0), nil
+		}
+	})
+	if err != nil {
+		return 0, fmt.Errorf("node count by org: %w", err)
+	}
+	return out.(int64), nil
+}
+
 const cypherUpdateNodeState = `
 MATCH (n:Node {id: $id})
 SET n.state = $state,
@@ -392,4 +430,3 @@ func (r *nodeRepoNeo) FindRelated(ctx context.Context, nodeID, lakeID, keyword s
 	}
 	return out.([]domain.NodeSearchResult), nil
 }
-
