@@ -6,23 +6,17 @@ CREATE TABLE IF NOT EXISTS organizations (
     name        TEXT NOT NULL,
     slug        TEXT NOT NULL UNIQUE,     -- URL 友好标识，小写字母/数字/连字符，3-40 字符
     description TEXT NOT NULL DEFAULT '',
-    owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    owner_id    UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS org_owner_idx ON organizations (owner_id);
 
-DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'org_role') THEN
-        CREATE TYPE org_role AS ENUM ('OWNER', 'ADMIN', 'MEMBER');
-    END IF;
-END $$;
-
 CREATE TABLE IF NOT EXISTS org_members (
     org_id      TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role        org_role NOT NULL DEFAULT 'MEMBER',
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role        TEXT NOT NULL DEFAULT 'MEMBER' CHECK (role IN ('OWNER', 'ADMIN', 'MEMBER')),
     joined_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (org_id, user_id)
 );

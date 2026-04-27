@@ -234,7 +234,7 @@ func NewRouter(d Deps) http.Handler {
 
 			// P10-B：审计日志查询
 			if d.AuditLogs != nil {
-				auditH := &AuditLogHandlers{Repo: d.AuditLogs}
+				auditH := &AuditLogHandlers{Repo: d.AuditLogs, Lakes: d.Lakes, Nodes: d.Nodes, Orgs: d.Orgs}
 				r.Get("/audit_logs", auditH.List)
 			}
 

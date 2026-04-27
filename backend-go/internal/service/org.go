@@ -124,6 +124,9 @@ func (s *OrgService) RemoveMember(ctx context.Context, actor *domain.User, orgID
 	if err := s.requireAdmin(ctx, actor.ID, orgID); err != nil {
 		return err
 	}
+	if actor.ID == targetUserID {
+		return fmt.Errorf("%w: cannot remove yourself", domain.ErrInvalidInput)
+	}
 	targetRole, err := s.orgs.GetMemberRole(ctx, orgID, targetUserID)
 	if err != nil {
 		return err

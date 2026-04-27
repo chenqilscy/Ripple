@@ -1,9 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 )
 
@@ -11,7 +15,10 @@ import (
 //
 //	GET /api/v1/audit_logs?resource_type=<type>&resource_id=<id>&limit=<n>
 type AuditLogHandlers struct {
-	Repo store.AuditLogRepository
+	Repo  store.AuditLogRepository
+	Lakes *service.LakeService
+	Nodes *service.NodeService
+	Orgs  *service.OrgService
 }
 
 // List GET /api/v1/audit_logs
@@ -21,7 +28,7 @@ type AuditLogHandlers struct {
 //	resource_id    （必填）资源 ID
 //	limit          最多返回条数，默认 50，上限 200
 func (h *AuditLogHandlers) List(w http.ResponseWriter, r *http.Request) {
-	_, ok := CurrentUser(r.Context())
+	actor, ok := CurrentUser(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -32,6 +39,10 @@ func (h *AuditLogHandlers) List(w http.ResponseWriter, r *http.Request) {
 	resourceID := q.Get("resource_id")
 	if resourceType == "" || resourceID == "" {
 		writeError(w, http.StatusBadRequest, "resource_type and resource_id are required")
+		return
+	}
+	if err := h.verifyResourceAccess(r.Context(), actor, resourceType, resourceID); err != nil {
+		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -69,4 +80,31 @@ func (h *AuditLogHandlers) List(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"logs": out, "total": len(out)})
+}
+
+func (h *AuditLogHandlers) verifyResourceAccess(ctx context.Context, actor *domain.User, resourceType, resourceID string) error {
+	rt := strings.ToLower(strings.TrimSpace(resourceType))
+
+	switch rt {
+	case "node":
+		if h.Nodes == nil {
+			return domain.ErrPermissionDenied
+		}
+		_, err := h.Nodes.Get(ctx, actor, resourceID)
+		return err
+	case "lake":
+		if h.Lakes == nil {
+			return domain.ErrPermissionDenied
+		}
+		_, _, err := h.Lakes.Get(ctx, actor, resourceID)
+		return err
+	case "organization", "org":
+		if h.Orgs == nil {
+			return domain.ErrPermissionDenied
+		}
+		_, err := h.Orgs.GetOrg(ctx, actor, resourceID)
+		return err
+	default:
+		return domain.ErrPermissionDenied
+	}
 }

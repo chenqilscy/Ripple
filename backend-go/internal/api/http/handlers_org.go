@@ -150,6 +150,14 @@ func (h *OrgHandlers) AddMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "user_id required")
 		return
 	}
+	if body.Role == "" {
+		writeError(w, http.StatusBadRequest, "role required")
+		return
+	}
+	if !domain.OrgRole(body.Role).IsValid() || domain.OrgRole(body.Role) == domain.OrgRoleOwner {
+		writeError(w, http.StatusBadRequest, "role must be ADMIN or MEMBER")
+		return
+	}
 	if err := h.Orgs.AddMember(r.Context(), u, id, body.UserID, domain.OrgRole(body.Role)); err != nil {
 		writeError(w, mapDomainError(err), err.Error())
 		return
@@ -182,6 +190,14 @@ func (h *OrgHandlers) AddMemberByEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Email == "" {
 		writeError(w, http.StatusBadRequest, "email required")
+		return
+	}
+	if body.Role == "" {
+		writeError(w, http.StatusBadRequest, "role required")
+		return
+	}
+	if !domain.OrgRole(body.Role).IsValid() || domain.OrgRole(body.Role) == domain.OrgRoleOwner {
+		writeError(w, http.StatusBadRequest, "role must be ADMIN or MEMBER")
 		return
 	}
 	target, err := h.Users.GetByEmail(r.Context(), body.Email)

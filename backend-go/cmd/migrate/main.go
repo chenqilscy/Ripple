@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/config"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -102,11 +104,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "read:", err)
 			os.Exit(1)
 		}
-		sql := strings.TrimSpace(string(raw))
+		sql := strings.TrimSpace(strings.TrimPrefix(string(raw), "\ufeff"))
 		if sql == "" {
 			continue
 		}
-		if _, err := pool.Exec(ctx, sql); err != nil {
+		if err := execMigrationSQL(ctx, pool, sql); err != nil {
 			fmt.Fprintln(os.Stderr, "exec:", err)
 			os.Exit(1)
 		}
@@ -127,6 +129,287 @@ func main() {
 		}
 	}
 	fmt.Printf("OK · %s applied=%d\n", direction, count)
+}
+
+func execMigrationSQL(ctx context.Context, pool *pgxpool.Pool, sql string) error {
+	statements, err := splitSQLStatements(sql)
+	if err != nil {
+		return err
+	}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	for _, stmt := range statements {
+		stmt = strings.TrimSpace(strings.TrimPrefix(stripSQLComments(stmt), "\ufeff"))
+		if stmt == "" {
+			continue
+		}
+		if _, err := conn.Exec(ctx, stmt); err != nil {
+			return formatExecError(err, stmt)
+		}
+	}
+	return nil
+}
+
+func formatExecError(err error, stmt string) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	msg := fmt.Sprintf("%s (SQLSTATE %s)", pgErr.Message, pgErr.Code)
+	if pgErr.Position == 0 {
+		return fmt.Errorf("%s | stmt=%q", msg, stmt)
+	}
+	line, col := positionToLineCol(stmt, int(pgErr.Position))
+	return fmt.Errorf("%s at line %d col %d | stmt=%q", msg, line, col, stmt)
+}
+
+func positionToLineCol(stmt string, pos int) (int, int) {
+	if pos < 1 {
+		return 1, 1
+	}
+	line := 1
+	col := 1
+	for i := 0; i < len(stmt) && i < pos-1; i++ {
+		if stmt[i] == '\n' {
+			line++
+			col = 1
+			continue
+		}
+		col++
+	}
+	return line, col
+}
+
+func splitSQLStatements(sql string) ([]string, error) {
+	var (
+		statements   []string
+		current      strings.Builder
+		inSingle     bool
+		inDouble     bool
+		inLineCmt    bool
+		inBlockCmt   bool
+		dollarTag    string
+	)
+
+	flush := func() {
+		stmt := strings.TrimSpace(current.String())
+		if stmt != "" {
+			statements = append(statements, stmt)
+		}
+		current.Reset()
+	}
+
+	for i := 0; i < len(sql); i++ {
+		if dollarTag != "" {
+			if strings.HasPrefix(sql[i:], dollarTag) {
+				current.WriteString(dollarTag)
+				i += len(dollarTag) - 1
+				dollarTag = ""
+				continue
+			}
+			current.WriteByte(sql[i])
+			continue
+		}
+
+		if inLineCmt {
+			current.WriteByte(sql[i])
+			if sql[i] == '\n' {
+				inLineCmt = false
+			}
+			continue
+		}
+
+		if inBlockCmt {
+			current.WriteByte(sql[i])
+			if sql[i] == '*' && i+1 < len(sql) && sql[i+1] == '/' {
+				current.WriteByte(sql[i+1])
+				i++
+				inBlockCmt = false
+			}
+			continue
+		}
+
+		if inSingle {
+			current.WriteByte(sql[i])
+			if sql[i] == '\'' {
+				if i+1 < len(sql) && sql[i+1] == '\'' {
+					current.WriteByte(sql[i+1])
+					i++
+				} else {
+					inSingle = false
+				}
+			}
+			continue
+		}
+
+		if inDouble {
+			current.WriteByte(sql[i])
+			if sql[i] == '"' {
+				if i+1 < len(sql) && sql[i+1] == '"' {
+					current.WriteByte(sql[i+1])
+					i++
+				} else {
+					inDouble = false
+				}
+			}
+			continue
+		}
+
+		if sql[i] == '-' && i+1 < len(sql) && sql[i+1] == '-' {
+			current.WriteString("--")
+			i++
+			inLineCmt = true
+			continue
+		}
+		if sql[i] == '/' && i+1 < len(sql) && sql[i+1] == '*' {
+			current.WriteString("/*")
+			i++
+			inBlockCmt = true
+			continue
+		}
+		if sql[i] == '\'' {
+			current.WriteByte(sql[i])
+			inSingle = true
+			continue
+		}
+		if sql[i] == '"' {
+			current.WriteByte(sql[i])
+			inDouble = true
+			continue
+		}
+		if sql[i] == '$' {
+			if tag, ok := readDollarTag(sql[i:]); ok {
+				current.WriteString(tag)
+				i += len(tag) - 1
+				dollarTag = tag
+				continue
+			}
+		}
+		if sql[i] == ';' {
+			flush()
+			continue
+		}
+		current.WriteByte(sql[i])
+	}
+
+	if dollarTag != "" || inSingle || inDouble || inBlockCmt {
+		return nil, errors.New("unterminated SQL literal or comment")
+	}
+	flush()
+	return statements, nil
+}
+
+func readDollarTag(s string) (string, bool) {
+	if len(s) < 2 || s[0] != '$' {
+		return "", false
+	}
+	for i := 1; i < len(s); i++ {
+		switch ch := s[i]; {
+		case ch == '$':
+			return s[:i+1], true
+		case ch == '_' || ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z':
+			continue
+		default:
+			return "", false
+		}
+	}
+	return "", false
+}
+
+func stripSQLComments(sql string) string {
+	var (
+		out         strings.Builder
+		inSingle    bool
+		inDouble    bool
+		inLineCmt   bool
+		inBlockCmt  bool
+		dollarTag   string
+	)
+
+	for i := 0; i < len(sql); i++ {
+		if dollarTag != "" {
+			if strings.HasPrefix(sql[i:], dollarTag) {
+				out.WriteString(dollarTag)
+				i += len(dollarTag) - 1
+				dollarTag = ""
+				continue
+			}
+			out.WriteByte(sql[i])
+			continue
+		}
+		if inLineCmt {
+			if sql[i] == '\n' {
+				inLineCmt = false
+				out.WriteByte('\n')
+			}
+			continue
+		}
+		if inBlockCmt {
+			if sql[i] == '*' && i+1 < len(sql) && sql[i+1] == '/' {
+				i++
+				inBlockCmt = false
+			}
+			continue
+		}
+		if inSingle {
+			out.WriteByte(sql[i])
+			if sql[i] == '\'' {
+				if i+1 < len(sql) && sql[i+1] == '\'' {
+					out.WriteByte(sql[i+1])
+					i++
+				} else {
+					inSingle = false
+				}
+			}
+			continue
+		}
+		if inDouble {
+			out.WriteByte(sql[i])
+			if sql[i] == '"' {
+				if i+1 < len(sql) && sql[i+1] == '"' {
+					out.WriteByte(sql[i+1])
+					i++
+				} else {
+					inDouble = false
+				}
+			}
+			continue
+		}
+		if sql[i] == '-' && i+1 < len(sql) && sql[i+1] == '-' {
+			i++
+			inLineCmt = true
+			continue
+		}
+		if sql[i] == '/' && i+1 < len(sql) && sql[i+1] == '*' {
+			i++
+			inBlockCmt = true
+			continue
+		}
+		if sql[i] == '\'' {
+			out.WriteByte(sql[i])
+			inSingle = true
+			continue
+		}
+		if sql[i] == '"' {
+			out.WriteByte(sql[i])
+			inDouble = true
+			continue
+		}
+		if sql[i] == '$' {
+			if tag, ok := readDollarTag(sql[i:]); ok {
+				out.WriteString(tag)
+				i += len(tag) - 1
+				dollarTag = tag
+				continue
+			}
+		}
+		out.WriteByte(sql[i])
+	}
+	return out.String()
 }
 
 func loadApplied(ctx context.Context, pool *pgxpool.Pool) (map[string]bool, error) {

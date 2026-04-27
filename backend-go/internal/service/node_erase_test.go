@@ -167,3 +167,26 @@ func TestNode_BatchOperate_PartialFailure(t *testing.T) {
 		t.Fatalf("expected succeeded=1 failed=1, got succeeded=%d failed=%d", res.Succeeded, res.Failed)
 	}
 }
+
+// TestNode_BatchOperate_RejectsCrossLakeIDs 保护 lake 作用域：
+// /lakes/{id}/nodes/batch_op 不允许携带其它 lake 的 node_id。
+func TestNode_BatchOperate_RejectsCrossLakeIDs(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, nodes := newNodeSvc(t)
+
+	lakes.data["lake-1"] = &domain.Lake{ID: "lake-1", OwnerID: "u"}
+	lakes.data["lake-2"] = &domain.Lake{ID: "lake-2", OwnerID: "u"}
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-1", Role: domain.RoleOwner})
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-2", Role: domain.RoleOwner})
+
+	nodes.data["n1"] = &domain.Node{ID: "n1", LakeID: "lake-1", OwnerID: "u", State: domain.StateDrop}
+	nodes.data["n2"] = &domain.Node{ID: "n2", LakeID: "lake-2", OwnerID: "u", State: domain.StateDrop}
+
+	_, err := svc.BatchOperate(ctx, &domain.User{ID: "u"}, "lake-1", "evaporate", []string{"n1", "n2"})
+	if !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Fatalf("expected ErrPermissionDenied, got %v", err)
+	}
+	if nodes.data["n1"].State != domain.StateDrop {
+		t.Fatalf("expected n1 to remain DROP when request rejected, got %s", nodes.data["n1"].State)
+	}
+}

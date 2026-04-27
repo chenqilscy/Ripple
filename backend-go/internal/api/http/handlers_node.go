@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -59,8 +60,14 @@ func toNodeResp(n *domain.Node) nodeResp {
 // Create POST /api/v1/nodes
 func (h *NodeHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	u, _ := CurrentUser(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, 256*1024)
 	var in createNodeReq
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
@@ -300,7 +307,7 @@ func (h *NodeHandlers) Search(w http.ResponseWriter, r *http.Request) {
 }
 
 // BatchImport POST /api/v1/lakes/{id}/nodes/batch
-// P12-A：批量导入节点（最多 100 个），权限 NAVIGATOR+。
+// P12-A：批量导入节点（最多 1000 个），权限 NAVIGATOR+。
 func (h *NodeHandlers) BatchImport(w http.ResponseWriter, r *http.Request) {
 	u, ok := CurrentUser(r.Context())
 	if !ok {

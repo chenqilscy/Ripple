@@ -568,11 +568,24 @@ func (s *NodeService) BatchOperate(ctx context.Context, actor *domain.User, lake
 	if len(nodeIDs) == 0 {
 		return &BatchOperateResult{}, nil
 	}
+	if lakeID == "" {
+		return nil, fmt.Errorf("%w: lake_id required", domain.ErrInvalidInput)
+	}
 	if len(nodeIDs) > batchOperateMaxNodes {
 		return nil, fmt.Errorf("%w: too many nodes in batch (max %d)", domain.ErrInvalidInput, batchOperateMaxNodes)
 	}
 	if action != "evaporate" && action != "condense" && action != "erase" {
 		return nil, fmt.Errorf("%w: action must be evaporate, condense or erase", domain.ErrInvalidInput)
+	}
+	// 路由是 /lakes/{id}/nodes/batch_op，所有节点必须属于该 lake。
+	for _, id := range nodeIDs {
+		n, err := s.nodes.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if n.LakeID != lakeID {
+			return nil, domain.ErrPermissionDenied
+		}
 	}
 	res := &BatchOperateResult{}
 	for _, id := range nodeIDs {

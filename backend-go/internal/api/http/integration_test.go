@@ -87,6 +87,7 @@ func setup(t *testing.T) *integrationFixture {
 
 	authSvc := service.NewAuthService(users, jwt)
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
+	orgSvc := service.NewOrgService(store.NewOrgRepository(pg))
 	broker := realtime.NewMemoryBroker(64)
 	t.Cleanup(func() { _ = broker.Close() })
 	nodeRevs := store.NewNodeRevisionRepository(pg)
@@ -115,6 +116,8 @@ func setup(t *testing.T) *integrationFixture {
 		Nodes:       nodeSvc,
 		Edges:       edgeSvc,
 		Invites:     inviteSvc,
+		Orgs:        orgSvc,
+		Users:       users,
 		Presence:    presenceSvc,
 		WsToken:     &httpapi.WsTokenHandlers{JWT: jwt},
 		APIKeys:     store.NewAPIKeyRepository(pg),
@@ -486,6 +489,277 @@ func TestIntegrationEdgeFlow(t *testing.T) {
 	// 再删一次应幂等成功
 	if code := f.do(t, "DELETE", "/api/v1/edges/"+edge.ID, nil, nil); code != http.StatusNoContent {
 		t.Fatalf("idempotent delete: want 204, got %d", code)
+	}
+}
+
+// TestIntegrationBatchOperate_RejectsCrossLakeNodeIDs 核心场景：
+// batch_op 必须受 URL lake_id 作用域约束，跨湖 node_id 应拒绝。
+func TestIntegrationBatchOperate_RejectsCrossLakeNodeIDs(t *testing.T) {
+	f := setup(t)
+
+	email := fmt.Sprintf("batchop+%s@ripple.local", uuid.NewString()[:8])
+	password := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": email, "password": password, "display_name": "batchop",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("register: %d", code)
+	}
+	var login struct {
+		AccessToken string `json:"access_token"`
+	}
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": email, "password": password,
+	}, &login); code != http.StatusOK {
+		t.Fatalf("login: %d", code)
+	}
+	f.tok = login.AccessToken
+
+	createLake := func(name string) string {
+		var lake struct{ ID string `json:"id"` }
+		if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+			"name": name, "is_public": false,
+		}, &lake); code != http.StatusCreated {
+			t.Fatalf("create lake: %d", code)
+		}
+		for i := 0; i < 30; i++ {
+			var got struct{ ID string `json:"id"` }
+			if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID, nil, &got); code == http.StatusOK && got.ID == lake.ID {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		return lake.ID
+	}
+
+	lakeA := createLake("batchop-a-" + uuid.NewString()[:6])
+	lakeB := createLake("batchop-b-" + uuid.NewString()[:6])
+
+	createNode := func(lakeID, content string) string {
+		var n struct{ ID string `json:"id"` }
+		if code := f.do(t, "POST", "/api/v1/nodes", map[string]any{
+			"lake_id": lakeID,
+			"content": content,
+			"type":    "TEXT",
+		}, &n); code != http.StatusCreated {
+			t.Fatalf("create node: %d", code)
+		}
+		return n.ID
+	}
+
+	nodeA := createNode(lakeA, "batchop-node-a")
+	nodeB := createNode(lakeB, "batchop-node-b")
+
+	// 跨湖 node_id 应被拒绝（403）。
+	if code := f.do(t, "POST", "/api/v1/lakes/"+lakeA+"/nodes/batch_op", map[string]any{
+		"action":   "evaporate",
+		"node_ids": []string{nodeA, nodeB},
+	}, nil); code != http.StatusForbidden {
+		t.Fatalf("batch_op cross-lake: want 403, got %d", code)
+	}
+
+	// 请求被拒绝后，lakeA 内 nodeA 状态应保持 DROP（无部分成功）。
+	var gotNode struct {
+		ID    string `json:"id"`
+		State string `json:"state"`
+	}
+	if code := f.do(t, "GET", "/api/v1/nodes/"+nodeA, nil, &gotNode); code != http.StatusOK {
+		t.Fatalf("get nodeA: %d", code)
+	}
+	if gotNode.State != "DROP" {
+		t.Fatalf("nodeA state mutated unexpectedly: %s", gotNode.State)
+	}
+}
+
+// TestIntegrationAuditLogs_RejectsCrossUserNodeAccess 核心权限场景：
+// 用户 B 不能查询用户 A 节点的审计日志。
+func TestIntegrationAuditLogs_RejectsCrossUserNodeAccess(t *testing.T) {
+	f := setup(t)
+
+	registerAndLogin := func(prefix string) string {
+		email := fmt.Sprintf("%s+%s@ripple.local", prefix, uuid.NewString()[:8])
+		password := "Test1234!"
+		if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+			"email": email, "password": password, "display_name": prefix,
+		}, nil); code != http.StatusCreated {
+			t.Fatalf("%s register: %d", prefix, code)
+		}
+		var login struct {
+			AccessToken string `json:"access_token"`
+		}
+		if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+			"email": email, "password": password,
+		}, &login); code != http.StatusOK {
+			t.Fatalf("%s login: %d", prefix, code)
+		}
+		return login.AccessToken
+	}
+
+	// user A 创建 lake/node
+	tokenA := registerAndLogin("audit-a")
+	f.tok = tokenA
+	var lake struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+		"name": "audit-a-" + uuid.NewString()[:6], "is_public": false,
+	}, &lake); code != http.StatusCreated {
+		t.Fatalf("create lake A: %d", code)
+	}
+	for i := 0; i < 30; i++ {
+		var got struct{ ID string `json:"id"` }
+		if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID, nil, &got); code == http.StatusOK && got.ID == lake.ID {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	var node struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/nodes", map[string]any{
+		"lake_id": lake.ID,
+		"content": "audit-node-a",
+		"type":    "TEXT",
+	}, &node); code != http.StatusCreated {
+		t.Fatalf("create node A: %d", code)
+	}
+
+	// user B 尝试读取 user A 节点审计日志，应被拒绝。
+	tokenB := registerAndLogin("audit-b")
+	f.tok = tokenB
+	if code := f.do(t, "GET", "/api/v1/audit_logs?resource_type=node&resource_id="+node.ID+"&limit=10", nil, nil); code != http.StatusForbidden {
+		t.Fatalf("audit log cross-user access: want 403, got %d", code)
+	}
+}
+
+// TestIntegrationAuditLogs_AllowsOwnerNodeAccess 正向场景：
+// 节点所有者可查询本节点审计日志。
+func TestIntegrationAuditLogs_AllowsOwnerNodeAccess(t *testing.T) {
+	f := setup(t)
+
+	email := fmt.Sprintf("audit-owner+%s@ripple.local", uuid.NewString()[:8])
+	password := "Test1234!"
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": email, "password": password, "display_name": "audit-owner",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("register: %d", code)
+	}
+	var login struct {
+		AccessToken string `json:"access_token"`
+	}
+	if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": email, "password": password,
+	}, &login); code != http.StatusOK {
+		t.Fatalf("login: %d", code)
+	}
+	f.tok = login.AccessToken
+
+	var lake struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+		"name": "audit-owner-lake-" + uuid.NewString()[:6], "is_public": false,
+	}, &lake); code != http.StatusCreated {
+		t.Fatalf("create lake: %d", code)
+	}
+	for i := 0; i < 30; i++ {
+		var got struct{ ID string `json:"id"` }
+		if code := f.do(t, "GET", "/api/v1/lakes/"+lake.ID, nil, &got); code == http.StatusOK && got.ID == lake.ID {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	var node struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/nodes", map[string]any{
+		"lake_id": lake.ID,
+		"content": "audit-owner-node",
+		"type":    "TEXT",
+	}, &node); code != http.StatusCreated {
+		t.Fatalf("create node: %d", code)
+	}
+
+	var logsResp struct {
+		Logs []struct {
+			ID string `json:"id"`
+		} `json:"logs"`
+	}
+	if code := f.do(t, "GET", "/api/v1/audit_logs?resource_type=node&resource_id="+node.ID+"&limit=10", nil, &logsResp); code != http.StatusOK {
+		t.Fatalf("owner audit log access: want 200, got %d", code)
+	}
+}
+
+// TestIntegrationOrgAddMember_ValidatesRoleInput 核心场景：
+// 组织邀请必须校验 role（required + 枚举 ADMIN|MEMBER）。
+func TestIntegrationOrgAddMember_ValidatesRoleInput(t *testing.T) {
+	f := setup(t)
+
+	registerAndLogin := func(prefix string) (string, string) {
+		email := fmt.Sprintf("%s+%s@ripple.local", prefix, uuid.NewString()[:8])
+		password := "Test1234!"
+		if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+			"email": email, "password": password, "display_name": prefix,
+		}, nil); code != http.StatusCreated {
+			t.Fatalf("%s register: %d", prefix, code)
+		}
+		var login struct {
+			AccessToken string `json:"access_token"`
+			User        struct {
+				ID string `json:"id"`
+			} `json:"user"`
+		}
+		if code := f.do(t, "POST", "/api/v1/auth/login", map[string]string{
+			"email": email, "password": password,
+		}, &login); code != http.StatusOK {
+			t.Fatalf("%s login: %d", prefix, code)
+		}
+		return login.AccessToken, login.User.ID
+	}
+
+	ownerToken, _ := registerAndLogin("org-owner")
+	f.tok = ownerToken
+
+	var org struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/organizations", map[string]any{
+		"name": "org-role-check-" + uuid.NewString()[:6],
+		"slug": "orgrole" + uuid.NewString()[:8],
+	}, &org); code == http.StatusNotFound || code == http.StatusInternalServerError {
+		t.Skipf("organizations endpoint/schema unavailable in this integration environment, skip org role integration (status=%d)", code)
+	} else if code != http.StatusCreated {
+		t.Fatalf("create org: %d", code)
+	}
+
+	_, memberUserID := registerAndLogin("org-member")
+	memberEmail := fmt.Sprintf("org-email+%s@ripple.local", uuid.NewString()[:8])
+	if code := f.do(t, "POST", "/api/v1/auth/register", map[string]string{
+		"email": memberEmail, "password": "Test1234!", "display_name": "org-email",
+	}, nil); code != http.StatusCreated {
+		t.Fatalf("register org-email user: %d", code)
+	}
+
+	// role 为空应 400
+	if code := f.do(t, "POST", "/api/v1/organizations/"+org.ID+"/members", map[string]any{
+		"user_id": memberUserID,
+		"role":    "",
+	}, nil); code != http.StatusBadRequest {
+		t.Fatalf("add member empty role: want 400, got %d", code)
+	}
+
+	// role=OWNER 应 400
+	if code := f.do(t, "POST", "/api/v1/organizations/"+org.ID+"/members", map[string]any{
+		"user_id": memberUserID,
+		"role":    "OWNER",
+	}, nil); code != http.StatusBadRequest {
+		t.Fatalf("add member OWNER role: want 400, got %d", code)
+	}
+
+	// by_email: role 为空应 400
+	if code := f.do(t, "POST", "/api/v1/organizations/"+org.ID+"/members/by_email", map[string]any{
+		"email": memberEmail,
+		"role":  "",
+	}, nil); code != http.StatusBadRequest {
+		t.Fatalf("add member by_email empty role: want 400, got %d", code)
+	}
+
+	// by_email: role=OWNER 应 400
+	if code := f.do(t, "POST", "/api/v1/organizations/"+org.ID+"/members/by_email", map[string]any{
+		"email": memberEmail,
+		"role":  "OWNER",
+	}, nil); code != http.StatusBadRequest {
+		t.Fatalf("add member by_email OWNER role: want 400, got %d", code)
 	}
 }
 
