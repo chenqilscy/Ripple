@@ -22,6 +22,11 @@ type NodeShareHandlers struct {
 	Nodes  *service.NodeService
 }
 
+const (
+	shareTokenLength = 43
+	maxShareTTLHours = 24 * 365
+)
+
 type shareResp struct {
 	ID        string     `json:"id"`
 	NodeID    string     `json:"node_id"`
@@ -79,6 +84,10 @@ func (h *NodeShareHandlers) CreateShare(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if req.TTLHours < 0 || req.TTLHours > maxShareTTLHours {
+		writeError(w, http.StatusBadRequest, "ttl_hours must be between 0 and 8760")
 		return
 	}
 
@@ -146,6 +155,10 @@ func (h *NodeShareHandlers) RevokeShare(w http.ResponseWriter, r *http.Request) 
 // GetSharedNode GET /api/v1/share/{token} — 公开端点，无需鉴权。
 func (h *NodeShareHandlers) GetSharedNode(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
+	if !isShareTokenFormat(token) {
+		writeError(w, http.StatusNotFound, "share not found")
+		return
+	}
 
 	share, err := h.Shares.GetByToken(r.Context(), token)
 	if err != nil {
@@ -214,4 +227,18 @@ func baseURLFromRequest(r *http.Request) string {
 		scheme = "https"
 	}
 	return scheme + "://" + r.Host
+}
+
+func isShareTokenFormat(token string) bool {
+	if len(token) != shareTokenLength {
+		return false
+	}
+	for i := 0; i < len(token); i++ {
+		c := token[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }

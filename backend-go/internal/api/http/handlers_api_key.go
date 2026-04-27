@@ -104,13 +104,13 @@ func (h *APIKeyHandlers) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type keyView struct {
-		ID          string     `json:"id"`
-		Name        string     `json:"name"`
-		KeyPrefix   string     `json:"key_prefix"`
-		Scopes      []string   `json:"scopes"`
-		LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
-		ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-		CreatedAt   time.Time  `json:"created_at"`
+		ID         string     `json:"id"`
+		Name       string     `json:"name"`
+		KeyPrefix  string     `json:"key_prefix"`
+		Scopes     []string   `json:"scopes"`
+		LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+		ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+		CreatedAt  time.Time  `json:"created_at"`
 	}
 	out := make([]keyView, 0, len(keys))
 	for _, k := range keys {
@@ -135,6 +135,10 @@ func (h *APIKeyHandlers) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if _, err := uuid.Parse(id); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid api key id")
+		return
+	}
 	if err := h.Repo.Revoke(r.Context(), id, actor.ID); err != nil {
 		writeError(w, mapDomainError(err), err.Error())
 		return
