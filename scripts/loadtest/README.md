@@ -5,6 +5,7 @@
 - `../../backend-go/cmd/loadtest/baseline/baseline.go` — Go 原生 HTTP GET 压测（基础端点 QPS/延迟）
 - `../../backend-go/cmd/loadtest/perma_post/perma_post.go` — 凝结接口（POST /api/v1/perma_nodes）压测，建议配合 `RIPPLE_LLM_FAKE=true`
 - `../../backend-go/cmd/loadtest/ws_connect/ws_connect.go` — WebSocket 仅建连+保持的并发连接压测
+- `phase13-batch-import-1000.ps1` — Phase13 批量导入 1000 行时延验收（默认门槛 5s）
 - `k6-baseline.js` — k6 基线压测（混合健康/列表/metrics）
 - `vegeta-targets.txt` — vegeta 目标列表（HTTP 端点 + 头）
 - `pprof-snapshot.ps1` — 抓取 pprof heap / goroutine 快照
@@ -34,6 +35,15 @@ go run ./cmd/loadtest/perma_post -base http://localhost:8000 -token <jwt> `
 go run ./cmd/loadtest/ws_connect -url ws://localhost:8000/api/v1/lakes/<lakeID>/ws `
     -token <jwt> -conc 1000 -hold 30s
 ```
+
+### Phase13 批量导入 1000 基线
+
+```pwsh
+./scripts/loadtest/phase13-batch-import-1000.ps1 -Base http://fn.cky:18000 -NodeCount 1000 -ThresholdSeconds 5
+```
+
+输出：
+- `docs/dev/Phase13-batch-import-1000-baseline-<timestamp>.md`
 
 ### k6（推荐）
 

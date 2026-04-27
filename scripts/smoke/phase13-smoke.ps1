@@ -66,13 +66,13 @@ $node = Invoke-Json POST "$Base/api/v1/nodes" @{
 
 Write-Host "== search =="
 $search = Invoke-RestMethod -Method Get -Uri "$Base/api/v1/search?q=phase13&lake_id=$($lake.id)&limit=5" -Headers @{ Authorization = "Bearer $token" }
-if (-not $search.nodes -or $search.nodes.Count -lt 1) {
+if (-not $search.results -or $search.results.Count -lt 1) {
   throw "search returned no nodes"
 }
 
 Write-Host "== batch import =="
 $batch = Invoke-Json POST "$Base/api/v1/lakes/$($lake.id)/nodes/batch" @{
-  items = @(
+  nodes = @(
     @{ type = "TEXT"; content = "batch-a"; position = @{ x = 1; y = 1; z = 0 } },
     @{ type = "TEXT"; content = "batch-b"; position = @{ x = 2; y = 2; z = 0 } }
   )
@@ -103,8 +103,8 @@ $invite = Invoke-Json POST "$Base/api/v1/organizations/$($org.id)/members/by_ema
 } $token
 
 Write-Host "== audit logs =="
-$audit = Invoke-RestMethod -Method Get -Uri "$Base/api/v1/audit_logs?limit=10" -Headers @{ Authorization = "Bearer $token" }
-if ($null -eq $audit.items) {
+$audit = Invoke-RestMethod -Method Get -Uri "$Base/api/v1/audit_logs?resource_type=node&resource_id=$($node.id)&limit=10" -Headers @{ Authorization = "Bearer $token" }
+if ($null -eq $audit.logs) {
   throw "audit logs missing"
 }
 

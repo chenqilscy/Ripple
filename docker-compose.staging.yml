@@ -56,9 +56,16 @@ services:
     working_dir: /workspace/backend-go
     environment:
       RIPPLE_PG_URL: postgres://${PG_USER:-ripple}:${PG_PASSWORD}@postgres:5432/ripple?sslmode=disable
+      RIPPLE_NEO4J_URI: bolt://neo4j:7687
+      RIPPLE_NEO4J_USER: neo4j
+      RIPPLE_NEO4J_PASS: ${NEO4J_PASSWORD}
+      RIPPLE_NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      RIPPLE_REDIS_ADDR: redis:6379
+      RIPPLE_REDIS_PASS: ${REDIS_PASSWORD}
+      RIPPLE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
       GOTOOLCHAIN: local
-    command: sh -lc "go run ./cmd/migrate"
+    command: sh -lc "/usr/local/go/bin/go run ./cmd/migrate"
     volumes:
       - ./backend-go:/workspace/backend-go
     depends_on:
@@ -75,7 +82,7 @@ services:
       RIPPLE_NEO4J_PASS: ${NEO4J_PASSWORD}
       RIPPLE_NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
     command: >-
-      sh -lc "cypher-shell -a $$RIPPLE_NEO4J_URI -u $$RIPPLE_NEO4J_USER -p $$RIPPLE_NEO4J_PASS -d $$RIPPLE_NEO4J_DATABASE -f /workspace/backend-go/scripts/neo4j_constraints.cypher"
+      sh -lc "/var/lib/neo4j/bin/cypher-shell -a $$RIPPLE_NEO4J_URI -u $$RIPPLE_NEO4J_USER -p $$RIPPLE_NEO4J_PASS -d $$RIPPLE_NEO4J_DATABASE -f /workspace/backend-go/scripts/neo4j_constraints.cypher"
     volumes:
       - .:/workspace
     depends_on:
@@ -117,18 +124,19 @@ services:
     restart: unless-stopped
 
   yjs-bridge:
-    image: node:20-alpine
+    image: golang:1.23-alpine
     container_name: ripple-staging-yjs-bridge
     working_dir: /workspace/backend-go
     environment:
       PORT: 7790
       YJS_BRIDGE_API_URL: http://backend:8000
-      YJS_BRIDGE_REDIS_ADDR: redis:6379
-      YJS_BRIDGE_REDIS_PASS: ${REDIS_PASSWORD}
-      YJS_BRIDGE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      YJS_BRIDGE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      RIPPLE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       YJS_BRIDGE_ALLOWED_ORIGINS: ${CORS_ORIGINS:-http://localhost:4173,http://127.0.0.1:4173}
       YJS_BRIDGE_REQUIRE_AUTH: "true"
-    command: sh -lc "apk add --no-cache go && go run ./cmd/yjs-bridge"
+      GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+      GOTOOLCHAIN: local
+    command: sh -lc "/usr/local/go/bin/go run ./cmd/yjs-bridge"
     ports:
       - "17790:7790"
     volumes:
