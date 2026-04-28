@@ -1,0 +1,14 @@
+# Vite build output
+dist/
+dist-ssr/
+
+# TypeScript compiled output (Vite uses .ts directly, these are not needed)
+src/**/*.js
+src/**/*.d.ts
+
+# Dependencies
+node_modules/
+
+# Misc
+*.local
+.DS_Store
