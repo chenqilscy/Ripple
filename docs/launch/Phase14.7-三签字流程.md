@@ -108,7 +108,8 @@ PM 签字（功能闭环）→ QA 签字（质量门）→ 决策者签字（最
     全步骤 PASS（commit ae30edb 起支持时间戳 transcript 归档至 docs/launch/acceptance-logs/）
   - E2E：frontend/e2e/settings-tabs.spec.ts 3/3 PASS（含 OWNER revoke confirm）
   - 体验方反馈：模板已交付（docs/dev/Phase14-体验反馈-模板.md, commit e628e99），
-    待 Phase 14 灰度上线后由真实老板按模板填写。当前 staging 端无 P0/P1 阻塞。
+    并已完成首份 staging 实测记录（docs/launch/feedback/Phase14-体验反馈-001-运营台设置页.md）；
+    当前 staging 端无 P0/P1 阻塞，仅有 P3 级交互 polish 建议。
 备注：所有 6 节准入清单均已闭环；staging smoke 数据已真实清理（commit af11ffc）。
 ```
 
