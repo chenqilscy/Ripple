@@ -112,7 +112,9 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
             {semantic ? '✦ 语义' : '关键词'}
           </button>
           {loading && (
-            <span style={{ color: '#6c7086', fontSize: 12 }}>搜索中…</span>
+            <span style={{ color: semantic ? '#4a8eff' : '#6c7086', fontSize: 12 }}>
+              {semantic ? '✦ AI 理解中…' : '搜索中…'}
+            </span>
           )}
         </div>
 

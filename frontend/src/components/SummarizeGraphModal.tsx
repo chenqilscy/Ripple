@@ -69,7 +69,7 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
             <input
               value={titleHint}
               onChange={e => setTitleHint(e.target.value)}
-              placeholder="例如：总结这些节点的共同主题"
+              placeholder={`让 AI 聚焦于某个角度，如"分析技术可行性"（可留空）`}
               disabled={loading}
               maxLength={200}
               style={{
@@ -110,9 +110,9 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
                 {loading ? (
                   <>
                     <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid #4a8eff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                    生成中…
+                    AI 分析 {nodeIds.length} 个节点…
                   </>
-                ) : '生成摘要'}
+                ) : `生成摘要 (${nodeIds.length} 节点)`}
               </button>
             </div>
           </>

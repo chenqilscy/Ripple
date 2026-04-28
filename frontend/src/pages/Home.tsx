@@ -1101,14 +1101,18 @@ export function Home({ onLogout }: Props) {
                       <div style={{ textAlign: 'center', marginTop: 8 }}>
                         <button
                           onClick={() => setSummarizeOpen(true)}
+                          title="点击生成 AI 摘要节点（Ctrl/Cmd+点击节点可多选）"
                           style={{
-                            background: '#1e4d9e', border: 'none', color: '#9ec5ee',
+                            background: '#1e4d9e', border: '1px solid #4a8eff', color: '#9ec5ee',
                             borderRadius: 6, padding: '6px 18px', fontSize: 13,
                             cursor: 'pointer',
                           }}
                         >
                           ✦ 摘要所选节点 ({multiSelectedNodeIds.size})
                         </button>
+                        <span style={{ marginLeft: 8, color: '#4a6a8e', fontSize: 11 }}>
+                          Ctrl/Cmd+点击继续添加
+                        </span>
                       </div>
                     )}
                   </React.Suspense>
