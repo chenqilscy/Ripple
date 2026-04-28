@@ -5,6 +5,7 @@ import { NodeDiffViewer } from '../components/NodeDiffViewer'
 import NodeVersionHistory from '../components/NodeVersionHistory'
 
 const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
+import type { RemoteCursor } from '../components/LakeGraph'
 const AdminOverviewPanel = React.lazy(() => import('../components/AdminOverviewPanel'))
 const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
 const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
@@ -127,7 +128,7 @@ export function Home({ onLogout }: Props) {
   const [explorerOpen, setExplorerOpen] = useState(false)
   const [exploredNodeIds, setExploredNodeIds] = useState<Set<string>>(new Set())
   // P19-C：协作光标
-  const [remoteCursors, setRemoteCursors] = useState<Map<string, { x: number; y: number }>>(new Map())
+  const [remoteCursors, setRemoteCursors] = useState<Map<string, RemoteCursor>>(new Map())
   // P20-D：节点详情侧边栏
   const [selectedNode, setSelectedNode] = useState<NodeItem | null>(null)
 
@@ -246,12 +247,12 @@ export function Home({ onLogout }: Props) {
         }
         // P19-C：协作光标位置更新
         if (msg.type === 'cursor.move' && msg.payload?.user_id) {
-          const { user_id, x, y } = msg.payload as { user_id: string; x: number; y: number }
+          const { user_id, x, y, name } = msg.payload as { user_id: string; x: number; y: number; name?: string }
           // 过滤自己（后端广播包含发送者自身；用 ref 读最新 meId，避免闭包捕获旧值导致渲染自己光标）
           if (typeof x === 'number' && typeof y === 'number' && user_id !== meIdRef.current) {
             setRemoteCursors(prev => {
               const next = new Map(prev)
-              next.set(user_id, { x, y })
+              next.set(user_id, { x, y, name, lastSeen: Date.now() })
               return next
             })
           }
@@ -268,6 +269,25 @@ export function Home({ onLogout }: Props) {
       setWsOnline(false)
     }
   }, [active])
+
+  // P28: 每秒检查并强制 re-render（触发 LakeGraph 中的 inactive 判断逻辑）
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRemoteCursors(prev => {
+        if (prev.size === 0) return prev
+        // 删除 > 5s 不活跃的光标
+        const staleIds: string[] = []
+        prev.forEach((cur, uid) => {
+          if (cur.lastSeen != null && Date.now() - cur.lastSeen > 5000) staleIds.push(uid)
+        })
+        if (staleIds.length === 0) return prev
+        const next = new Map(prev)
+        staleIds.forEach(id => next.delete(id))
+        return next
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   async function refresh() {
     try {

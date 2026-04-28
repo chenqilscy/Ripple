@@ -482,6 +482,8 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
 export interface RemoteCursor {
   x: number // 0-1 归一化（相对容器宽）
   y: number // 0-1 归一化（相对容器高）
+  name?: string  // P28: 用户显示名称
+  lastSeen?: number // P28: 最后活跃时间 ms
 }
 
 export interface LakeGraphProps {
@@ -627,11 +629,15 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
           />
         </React.Suspense>
       </Canvas>
-      {/* P19-C: 协作光标 DOM overlay（百分比定位，避免 SVG preserveAspectRatio 字体变形） */}
+      {/* P19-C / P28: 协作光标 DOM overlay（百分比定位，避免 SVG preserveAspectRatio 字体变形） */}
       {remoteCursors && remoteCursors.size > 0 && (
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 20, overflow: 'hidden' }}>
           {[...remoteCursors.entries()].map(([uid, pos]) => {
+            // P28: 5s 不活跃则隐藏光标
+            const inactive = pos.lastSeen != null && Date.now() - pos.lastSeen > 5000
+            if (inactive) return null
             const color = cursorColor(uid)
+            const label = pos.name ?? uid.slice(0, 8)
             return (
               <div
                 key={uid}
@@ -641,6 +647,8 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
                   top: `${pos.y * 100}%`,
                   transform: 'translate(0, 0)',
                   pointerEvents: 'none',
+                  // P28: 平滑光标移动
+                  transition: 'left 0.12s linear, top 0.12s linear',
                 }}
               >
                 {/* 光标三角形 */}
@@ -661,7 +669,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
                   whiteSpace: 'nowrap',
                   opacity: 0.9,
                 }}>
-                  {uid.slice(0, 8)}
+                  {label}
                 </div>
               </div>
             )

@@ -176,8 +176,18 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 			if y, ok := clientMsg.Payload["y"].(float64); !ok || y < 0 || y > 1 {
 				continue
 			}
-			// 后端注入 user_id，防止客户端伪造他人 ID。
+			// 后端注入 user_id + name，防止客户端伪造他人 ID。
 			clientMsg.Payload["user_id"] = user.ID
+			if user.DisplayName != "" {
+				clientMsg.Payload["name"] = user.DisplayName
+			} else {
+				// fallback：取 email @ 前部分
+				if idx := strings.Index(user.Email, "@"); idx > 0 {
+					clientMsg.Payload["name"] = user.Email[:idx]
+				} else {
+					clientMsg.Payload["name"] = user.ID[:8]
+				}
+			}
 			broadcast := realtime.Message{
 				Type:    "cursor.move",
 				Payload: clientMsg.Payload,
