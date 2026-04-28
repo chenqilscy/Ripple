@@ -74,6 +74,7 @@ type Deps struct {
 // NewRouter 装配 Chi 路由。
 func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
+	adminEmails := adminEmailSet(d.AdminEmails)
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -243,14 +244,10 @@ func NewRouter(d Deps) http.Handler {
 
 			// P10-B：审计日志查询
 			if d.AuditLogs != nil {
-				auditH := &AuditLogHandlers{Repo: d.AuditLogs, Lakes: d.Lakes, Nodes: d.Nodes, Orgs: d.Orgs}
+				auditH := &AuditLogHandlers{Repo: d.AuditLogs, Lakes: d.Lakes, Nodes: d.Nodes, Orgs: d.Orgs, AdminEmails: adminEmails}
 				r.Get("/audit_logs", auditH.List)
 			}
 			if d.OrgRepo != nil && d.OrgQuotas != nil && len(d.AdminEmails) > 0 {
-				adminEmails := make(map[string]struct{}, len(d.AdminEmails))
-				for _, email := range d.AdminEmails {
-					adminEmails[email] = struct{}{}
-				}
 				adminH := &AdminHandlers{
 					OrgRepo:     d.OrgRepo,
 					Quotas:      d.OrgQuotas,
@@ -274,10 +271,6 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/admin/overview", adminH.Overview)
 			}
 			if d.Graylist != nil && len(d.AdminEmails) > 0 {
-				adminEmails := make(map[string]struct{}, len(d.AdminEmails))
-				for _, email := range d.AdminEmails {
-					adminEmails[email] = struct{}{}
-				}
 				graylistH := &GraylistHandlers{Repo: d.Graylist, AuditLogs: d.AuditLogs, AdminEmails: adminEmails}
 				r.Get("/admin/graylist", graylistH.List)
 				r.Post("/admin/graylist", graylistH.Upsert)
@@ -381,4 +374,12 @@ func NewRouter(d Deps) http.Handler {
 	})
 
 	return r
+}
+
+func adminEmailSet(emails []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(emails))
+	for _, email := range emails {
+		out[email] = struct{}{}
+	}
+	return out
 }

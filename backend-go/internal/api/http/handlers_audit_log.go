@@ -15,10 +15,11 @@ import (
 //
 //	GET /api/v1/audit_logs?resource_type=<type>&resource_id=<id>&limit=<n>
 type AuditLogHandlers struct {
-	Repo  store.AuditLogRepository
-	Lakes *service.LakeService
-	Nodes *service.NodeService
-	Orgs  *service.OrgService
+	Repo        store.AuditLogRepository
+	Lakes       *service.LakeService
+	Nodes       *service.NodeService
+	Orgs        *service.OrgService
+	AdminEmails map[string]struct{}
 }
 
 // List GET /api/v1/audit_logs
@@ -104,6 +105,11 @@ func (h *AuditLogHandlers) verifyResourceAccess(ctx context.Context, actor *doma
 		}
 		_, err := h.Orgs.GetOrg(ctx, actor, resourceID)
 		return err
+	case "graylist":
+		if isPlatformAdminEmail(actor.Email, h.AdminEmails) {
+			return nil
+		}
+		return domain.ErrPermissionDenied
 	default:
 		return domain.ErrPermissionDenied
 	}
