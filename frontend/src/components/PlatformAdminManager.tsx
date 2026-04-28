@@ -37,7 +37,8 @@ export default function PlatformAdminManager() {
 
   async function handleGrant() {
     const value = target.trim()
-    if (!value || forbidden) return
+    if (!value || forbidden || saving || deletingId) return
+    if (role === 'OWNER' && !window.confirm(`确定授予 ${value} 平台 OWNER？OWNER 可继续授权或撤销平台管理员。`)) return
     setSaving(true)
     setErr(null)
     try {
@@ -56,9 +57,12 @@ export default function PlatformAdminManager() {
   }
 
   async function handleRevoke(admin: PlatformAdmin) {
-    if (forbidden) return
+    if (forbidden || saving || deletingId) return
     const label = admin.email || admin.user_id
-    if (!window.confirm(`确定撤销平台管理员 ${label}？`)) return
+    const message = admin.role === 'OWNER'
+      ? `确定撤销平台 OWNER ${label}？这会移除其平台管理员授权能力。`
+      : `确定撤销平台管理员 ${label}？`
+    if (!window.confirm(message)) return
     setDeletingId(admin.user_id)
     setErr(null)
     try {
@@ -84,10 +88,10 @@ export default function PlatformAdminManager() {
           onChange={e => setTarget(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && void handleGrant()}
           placeholder="用户 ID 或邮箱"
-          disabled={saving || forbidden}
+          disabled={saving || !!deletingId || forbidden}
           style={{ ...inputStyle, minWidth: 240, flex: '1 1 240px' }}
         />
-        <select value={role} onChange={e => setRole(e.target.value as PlatformAdminRole)} disabled={saving || forbidden} style={selectStyle}>
+        <select value={role} onChange={e => setRole(e.target.value as PlatformAdminRole)} disabled={saving || !!deletingId || forbidden} style={selectStyle}>
           <option value="ADMIN">ADMIN</option>
           <option value="OWNER">OWNER</option>
         </select>
@@ -96,10 +100,10 @@ export default function PlatformAdminManager() {
           onChange={e => setNote(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && void handleGrant()}
           placeholder="授权备注"
-          disabled={saving || forbidden}
+          disabled={saving || !!deletingId || forbidden}
           style={{ ...inputStyle, minWidth: 180, flex: '1 1 180px' }}
         />
-        <button onClick={() => void handleGrant()} disabled={saving || forbidden || !target.trim()} style={btnStyle('#a6e3a1')}>
+        <button onClick={() => void handleGrant()} disabled={saving || !!deletingId || forbidden || !target.trim()} style={btnStyle('#a6e3a1')}>
           {saving ? '授权中…' : '+ 授权'}
         </button>
       </div>
@@ -133,7 +137,7 @@ export default function PlatformAdminManager() {
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{shortID(admin.created_by)}</td>
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{fmtDate(admin.created_at)}</td>
                 <td style={tdStyle}>
-                  <button onClick={() => void handleRevoke(admin)} disabled={deletingId === admin.user_id} style={btnStyle('#f38ba8', true)}>
+                  <button onClick={() => void handleRevoke(admin)} disabled={saving || !!deletingId} style={btnStyle('#f38ba8', true)}>
                     {deletingId === admin.user_id ? '撤销中…' : '撤销'}
                   </button>
                 </td>

@@ -14,6 +14,7 @@
 - 后端继续兼容 `RIPPLE_ADMIN_EMAILS`，命中邮箱白名单的用户视为 bootstrap OWNER；
 - 平台管理员运营端点拒绝 API Key 继承权限，仅接受 JWT 用户会话；
 - 前端 Settings 新增“平台管理员 RBAC”面板，可按用户 ID 或邮箱授权、撤销、查看列表。
+- 前端 `.tsx` 与 `.js` mirror 必须同步更新；发布前以 `npm.cmd run build` 验证实际产物包含 `PlatformAdminManager-*` chunk。
 
 ## 2. 本地验证
 
@@ -35,7 +36,9 @@ npm.cmd run build
 
 > 远端 `/home/admin/Ripple` 为解包式部署目录，不是 git repo。
 
-1. 本地打包：
+### 3.1 后端发布
+
+1. 本地打包后端与文档：
 
 ```powershell
 git archive --format=tar --output=$env:TEMP\ripple-backend-rbac.tar HEAD backend-go docs docker-compose.yml
@@ -63,11 +66,32 @@ Invoke-RestMethod -Uri 'http://fn.cky:18000/healthz' -Method Get
 
 期望返回：`{"status":"ok"}`。
 
+### 3.2 前端发布
+
+1. 本地构建：
+
+```powershell
+cd frontend
+npm.cmd run build
+tar -cf $env:TEMP\ripple-frontend-rbac-ui.tar dist
+```
+
+2. 上传并热更新 nginx 容器：
+
+```powershell
+scp $env:TEMP\ripple-frontend-rbac-ui.tar admin@fn.cky:/home/admin/ripple-frontend-rbac-ui.tar
+ssh admin@fn.cky "rm -rf /home/admin/ripple-dist-upload && mkdir -p /home/admin/ripple-dist-upload && tar -xf /home/admin/ripple-frontend-rbac-ui.tar -C /home/admin/ripple-dist-upload && docker cp /home/admin/ripple-dist-upload/dist/. ripple-staging-frontend:/usr/share/nginx/html/"
+```
+
+3. 浏览器刷新 `http://fn.cky:14173/`，Settings 页应出现“平台管理员 RBAC”面板。
+
 ## 4. Staging smoke
 
-使用浏览器内已有平台管理员 JWT 调用 staging API：
+使用浏览器内已有平台 OWNER JWT 调用 staging API。操作者必须是 `RIPPLE_ADMIN_EMAILS` bootstrap OWNER 或数据库 `OWNER`；不要使用普通 `ADMIN` 账号执行授权操作。
 
-1. `POST /api/v1/admin/platform_admins` 给当前用户授予 `ADMIN`；
+建议使用独立测试用户作为授权目标；若临时使用当前 bootstrap OWNER 账号作为目标，必须在 smoke 结束后撤销数据库记录，保留 env bootstrap 兜底。
+
+1. `POST /api/v1/admin/platform_admins` 给目标用户授予 `ADMIN`；
 2. `GET /api/v1/admin/platform_admins` 返回包含当前用户；
 3. `GET /api/v1/audit_logs?resource_type=platform_admin&resource_id=<user_id>` 返回 `platform_admin.grant`；
 4. `DELETE /api/v1/admin/platform_admins/<user_id>` 返回 `204`；
@@ -90,8 +114,9 @@ Invoke-RestMethod -Uri 'http://fn.cky:18000/healthz' -Method Get
 若必须撤销数据表：
 
 1. 先确认不再运行依赖 `platform_admins` 的后端版本；
-2. 执行 `0020_platform_admins.down.sql`；
-3. 保留 `RIPPLE_ADMIN_EMAILS` 作为平台管理员 bootstrap 兜底。
+2. 导出 `platform_admins` 全表与相关审计记录（`resource_type=platform_admin`），由负责人确认备份可读；
+3. 执行 `0020_platform_admins.down.sql`；
+4. 保留 `RIPPLE_ADMIN_EMAILS` 作为平台管理员 bootstrap 兜底。
 
 ### 5.3 权限回滚
 

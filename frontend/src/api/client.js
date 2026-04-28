@@ -33,7 +33,7 @@ async function request(method, path, body) {
         catch { /* non-json */ }
     }
     if (!res.ok) {
-        const err = Object.assign(new Error(data?.message ?? `HTTP ${res.status}`), { status: res.status, code: data?.code });
+        const err = Object.assign(new Error(data?.message ?? data?.error ?? `HTTP ${res.status}`), { status: res.status, code: data?.code });
         throw err;
     }
     return data;

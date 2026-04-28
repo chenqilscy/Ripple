@@ -38,7 +38,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (!res.ok) {
     const err: ApiError = Object.assign(new Error(
-      (data as { message?: string })?.message ?? `HTTP ${res.status}`,
+      (data as { message?: string; error?: string })?.message ?? (data as { error?: string })?.error ?? `HTTP ${res.status}`,
     ), { status: res.status, code: (data as { code?: string })?.code })
     throw err
   }
