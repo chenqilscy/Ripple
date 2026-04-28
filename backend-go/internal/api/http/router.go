@@ -279,6 +279,12 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/admin/graylist", graylistH.Upsert)
 				r.Delete("/admin/graylist/{id}", graylistH.Delete)
 			}
+			if d.PlatformAdmins != nil && hasPlatformAdminSource(adminEmails, d.PlatformAdmins) {
+				platformAdminH := &PlatformAdminHandlers{Repo: d.PlatformAdmins, Users: d.Users, AuditLogs: d.AuditLogs, AdminEmails: adminEmails}
+				r.Get("/admin/platform_admins", platformAdminH.List)
+				r.Post("/admin/platform_admins", platformAdminH.Grant)
+				r.Delete("/admin/platform_admins/{user_id}", platformAdminH.Revoke)
+			}
 
 			// P10-C：湖成员角色变更
 			r.Put("/lakes/{id}/members/{userID}/role", lakeH.UpdateMemberRole)

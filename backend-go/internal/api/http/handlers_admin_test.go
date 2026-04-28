@@ -109,8 +109,11 @@ type adminPlatformRepo struct{ active map[string]bool }
 func (r *adminPlatformRepo) IsActive(_ context.Context, userID string) (bool, error) {
 	return r.active[userID], nil
 }
-func (r *adminPlatformRepo) GetActive(context.Context, string) (*domain.PlatformAdmin, error) {
-	return nil, domain.ErrNotFound
+func (r *adminPlatformRepo) GetActive(_ context.Context, userID string) (*domain.PlatformAdmin, error) {
+	if !r.active[userID] {
+		return nil, domain.ErrNotFound
+	}
+	return &domain.PlatformAdmin{UserID: userID, Role: domain.PlatformAdminRoleAdmin, CreatedAt: time.Now().UTC()}, nil
 }
 func (r *adminPlatformRepo) ListActive(context.Context, int) ([]domain.PlatformAdmin, error) {
 	return nil, nil
