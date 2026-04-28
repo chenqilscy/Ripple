@@ -21,8 +21,12 @@ import (
 
 // NodeShareHandlers P18-B：节点外链分享。
 type NodeShareHandlers struct {
-	Shares store.NodeShareRepository
-	Nodes  *service.NodeService
+	Shares       store.NodeShareRepository
+	Nodes        *service.NodeService
+	// ShareBaseURL 若非空，用于生成分享 URL 时覆盖 r.Host，
+	// 防止请求伪造 Host 头生成钓鱼链接。
+	// 对应 RIPPLE_SHARE_BASE_URL 环境变量。
+	ShareBaseURL string
 }
 
 const (
@@ -180,7 +184,7 @@ func (h *NodeShareHandlers) CreateShare(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, toShareResp(*share, baseURLFromRequest(r)))
+	writeJSON(w, http.StatusCreated, toShareResp(*share, h.resolveBaseURL(r)))
 }
 
 // ListShares GET /api/v1/nodes/{id}/shares
@@ -198,7 +202,7 @@ func (h *NodeShareHandlers) ListShares(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	base := baseURLFromRequest(r)
+	base := h.resolveBaseURL(r)
 	resp := make([]shareResp, len(shares))
 	for i, s := range shares {
 		resp[i] = toShareResp(s, base)
@@ -291,7 +295,18 @@ func (h *NodeShareHandlers) GetSharedNode(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// resolveBaseURL 返回分享 URL 的 base：优先使用配置的 ShareBaseURL，
+// 未配置时回退到从 r.Host 推导（仅用于开发环境）。
+func (h *NodeShareHandlers) resolveBaseURL(r *http.Request) string {
+	if h.ShareBaseURL != "" {
+		return h.ShareBaseURL
+	}
+	return baseURLFromRequest(r)
+}
+
 // baseURLFromRequest 从 request 中推导服务 base URL。
+// 当 handler 的 ShareBaseURL 字段已配置时应直接使用该值（不调用此函数），
+// 以避免 Host 头伪造风险。退而求其次时才使用 r.Host。
 func baseURLFromRequest(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
@@ -315,6 +330,11 @@ func isShareTokenFormat(token string) bool {
 }
 
 func clientIP(r *http.Request) string {
+	// 优先读反向代理设置的 X-Real-IP（nginx proxy_set_header X-Real-IP $remote_addr）。
+	// 注意：仅在可信反向代理后端环境使用；若直接暴露到公网须去掉此逻辑。
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
+	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
 	}

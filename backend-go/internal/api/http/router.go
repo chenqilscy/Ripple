@@ -67,6 +67,8 @@ type Deps struct {
 	LakeSnapshots store.LakeSnapshotRepository
 	// P18-B：节点外链分享；非 nil 时挂载 /nodes/{id}/share 端点。
 	NodeShares store.NodeShareRepository
+	// ShareBaseURL 若配置则作为分享链接 base（防 Host 伪造）；对应 RIPPLE_SHARE_BASE_URL。
+	ShareBaseURL string
 	// Memberships 用于快照权限校验；与 Lakes 配套注入。
 	Memberships store.MembershipRepository
 	// Users 用于按 email 查找用户（P12-C Org by_email 邀请）。
@@ -389,7 +391,7 @@ func NewRouter(d Deps) http.Handler {
 
 			// P18-B：节点外链分享（需鉴权端点）
 			if d.NodeShares != nil {
-				shareH := &NodeShareHandlers{Shares: d.NodeShares, Nodes: d.Nodes}
+				shareH := &NodeShareHandlers{Shares: d.NodeShares, Nodes: d.Nodes, ShareBaseURL: d.ShareBaseURL}
 				r.Post("/nodes/{id}/share", shareH.CreateShare)
 				r.Get("/nodes/{id}/shares", shareH.ListShares)
 				r.Delete("/shares/{id}", shareH.RevokeShare)
@@ -430,7 +432,7 @@ func NewRouter(d Deps) http.Handler {
 
 		// P18-B：公开分享端点（无需鉴权）
 		if d.NodeShares != nil {
-			shareH := &NodeShareHandlers{Shares: d.NodeShares, Nodes: d.Nodes}
+			shareH := &NodeShareHandlers{Shares: d.NodeShares, Nodes: d.Nodes, ShareBaseURL: d.ShareBaseURL}
 			r.Get("/share/{token}", shareH.GetSharedNode)
 		}
 	})

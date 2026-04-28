@@ -119,6 +119,11 @@ type Config struct {
 	// Phase 15-D: Stub 支付开关
 	// StubPaymentEnabled=true 时允许不经真实支付直接订阅套餐（生产默认 false）。
 	StubPaymentEnabled bool `envconfig:"STUB_PAYMENT" default:"false"`
+
+	// P18-B：节点分享链接 base URL。
+	// 设置后生成的分享链接将使用该值而非 r.Host，避免 Host header 伪造钓鱼风险。
+	// 示例：https://app.ripple.io 或 http://fn.cky:14173
+	ShareBaseURL string `envconfig:"SHARE_BASE_URL" default:""`
 }
 
 // Load 从环境变量加载配置。

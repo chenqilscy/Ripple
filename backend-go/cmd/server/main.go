@@ -304,6 +304,7 @@ func main() {
 		NodeTemplates: nodeTemplateRepo,
 		LakeSnapshots: lakeSnapshotRepo,
 		NodeShares:    nodeShareRepo,
+		ShareBaseURL:  cfg.ShareBaseURL,
 		Memberships:   memberships,
 		Users:         users, // P12-C: Org by_email 邀请
 		// Phase 15

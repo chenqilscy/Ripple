@@ -82,4 +82,12 @@ func TestClientIP(t *testing.T) {
 	if got := clientIP(req); got != "unix-socket" {
 		t.Fatalf("want raw remote addr fallback, got %q", got)
 	}
+
+	// X-Real-IP 优先级高于 RemoteAddr（反向代理场景）。
+	req2 := httptest.NewRequest("GET", "/", nil)
+	req2.RemoteAddr = "127.0.0.1:80" // nginx 地址
+	req2.Header.Set("X-Real-IP", "198.51.100.42")
+	if got := clientIP(req2); got != "198.51.100.42" {
+		t.Fatalf("want X-Real-IP, got %q", got)
+	}
 }
