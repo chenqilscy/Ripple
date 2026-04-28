@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { BillingCycle, OrgSubscription, OrgUsage, SubscriptionPlan } from '../api/types'
+import type { BillingCycle, OrgLLMUsage, OrgSubscription, OrgUsage, SubscriptionPlan } from '../api/types'
 
 interface Props {
   orgId: string
@@ -29,6 +29,10 @@ function formatCycle(cycle: BillingCycle) {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('zh-CN')
+}
+
+function formatMoney(amount: number) {
+  return `¥${amount.toFixed(amount >= 1 ? 2 : 3)}`
 }
 
 /** 用量进度条：max=-1 表示不限 */
@@ -59,6 +63,7 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [current, setCurrent] = useState<OrgSubscription | null>(null)
   const [usage, setUsage] = useState<OrgUsage | null>(null)
+  const [llmUsage, setLlmUsage] = useState<OrgLLMUsage | null>(null)
   const [loadingPlans, setLoadingPlans] = useState(false)
   const [loadingSub, setLoadingSub] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -70,10 +75,11 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
     setLoadingPlans(true)
     setLoadingSub(true)
     try {
-      const [plansRes, subRes, usageRes] = await Promise.allSettled([
+      const [plansRes, subRes, usageRes, llmUsageRes] = await Promise.allSettled([
         api.listSubscriptionPlans(),
         api.getOrgSubscription(orgId),
         api.getOrgUsage(orgId),
+        api.getOrgLLMUsage(orgId),
       ])
       if (plansRes.status === 'fulfilled') {
         setPlans(plansRes.value.plans)
@@ -85,6 +91,9 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
       }
       if (usageRes.status === 'fulfilled') {
         setUsage(usageRes.value.usage)
+      }
+      if (llmUsageRes.status === 'fulfilled') {
+        setLlmUsage(llmUsageRes.value)
       }
       // 404 means no subscription yet — that's OK
     } finally {
@@ -112,6 +121,8 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
 
   const currentPlan = current ? plans.find(p => p.id === current.plan_id) : null
   const isLoading = loadingPlans || loadingSub
+  const llmTrend = llmUsage?.by_day.slice(-7) ?? []
+  const maxTrendCalls = llmTrend.reduce((max, item) => Math.max(max, item.calls), 0)
 
   return (
     <div style={{ padding: '16px 0' }}>
@@ -188,6 +199,68 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
             <span>湖 <b style={{ color: '#fff' }}>{usage.lakes}</b></span>
             <span>节点 <b style={{ color: '#fff' }}>{usage.nodes}</b></span>
           </div>
+        </div>
+      )}
+
+      {llmUsage !== null && (
+        <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, color: '#aaa', marginBottom: 4 }}>AI 用量账单</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#ccc' }}>
+                <span>周期 <b style={{ color: '#fff' }}>近 {llmUsage.period_days} 天</b></span>
+                <span>调用 <b style={{ color: '#fff' }}>{llmUsage.total_calls}</b></span>
+                <span>估算费用 <b style={{ color: '#fff' }}>{formatMoney(llmUsage.total_estimated_cost_cny)}</b></span>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: '#888' }}>按 provider / 按日聚合</div>
+          </div>
+
+          {llmUsage.by_provider.length > 0 ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(84px,1fr) minmax(72px,96px) minmax(96px,120px) minmax(96px,120px)', gap: 8, fontSize: 12, color: '#7f8ea3' }}>
+                <span>Provider</span>
+                <span>调用次数</span>
+                <span>平均耗时</span>
+                <span>估算费用</span>
+              </div>
+              {llmUsage.by_provider.map(item => (
+                <div
+                  key={item.provider}
+                  style={{ display: 'grid', gridTemplateColumns: 'minmax(84px,1fr) minmax(72px,96px) minmax(96px,120px) minmax(96px,120px)', gap: 8, fontSize: 13, color: '#d7def0', padding: '10px 12px', borderRadius: 8, background: '#141424', border: '1px solid #23233a' }}
+                >
+                  <span style={{ fontWeight: 600 }}>{item.provider}</span>
+                  <span>{item.calls}</span>
+                  <span>{item.avg_duration_ms} ms</span>
+                  <span>{formatMoney(item.estimated_cost_cny)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: '#888', fontSize: 13 }}>最近 {llmUsage.period_days} 天暂无 AI 调用记录</div>
+          )}
+
+          {llmTrend.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, color: '#7f8ea3', marginBottom: 8 }}>近 7 天趋势</div>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${llmTrend.length}, minmax(0, 1fr))`, gap: 8, alignItems: 'end', minHeight: 110 }}>
+                {llmTrend.map(item => {
+                  const heightPct = maxTrendCalls === 0 ? 0 : Math.max(8, Math.round((item.calls / maxTrendCalls) * 100))
+                  return (
+                    <div key={item.date} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
+                      <div title={`${item.date} · ${item.calls} 次 · ${formatMoney(item.estimated_cost_cny)}`} style={{ minHeight: 78, display: 'flex', alignItems: 'end' }}>
+                        <div style={{ width: '100%', height: `${heightPct}%`, background: 'linear-gradient(180deg, #71a7ff 0%, #4a8eff 100%)', borderRadius: 6, minHeight: item.calls > 0 ? 8 : 0 }} />
+                      </div>
+                      <div style={{ display: 'grid', gap: 2, textAlign: 'center' }}>
+                        <span style={{ fontSize: 11, color: '#d7def0' }}>{item.calls}</span>
+                        <span style={{ fontSize: 10, color: '#7f8ea3' }}>{item.date.slice(5)}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

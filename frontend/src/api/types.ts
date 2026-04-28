@@ -394,6 +394,29 @@ export interface OrgUsage {
   nodes: number
 }
 
+// ---- Phase 15-D：组织 LLM 用量 ----
+export interface LLMProviderUsage {
+  provider: string
+  calls: number
+  avg_duration_ms: number
+  estimated_cost_cny: number
+}
+
+export interface LLMDayUsage {
+  date: string
+  calls: number
+  estimated_cost_cny: number
+}
+
+export interface OrgLLMUsage {
+  org_id: string
+  period_days: number
+  total_calls: number
+  total_estimated_cost_cny: number
+  by_provider: LLMProviderUsage[]
+  by_day: LLMDayUsage[]
+}
+
 // ---- Phase 15-C：AI Job ----
 export type AiJobStatus = 'pending' | 'processing' | 'done' | 'failed'
 

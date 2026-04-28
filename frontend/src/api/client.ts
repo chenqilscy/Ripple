@@ -539,6 +539,10 @@ export const api = {
   getOrgUsage(orgId: string): Promise<{ usage: import('./types').OrgUsage }> {
     return request('GET', `/api/v1/organizations/${orgId}/usage`)
   },
+  // Phase 15-D: AI 用量账单
+  getOrgLLMUsage(orgId: string, days = 30): Promise<import('./types').OrgLLMUsage> {
+    return request('GET', `/api/v1/organizations/${orgId}/llm_usage?days=${days}`)
+  },
 
   // ---- Phase 15-C：AI Job 触发 ----
   aiTrigger(lakeId: string, nodeId: string, opts?: { prompt_template_id?: string; input_node_ids?: string[] }): Promise<import('./types').AiJob> {
