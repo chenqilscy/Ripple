@@ -86,7 +86,7 @@ Phase 13 已完成可信交付闭环：远端 staging、性能基线、故障演
 ### Sprint 14.5：发布后优化与规则收紧
 
 - ✅ Admin Overview 聚合优化：已将 quota / usage / latest audit 读取改为可选批量接口，PG / Neo4j 仓库提供批量计数，避免平台总览按组织 N+1 查询；
-- 平台管理员 RBAC：正式企业版前评估从 `RIPPLE_ADMIN_EMAILS` 迁移到平台管理员角色表；
+- ✅ 平台管理员 RBAC：设计草案见 `docs/dev/Phase14-5-RBAC-设计草案-20260428.md`，正式企业版前从 `RIPPLE_ADMIN_EMAILS` 迁移到平台管理员角色表；
 - 前端 lint 规则收紧：当前已恢复 0 error / 0 warning gate，后续按组件分批恢复 Fast Refresh 与 Hooks 依赖规则；
 - ✅ 灰度名单审计增强：灰度名单新增 / 更新 / 删除写入 `audit_logs`，`resource_type=graylist`，便于运营追溯；
 - 真实体验补录：补普通用户超限拦截、组织管理员配额调整、平台管理员灰度名单三条完整操作录像 / 记录。
