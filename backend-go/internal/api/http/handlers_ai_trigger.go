@@ -60,6 +60,11 @@ func (h *AiTriggerHandlers) Trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(in.InputNodeIDs) > 20 {
+		writeError(w, http.StatusBadRequest, "input_node_ids too many (max 20)")
+		return
+	}
+
 	job := domain.AiJob{
 		ID:               uuid.New().String(),
 		NodeID:           nodeID,

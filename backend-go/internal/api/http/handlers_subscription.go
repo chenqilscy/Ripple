@@ -14,6 +14,7 @@ import (
 // SubscriptionHandlers Phase 15-D：套餐订阅端点。
 type SubscriptionHandlers struct {
 	Svc                *service.SubscriptionService
+	Orgs               *service.OrgService // 用于鉴权校验（可 nil 则跳过）
 	StubPaymentEnabled bool
 }
 
@@ -80,12 +81,21 @@ func toSubResp(s *domain.OrgSubscription) subscriptionResp {
 
 // GetSubscription GET /api/v1/organizations/{id}/subscription
 func (h *SubscriptionHandlers) GetSubscription(w http.ResponseWriter, r *http.Request) {
-	_, ok := CurrentUser(r.Context())
+	u, ok := CurrentUser(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	orgID := chi.URLParam(r, "id")
+
+	// 权限校验：必须是组织成员
+	if h.Orgs != nil {
+		isMember, err := h.Orgs.IsMember(r.Context(), u.ID, orgID)
+		if err != nil || !isMember {
+			writeError(w, http.StatusForbidden, "access denied")
+			return
+		}
+	}
 
 	sub, err := h.Svc.GetActive(r.Context(), orgID)
 	if err != nil {
@@ -114,8 +124,16 @@ func (h *SubscriptionHandlers) CreateSubscription(w http.ResponseWriter, r *http
 	}
 	orgID := chi.URLParam(r, "id")
 
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	// 权限校验：必须是组织成员
+	if h.Orgs != nil {
+		isMember, err := h.Orgs.IsMember(r.Context(), u.ID, orgID)
+		if err != nil || !isMember {
+			writeError(w, http.StatusForbidden, "access denied")
+			return
+		}
+	}
 	var in createSubReq
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return

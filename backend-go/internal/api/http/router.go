@@ -406,7 +406,7 @@ func NewRouter(d Deps) http.Handler {
 
 			// Phase 15-D: 套餐订阅
 			if d.Subscriptions != nil {
-				subH := &SubscriptionHandlers{Svc: d.Subscriptions, StubPaymentEnabled: d.StubPaymentEnabled}
+				subH := &SubscriptionHandlers{Svc: d.Subscriptions, Orgs: d.Orgs, StubPaymentEnabled: d.StubPaymentEnabled}
 				r.Get("/subscriptions/plans", subH.GetPlans)
 				r.Get("/organizations/{id}/subscription", subH.GetSubscription)
 				r.Post("/organizations/{id}/subscription", subH.CreateSubscription)
@@ -414,7 +414,7 @@ func NewRouter(d Deps) http.Handler {
 
 			// Phase 15-D: LLM 用量
 			if d.LLMUsage != nil {
-				usageH := &LLMUsageHandlers{Svc: d.LLMUsage}
+				usageH := &LLMUsageHandlers{Svc: d.LLMUsage, Orgs: d.Orgs}
 				r.Get("/organizations/{id}/llm_usage", usageH.GetUsage)
 			}
 		})

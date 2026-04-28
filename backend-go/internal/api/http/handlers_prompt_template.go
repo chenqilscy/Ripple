@@ -137,6 +137,11 @@ func (h *PromptTemplateHandlers) List(w http.ResponseWriter, r *http.Request) {
 
 // Get GET /api/v1/prompt_templates/{id}
 func (h *PromptTemplateHandlers) Get(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	tpl, err := h.Repo.GetByID(r.Context(), id)
 	if err != nil {
@@ -145,6 +150,11 @@ func (h *PromptTemplateHandlers) Get(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to get prompt template")
+		return
+	}
+	// 私有模板只允许创建者读取
+	if tpl.Scope == domain.PromptScopePrivate && tpl.CreatedBy != u.ID {
+		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
 	writeJSON(w, http.StatusOK, toPromptTplResp(tpl))
@@ -191,6 +201,15 @@ func (h *PromptTemplateHandlers) Update(w http.ResponseWriter, r *http.Request) 
 		Name:        in.Name,
 		Description: in.Description,
 		Template:    in.Template,
+	}
+	// 防止将关键字段更新为空字符串
+	if upd.Name != nil && *upd.Name == "" {
+		writeError(w, http.StatusBadRequest, "name cannot be empty")
+		return
+	}
+	if upd.Template != nil && *upd.Template == "" {
+		writeError(w, http.StatusBadRequest, "template cannot be empty")
+		return
 	}
 	if err := h.Repo.Update(r.Context(), id, upd); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update prompt template")

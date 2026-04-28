@@ -10,17 +10,27 @@ import (
 
 // LLMUsageHandlers Phase 15-D：LLM 用量查询端点。
 type LLMUsageHandlers struct {
-	Svc *service.LLMUsageService
+	Svc  *service.LLMUsageService
+	Orgs *service.OrgService // 用于鉴权校验（可 nil 则跳过）
 }
 
 // GetUsage GET /api/v1/organizations/{id}/llm_usage?days=30
 func (h *LLMUsageHandlers) GetUsage(w http.ResponseWriter, r *http.Request) {
-	_, ok := CurrentUser(r.Context())
+	u, ok := CurrentUser(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	orgID := chi.URLParam(r, "id")
+
+	// 权限校验：必须是组织成员
+	if h.Orgs != nil {
+		isMember, err := h.Orgs.IsMember(r.Context(), u.ID, orgID)
+		if err != nil || !isMember {
+			writeError(w, http.StatusForbidden, "access denied")
+			return
+		}
+	}
 
 	days := 30
 	if v := r.URL.Query().Get("days"); v != "" {
