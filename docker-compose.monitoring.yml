@@ -1,0 +1,55 @@
+# docker-compose.monitoring.yml
+# Ripple 监控仪表板叠加层（Prometheus + Grafana）
+# 使用方式（叠加到 staging）：
+#   cd /home/admin/Ripple
+#   docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml up -d
+#
+# 访问：
+#   Prometheus: http://fn.cky:19090
+#   Grafana:    http://fn.cky:13000  admin / ${GRAFANA_PASSWORD:-Admin888}
+#
+# 停止时仅停监控，不影响 staging：
+#   docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml stop prometheus grafana
+
+version: "3.9"
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: ripple-monitoring-prometheus
+    restart: unless-stopped
+    ports:
+      - "19090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    networks:
+      - ripple-net
+
+  grafana:
+    image: grafana/grafana-oss:10.4.2
+    container_name: ripple-monitoring-grafana
+    restart: unless-stopped
+    ports:
+      - "13000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-Admin888}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/ripple-overview.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - ripple-net
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  ripple-net:
+    external: true
+    name: ripple-net
