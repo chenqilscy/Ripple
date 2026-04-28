@@ -43,12 +43,12 @@ func NewAiJobRepository(pool *pgxpool.Pool) AiJobRepository {
 }
 
 const sqlInsertAiJob = `
-INSERT INTO ai_jobs (id, node_id, lake_id, prompt_template_id, status, progress_pct,
+INSERT INTO ai_jobs (id, node_id, lake_id, prompt_template_id, status, priority, progress_pct,
                      input_node_ids, override_vars, created_by, created_at)
-VALUES ($1, $2, $3, NULLIF($4,'')::uuid, 'pending', 0, $5, $6, $7::uuid, $8)
+VALUES ($1, $2, $3, NULLIF($4,'')::uuid, 'pending', $5, 0, $6, $7, $8::uuid, $9)
 ON CONFLICT (node_id) WHERE status IN ('pending', 'processing')
 DO NOTHING
-RETURNING id, node_id, lake_id, COALESCE(prompt_template_id::text,''), status,
+RETURNING id, node_id, lake_id, COALESCE(prompt_template_id::text,''), status, priority,
           progress_pct, input_node_ids, override_vars,
           started_at, finished_at, error, created_by::text, created_at
 `
@@ -60,7 +60,7 @@ func (r *aiJobRepoPG) CreateWithConflictCheck(ctx context.Context, job domain.Ai
 	}
 	row := r.pool.QueryRow(ctx, sqlInsertAiJob,
 		job.ID, job.NodeID, job.LakeID, job.PromptTemplateID,
-		job.InputNodeIDs, varsJSON,
+		job.Priority, job.InputNodeIDs, varsJSON,
 		job.CreatedBy, job.CreatedAt,
 	)
 	result, err := scanAiJob(row)
@@ -75,7 +75,7 @@ func (r *aiJobRepoPG) CreateWithConflictCheck(ctx context.Context, job domain.Ai
 }
 
 const sqlGetAiJobByNode = `
-SELECT id, node_id, lake_id, COALESCE(prompt_template_id::text,''), status,
+SELECT id, node_id, lake_id, COALESCE(prompt_template_id::text,''), status, priority,
        progress_pct, input_node_ids, override_vars,
        started_at, finished_at, error, created_by::text, created_at
 FROM ai_jobs
@@ -94,7 +94,7 @@ func (r *aiJobRepoPG) GetByNodeID(ctx context.Context, nodeID string) (*domain.A
 }
 
 const sqlGetAiJobByID = `
-SELECT id, node_id, lake_id, COALESCE(prompt_template_id::text,''), status,
+SELECT id, node_id, lake_id, COALESCE(prompt_template_id::text,''), status, priority,
        progress_pct, input_node_ids, override_vars,
        started_at, finished_at, error, created_by::text, created_at
 FROM ai_jobs
@@ -111,12 +111,12 @@ func (r *aiJobRepoPG) GetByID(ctx context.Context, id string) (*domain.AiJob, er
 }
 
 const sqlListPendingAiJobs = `
-SELECT id, node_id, lake_id, COALESCE(prompt_template_id::text,''), status,
+SELECT id, node_id, lake_id, COALESCE(prompt_template_id::text,''), status, priority,
        progress_pct, input_node_ids, override_vars,
        started_at, finished_at, error, created_by::text, created_at
 FROM ai_jobs
 WHERE status = 'pending'
-ORDER BY created_at ASC
+ORDER BY priority DESC, created_at ASC
 LIMIT $1
 FOR UPDATE SKIP LOCKED
 `
@@ -179,7 +179,7 @@ func scanAiJob(row pgx.Row) (*domain.AiJob, error) {
 	var varsJSON []byte
 
 	err := row.Scan(
-		&job.ID, &job.NodeID, &job.LakeID, &job.PromptTemplateID, &statusStr,
+		&job.ID, &job.NodeID, &job.LakeID, &job.PromptTemplateID, &statusStr, &job.Priority,
 		&job.ProgressPct, &inputNodeIDsArr, &varsJSON,
 		&job.StartedAt, &job.FinishedAt, &job.Error, &job.CreatedBy, &job.CreatedAt,
 	)
@@ -205,7 +205,7 @@ func scanAiJobRow(rows pgx.Rows) (*domain.AiJob, error) {
 	var varsJSON []byte
 
 	err := rows.Scan(
-		&job.ID, &job.NodeID, &job.LakeID, &job.PromptTemplateID, &statusStr,
+		&job.ID, &job.NodeID, &job.LakeID, &job.PromptTemplateID, &statusStr, &job.Priority,
 		&job.ProgressPct, &inputNodeIDsArr, &varsJSON,
 		&job.StartedAt, &job.FinishedAt, &job.Error, &job.CreatedBy, &job.CreatedAt,
 	)

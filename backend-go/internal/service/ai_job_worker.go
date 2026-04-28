@@ -74,7 +74,7 @@ func (w *AiJobWorker) workerLoop(ctx context.Context, idx int) {
 			return
 		default:
 		}
-		jobs, err := w.jobs.ListPending(ctx, 1)
+		jobs, err := w.jobs.ListPending(ctx, w.workers)
 		if err != nil {
 			if !errors.Is(err, context.Canceled) {
 				w.log.Error().Err(err).Int("worker", idx).Msg("ai job list pending failed")

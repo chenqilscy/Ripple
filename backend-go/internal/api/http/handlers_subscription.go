@@ -124,11 +124,11 @@ func (h *SubscriptionHandlers) CreateSubscription(w http.ResponseWriter, r *http
 	}
 	orgID := chi.URLParam(r, "id")
 
-	// 权限校验：必须是组织成员
+	// 权限校验：必须是组织 OWNER（Phase 15.2）
 	if h.Orgs != nil {
-		isMember, err := h.Orgs.IsMember(r.Context(), u.ID, orgID)
-		if err != nil || !isMember {
-			writeError(w, http.StatusForbidden, "access denied")
+		role, err := h.Orgs.GetMemberRole(r.Context(), orgID, u.ID)
+		if err != nil || role != domain.OrgRoleOwner {
+			writeError(w, http.StatusForbidden, "only org owner can manage subscription")
 			return
 		}
 	}

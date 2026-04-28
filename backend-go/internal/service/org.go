@@ -313,6 +313,11 @@ func (s *OrgService) IsMember(ctx context.Context, userID, orgID string) (bool, 
 	return true, nil
 }
 
+// GetMemberRole 返回用户在组织中的角色，若不是成员返回 ErrNotFound。
+func (s *OrgService) GetMemberRole(ctx context.Context, orgID, userID string) (domain.OrgRole, error) {
+	return s.orgs.GetMemberRole(ctx, orgID, userID)
+}
+
 func (s *OrgService) requireMember(ctx context.Context, userID, orgID string) error {
 	_, err := s.orgs.GetMemberRole(ctx, orgID, userID)
 	if err != nil {

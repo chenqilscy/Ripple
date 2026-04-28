@@ -24,6 +24,7 @@ type AiJob struct {
 	LakeID             string
 	PromptTemplateID   string // 可空（模板被删除后 SET NULL）
 	Status             AiJobStatus
+	Priority           int    // Phase 15.2：越大越优先，默认 0
 	ProgressPct        int
 	InputNodeIDs       []string
 	OverrideVars       map[string]string

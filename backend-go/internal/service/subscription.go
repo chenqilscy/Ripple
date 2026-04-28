@@ -128,18 +128,29 @@ func (s *SubscriptionService) GetActive(ctx context.Context, orgID string) (*dom
 }
 
 // validateDowngrade 如果目标套餐低于当前用量，返回 ErrDowngradeBlocked。
+// Phase 15.2：区分"配额查询失败（放行+warn）"和"超出配额（拦截）"。
+// Phase 16 补充真实用量统计（members/lakes/nodes）。
 func (s *SubscriptionService) validateDowngrade(ctx context.Context, orgID string, targetPlan domain.Plan) error {
 	quota, err := s.quotas.GetByOrgID(ctx, orgID)
 	if err != nil {
-		// 获取不到配额（如 org 未初始化配额），放行降级
+		// 配额数据不可用（未初始化或数据库故障）：放行降级，由调用方记录日志
+		// 注意：这是宽松模式，Phase 16 在有完整用量统计后可改为拦截
 		return nil
 	}
-	_ = quota // 真实用量检查需要统计当前 members/lakes/nodes 数量
-	// Phase 15.1 简化：只检查配额硬上限，不实际统计当前用量（Phase 16 完善）
-	// 如果目标 MaxNodes 比当前配额还高，不可能降级失败
-	if quota.MaxNodes > targetPlan.Quotas.MaxNodes {
-		// 实际应统计当前节点数；Phase 15.1 暂时放行（conservative: 允许降级）
-		// TODO Phase 16: 真实用量统计
+	// 检查配额上限：若目标套餐上限 < 当前已分配配额，说明降级会超额
+	// Phase 15.2 简化：与当前配额比较（非实际用量）；Phase 16 改为统计真实用量
+	var exceeded []string
+	if targetPlan.Quotas.MaxNodes < quota.MaxNodes {
+		exceeded = append(exceeded, "max_nodes")
+	}
+	if targetPlan.Quotas.MaxLakes < quota.MaxLakes {
+		exceeded = append(exceeded, "max_lakes")
+	}
+	if targetPlan.Quotas.MaxMembers < quota.MaxMembers {
+		exceeded = append(exceeded, "max_members")
+	}
+	if len(exceeded) > 0 {
+		return &ErrDowngradeBlocked{Exceeded: exceeded}
 	}
 	return nil
 }
