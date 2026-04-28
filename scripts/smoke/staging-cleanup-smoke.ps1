@@ -35,7 +35,17 @@ function Invoke-RemoteStdin {
 
 $emailLikes = ($EmailPrefixes | ForEach-Object { "email LIKE '$_%'" }) -join ' OR '
 $pgSelect = 'SELECT id, email FROM users WHERE ' + $emailLikes + ';'
-$pgDelete = "BEGIN;`nDELETE FROM graylist_emails WHERE " + $emailLikes + ";`nDELETE FROM users WHERE " + $emailLikes + ";`nCOMMIT;`n"
+# Restrict-FK preflight: clear graylist_entries.created_by, node_revisions.editor_id, organizations.owner_id, audit_events (NO ACTION)
+# Other FKs to users use CASCADE/SET NULL and are handled automatically by DELETE FROM users.
+$subSelect = 'SELECT id FROM users WHERE ' + $emailLikes
+$pgDelete = "BEGIN;`n" +
+  "DELETE FROM graylist_entries WHERE " + $emailLikes + ";`n" +
+  "DELETE FROM graylist_entries WHERE created_by IN ($subSelect);`n" +
+  "DELETE FROM audit_events WHERE actor_id IN ($subSelect);`n" +
+  "DELETE FROM node_revisions WHERE editor_id IN ($subSelect);`n" +
+  "DELETE FROM organizations WHERE owner_id IN ($subSelect);`n" +
+  "DELETE FROM users WHERE " + $emailLikes + ";`n" +
+  "COMMIT;`n"
 
 Write-Host ''
 Write-Host '-- PG: list candidates --'
