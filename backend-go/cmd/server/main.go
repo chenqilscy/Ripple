@@ -234,6 +234,12 @@ func main() {
 		WithUsageRepos(orgRepo, lakes, nodes) // Phase 16: 真实用量
 	llmUsageSvc := service.NewLLMUsageService(llmAnalyticsRepo)
 
+	// Phase 17：订阅续期 + 到期通知
+	subRenewer := service.NewSubscriptionRenewer(subRepo, orgRepo, notifRepo, logger, 0, 7)
+	renewerCtx, renewerCancel := context.WithCancel(context.Background())
+	defer renewerCancel()
+	go subRenewer.Run(renewerCtx)
+
 	crystallizeSvc := service.NewCrystallizeService(permaRepo, nodes, memberships, llmRouter)
 
 	feedbackRepo := store.NewFeedbackRepository(pg)
