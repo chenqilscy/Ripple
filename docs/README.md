@@ -44,6 +44,7 @@
 | [Phase13-准入清单](launch/Phase13-准入清单.md) | 灰度前单页准入门槛 |
 | [Phase14-准入清单](launch/Phase14-准入清单.md) | Phase 14 去 CI 化准入门（本地 + staging 脚本） |
 | [Phase14.7-三签字流程](launch/Phase14.7-三签字流程.md) | PM / QA / 决策者三签字制 |
+| [Phase15-立项调研](launch/Phase15-立项调研.md) | Phase 15 候选主题调研与决策矩阵 |
 | [Phase13-联调与回滚手册](ops/Phase13-联调与回滚手册.md) | staging 拉起 / 回收 / 故障演练 |
 | [Phase13-rollback-acceptance-20260427](dev/Phase13-rollback-acceptance-20260427.md) | Phase 13 应用回滚、数据库 down/up 与 CI 验收记录 |
 | [Phase13-canonical-path-repair-20260428](dev/Phase13-canonical-path-repair-20260428.md) | 远端 `/home/admin/Ripple` 标准源码路径权限修复记录 |
