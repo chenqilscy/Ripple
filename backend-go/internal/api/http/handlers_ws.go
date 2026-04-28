@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/metrics"
@@ -44,7 +46,7 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns:     h.Origins,
+		OriginPatterns:     websocketOriginPatterns(h.Origins),
 		InsecureSkipVerify: len(h.Origins) == 0,
 	})
 	if err != nil {
@@ -147,4 +149,25 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 			_ = h.Presence.Heartbeat(ctx, lakeID, user.ID)
 		}
 	}
+}
+
+// websocketOriginPatterns converts configured CORS origins into nhooyr host
+// patterns. chi/cors expects full origins such as "http://fn.cky:14173", while
+// nhooyr websocket AcceptOptions.OriginPatterns expects only host patterns such
+// as "fn.cky:14173". Passing full URLs makes valid browser WS requests fail
+// with 403 on staging.
+func websocketOriginPatterns(origins []string) []string {
+	patterns := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if u, err := url.Parse(origin); err == nil && u.Host != "" {
+			patterns = append(patterns, u.Host)
+			continue
+		}
+		patterns = append(patterns, origin)
+	}
+	return patterns
 }

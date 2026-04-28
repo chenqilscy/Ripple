@@ -64,13 +64,13 @@ type peer struct {
 
 type hub struct {
 	mu             sync.RWMutex
-	rooms          map[string]map[*peer]struct{}    // nodeID -> peers
-	roomSubs       map[string]context.CancelFunc    // P9-A：nodeID -> 订阅 goroutine cancel 函数
-	jwt            *platform.JWTSigner              // nil 表示禁用鉴权
-	allowedOrigins map[string]struct{}              // empty 表示不限 Origin（仅当 jwt==nil 时安全）
-	originsRawList []string                         // 用于 AcceptOptions
-	apiURL         string                           // P8-D：Ripple 后端 URL（如 http://localhost:8000）
-	httpClient     *http.Client                     // P8-D：用于加载快照的 HTTP 客户端
+	rooms          map[string]map[*peer]struct{} // nodeID -> peers
+	roomSubs       map[string]context.CancelFunc // P9-A：nodeID -> 订阅 goroutine cancel 函数
+	jwt            *platform.JWTSigner           // nil 表示禁用鉴权
+	allowedOrigins map[string]struct{}           // empty 表示不限 Origin（仅当 jwt==nil 时安全）
+	originsRawList []string                      // 用于 AcceptOptions
+	apiURL         string                        // P8-D：Ripple 后端 URL（如 http://localhost:8000）
+	httpClient     *http.Client                  // P8-D：用于加载快照的 HTTP 客户端
 	// P9-A：Redis Pub/Sub（nil = 单实例模式，禁用 Redis 广播）
 	rdb        *redis.Client
 	instanceID string // 当前实例唯一 ID，用于消息去重（防止本实例收到自己发出的广播）
@@ -124,7 +124,7 @@ func newHub(jwtSigner *platform.JWTSigner, originsList []string, apiURL string, 
 		roomSubs:       map[string]context.CancelFunc{},
 		jwt:            jwtSigner,
 		allowedOrigins: allowed,
-		originsRawList: originsList,
+		originsRawList: websocketOriginPatterns(originsList),
 		apiURL:         apiURL,
 		httpClient:     &http.Client{Timeout: 5 * time.Second},
 		rdb:            rdb,
@@ -414,6 +414,25 @@ func (h *hub) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 		h.broadcast(ctx, p, typ, data)
 	}
+}
+
+// websocketOriginPatterns converts configured CORS origins into nhooyr host
+// patterns. nhooyr websocket AcceptOptions.OriginPatterns matches only origin
+// hosts (for example "fn.cky:14173"), not full URLs.
+func websocketOriginPatterns(origins []string) []string {
+	patterns := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if u, err := url.Parse(origin); err == nil && u.Host != "" {
+			patterns = append(patterns, u.Host)
+			continue
+		}
+		patterns = append(patterns, origin)
+	}
+	return patterns
 }
 
 func (h *hub) stats(w http.ResponseWriter, _ *http.Request) {

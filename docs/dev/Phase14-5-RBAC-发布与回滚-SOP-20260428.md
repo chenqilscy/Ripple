@@ -15,6 +15,8 @@
 - 平台管理员运营端点拒绝 API Key 继承权限，仅接受 JWT 用户会话；
 - 前端 Settings 新增“平台管理员 RBAC”面板，可按用户 ID 或邮箱授权、撤销、查看列表。
 - 前端 `.tsx` 与 `.js` mirror 必须同步更新；发布前以 `npm.cmd run build` 验证实际产物包含 `PlatformAdminManager-*` chunk。
+- 前端 nginx 必须代理 `/yjs` 到 `yjs-bridge:7790`，否则协作 WebSocket 会被 SPA fallback 返回 200。
+- 后端 LakeWS 与 yjs-bridge 使用 `nhooyr.io/websocket`，其 `OriginPatterns` 只接受 host pattern（如 `fn.cky:14173`），不能直接传入完整 CORS URL。
 
 ## 2. 本地验证
 
@@ -84,6 +86,39 @@ ssh admin@fn.cky "rm -rf /home/admin/ripple-dist-upload && mkdir -p /home/admin/
 ```
 
 3. 浏览器刷新 `http://fn.cky:14173/`，Settings 页应出现“平台管理员 RBAC”面板。
+
+### 3.3 前端 nginx / WebSocket 配置固化
+
+当修改 [frontend/nginx.conf](../../frontend/nginx.conf) 时，仅热拷贝 `dist` 不会更新容器内 nginx 配置，必须执行其一：
+
+1. 推荐：重建 frontend 镜像并重启容器：
+
+```bash
+cd /home/admin/Ripple
+docker compose -f docker-compose.staging.yml up -d --build frontend yjs-bridge
+```
+
+2. 若 Docker Hub 元数据拉取卡顿，可临时热更新配置并 reload：
+
+```bash
+cd /home/admin/Ripple
+docker compose -f docker-compose.staging.yml up -d --no-build yjs-bridge
+docker cp frontend/nginx.conf ripple-staging-frontend:/etc/nginx/conf.d/default.conf
+docker exec ripple-staging-frontend nginx -s reload
+```
+
+热更新只是 staging 应急措施；后续重建容器前必须确认源码中的 [frontend/nginx.conf](../../frontend/nginx.conf) 已包含 `/yjs` 代理段，否则配置会丢失。
+
+### 3.4 WebSocket smoke
+
+1. `/yjs` 不应再返回前端 HTML。无参数普通 HTTP smoke 期望来自 yjs-bridge 的 `400 lake required`：
+
+```powershell
+curl.exe -i --max-time 5 http://fn.cky:14173/yjs
+```
+
+2. LakeWS 浏览器 Origin smoke：对操作者有权限的湖发起 WebSocket Upgrade，请求头 `Origin: http://fn.cky:14173`，期望 `101 Switching Protocols`，不应再是 `403`。
+3. yjs-bridge smoke：使用 `POST /api/v1/ws_token` 签发 ws-only token 后访问 `/yjs/<room>?lake=<lake_id>&node=<node_id>&token=<ws_token>`，期望 `101 Switching Protocols`。
 
 ## 4. Staging smoke
 
