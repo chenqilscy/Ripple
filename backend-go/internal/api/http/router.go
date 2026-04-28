@@ -418,6 +418,7 @@ func NewRouter(d Deps) http.Handler {
 				snapH := &LakeSnapshotHandlers{Repo: d.LakeSnapshots, Memberships: d.Memberships}
 				r.Post("/lakes/{id}/snapshots", snapH.CreateSnapshot)
 				r.Get("/lakes/{id}/snapshots", snapH.ListSnapshots)
+				r.Get("/lakes/{id}/snapshots/{snapshotID}", snapH.GetSnapshot)
 				r.Delete("/lakes/{id}/snapshots/{snapshotID}", snapH.DeleteSnapshot)
 			}
 

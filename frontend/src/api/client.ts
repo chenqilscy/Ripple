@@ -420,12 +420,15 @@ export const api = {
     return request('POST', `/api/v1/lakes/${lakeId}/nodes/from_template`, { template_id })
   },
 
-  // ---- P18-D：图谱快照 ----
-  createSnapshot(lakeId: string, name: string, layout: Record<string, { x: number; y: number }>): Promise<import('./types').LakeSnapshot> {
-    return request('POST', `/api/v1/lakes/${lakeId}/snapshots`, { name, layout })
+  // ---- P18-D/P21：图谱快照 ----
+  createSnapshot(lakeId: string, name: string, layout: Record<string, { x: number; y: number }>, graphState?: import('./types').SnapshotGraphState): Promise<import('./types').LakeSnapshot> {
+    return request('POST', `/api/v1/lakes/${lakeId}/snapshots`, { name, layout, ...(graphState ? { graph_state: graphState } : {}) })
   },
   listSnapshots(lakeId: string): Promise<{ snapshots: import('./types').LakeSnapshot[] }> {
     return request('GET', `/api/v1/lakes/${lakeId}/snapshots`)
+  },
+  getSnapshot(lakeId: string, snapshotId: string): Promise<import('./types').LakeSnapshot> {
+    return request('GET', `/api/v1/lakes/${lakeId}/snapshots/${snapshotId}`)
   },
   deleteSnapshot(lakeId: string, snapshotId: string): Promise<void> {
     return request('DELETE', `/api/v1/lakes/${lakeId}/snapshots/${snapshotId}`)

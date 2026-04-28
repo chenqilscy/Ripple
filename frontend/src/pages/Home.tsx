@@ -1072,6 +1072,10 @@ export function Home({ onLogout }: Props) {
                       <SnapshotPanel
                         lakeId={active.id}
                         currentLayout={Object.fromEntries(nodes.map(n => [n.id, { x: n.position.x, y: n.position.y }]))}
+                        currentGraphState={{
+                          nodes: nodes.map(n => ({ id: n.id, title: n.content.slice(0, 80), type: n.type })),
+                          edges: edges.map(e => ({ id: e.id, src: e.src_node_id, dst: e.dst_node_id, kind: e.kind })),
+                        }}
                         onClose={() => setSnapshotPanelOpen(false)}
                         onRestore={layout => { setGraphLayout(layout); setSnapshotPanelOpen(false) }}
                       />

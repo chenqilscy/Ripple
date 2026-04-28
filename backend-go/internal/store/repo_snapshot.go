@@ -24,13 +24,13 @@ func NewLakeSnapshotRepository(pool *pgxpool.Pool) LakeSnapshotRepository {
 }
 
 const sqlInsertSnapshot = `
-INSERT INTO lake_snapshots (id, lake_id, name, layout, created_by, created_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO lake_snapshots (id, lake_id, name, layout, graph_state, created_by, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 func (r *snapshotRepoPG) Create(ctx context.Context, s *domain.LakeSnapshot) error {
 	_, err := r.pool.Exec(ctx, sqlInsertSnapshot,
-		s.ID, s.LakeID, s.Name, s.Layout, s.CreatedBy, s.CreatedAt)
+		s.ID, s.LakeID, s.Name, s.Layout, s.GraphState, s.CreatedBy, s.CreatedAt)
 	return err
 }
 
@@ -62,6 +62,11 @@ func (r *snapshotRepoPG) List(ctx context.Context, lakeID string, limit int) ([]
 	return out, rows.Err()
 }
 
+const sqlGetSnapshotFull = `
+SELECT id, lake_id, name, layout, graph_state, created_by, created_at
+FROM lake_snapshots WHERE id = $1
+`
+
 const sqlGetSnapshot = `
 SELECT id, lake_id, name, layout, created_by, created_at
 FROM lake_snapshots WHERE id = $1
@@ -69,8 +74,8 @@ FROM lake_snapshots WHERE id = $1
 
 func (r *snapshotRepoPG) Get(ctx context.Context, id string) (*domain.LakeSnapshot, error) {
 	var s domain.LakeSnapshot
-	err := r.pool.QueryRow(ctx, sqlGetSnapshot, id).Scan(
-		&s.ID, &s.LakeID, &s.Name, &s.Layout, &s.CreatedBy, &s.CreatedAt)
+	err := r.pool.QueryRow(ctx, sqlGetSnapshotFull, id).Scan(
+		&s.ID, &s.LakeID, &s.Name, &s.Layout, &s.GraphState, &s.CreatedBy, &s.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

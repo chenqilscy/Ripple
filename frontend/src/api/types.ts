@@ -306,11 +306,27 @@ export interface NodeTemplate {
 }
 
 // ---- P18-D：图谱快照 ----
+export interface SnapshotNodeEntry {
+  id: string
+  title: string
+  type?: string
+}
+export interface SnapshotEdgeEntry {
+  id: string
+  src: string
+  dst: string
+  kind?: string
+}
+export interface SnapshotGraphState {
+  nodes: SnapshotNodeEntry[]
+  edges: SnapshotEdgeEntry[]
+}
 export interface LakeSnapshot {
   id: string
   lake_id: string
   name: string
   layout: Record<string, { x: number; y: number }>
+  graph_state?: SnapshotGraphState
   created_by: string
   created_at: string
 }
