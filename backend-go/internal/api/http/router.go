@@ -370,6 +370,7 @@ func NewRouter(d Deps) http.Handler {
 			}
 
 			// P20-A：自由文本一键转图谱（Paste-to-Graph）
+			// P20-B：图谱节点智能摘要（Summarize-Graph）
 			if d.LLMRouter != nil {
 				if importRouter, ok := d.LLMRouter.(llm.Router); ok {
 					importTextH := &ImportTextHandlers{
@@ -378,6 +379,14 @@ func NewRouter(d Deps) http.Handler {
 						Router: importRouter,
 					}
 					r.Post("/lakes/{id}/import/text", importTextH.ImportText)
+
+					summarizeH := &SummarizeGraphHandlers{
+						NodeGetter:  d.Nodes,
+						NodeCreator: d.Nodes,
+						EdgeCreator: d.Edges,
+						Router:      importRouter,
+					}
+					r.Post("/lakes/{id}/nodes/summarize", summarizeH.SummarizeGraph)
 				}
 			}
 

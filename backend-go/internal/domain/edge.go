@@ -17,15 +17,16 @@ const (
 	EdgeKindDerives EdgeKind = "derives" // 派生（src→dst 由前者推出）
 	EdgeKindOpposes EdgeKind = "opposes" // 反对
 	EdgeKindRefines EdgeKind = "refines" // 细化
-	EdgeKindGroups  EdgeKind = "groups"  // 归类
-	EdgeKindCustom  EdgeKind = "custom"  // 自定义（必须配 Label）
+	EdgeKindGroups     EdgeKind = "groups"     // 归类
+	EdgeKindSummarizes EdgeKind = "summarizes" // 摘要（摘要节点→源节点，P20-B）
+	EdgeKindCustom     EdgeKind = "custom"     // 自定义（必须配 Label）
 )
 
 // IsValid 判断 kind 合法。
 func (k EdgeKind) IsValid() bool {
 	switch k {
 	case EdgeKindRelates, EdgeKindDerives, EdgeKindOpposes,
-		EdgeKindRefines, EdgeKindGroups, EdgeKindCustom:
+		EdgeKindRefines, EdgeKindGroups, EdgeKindSummarizes, EdgeKindCustom:
 		return true
 	}
 	return false
