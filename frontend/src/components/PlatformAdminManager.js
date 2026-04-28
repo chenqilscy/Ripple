@@ -43,9 +43,7 @@ export default function PlatformAdminManager() {
         setSaving(true);
         setErr(null);
         try {
-            const input = value.includes('@')
-                ? { email: value.toLowerCase(), role, note: note.trim() }
-                : { user_id: value, role, note: note.trim() };
+            const input = platformAdminGrantInput(value, role, note);
             await api.grantPlatformAdmin(input);
             setTarget('');
             setNote('');
@@ -61,10 +59,7 @@ export default function PlatformAdminManager() {
     async function handleRevoke(admin) {
         if (forbidden || saving || deletingId)
             return;
-        const label = admin.email || admin.user_id;
-        const message = admin.role === 'OWNER'
-            ? `确定撤销平台 OWNER ${label}？这会移除其平台管理员授权能力。`
-            : `确定撤销平台管理员 ${label}？`;
+        const message = platformAdminRevokeMessage(admin);
         if (!window.confirm(message))
             return;
         setDeletingId(admin.user_id);
@@ -84,6 +79,18 @@ export default function PlatformAdminManager() {
 }
 function fmtDate(s) {
     return new Date(s).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+export function platformAdminGrantInput(value, role, note) {
+    const normalized = value.trim();
+    return normalized.includes('@')
+        ? { email: normalized.toLowerCase(), role, note: note.trim() }
+        : { user_id: normalized, role, note: note.trim() };
+}
+export function platformAdminRevokeMessage(admin) {
+    const label = admin.email || admin.user_id;
+    return admin.role === 'OWNER'
+        ? `确定撤销平台 OWNER ${label}？这会移除其平台管理员授权能力。`
+        : `确定撤销平台管理员 ${label}？`;
 }
 function shortID(s) {
     return s ? `${s.slice(0, 8)}…` : '—';

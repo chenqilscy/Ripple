@@ -21,6 +21,16 @@ import AttachmentBar from '../components/AttachmentBar'
 import CollabDemo from '../components/CollabDemo'
 import OfflineBar from '../components/OfflineBar'
 import NotificationBell from '../components/NotificationBell'
+
+type SettingsTabKey = 'overview' | 'rbac' | 'apiKeys' | 'graylist' | 'audit'
+
+const settingsTabs: { key: SettingsTabKey; label: string }[] = [
+  { key: 'overview', label: '总览' },
+  { key: 'rbac', label: '平台管理员' },
+  { key: 'apiKeys', label: 'API Key' },
+  { key: 'graylist', label: '灰度名单' },
+  { key: 'audit', label: '审计日志' },
+]
 import { LakeWS } from '../api/wsClient'
 
 interface Props { onLogout: () => void }
@@ -132,6 +142,7 @@ export function Home({ onLogout }: Props) {
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list')
   // P11：主区 Tab（lakes=主流程 | settings=API Key+审计日志）
   const [mainTab, setMainTab] = useState<'lakes' | 'settings'>('lakes')
+  const [settingsTab, setSettingsTab] = useState<SettingsTabKey>('overview')
   // M3-S3：推荐位（基于历史 LIKE 反馈的协同过滤）
   const [recos, setRecos] = useState<{ target_id: string; score: number }[]>([])
   const wsRef = useRef<LakeWS | null>(null)
@@ -835,12 +846,23 @@ export function Home({ onLogout }: Props) {
       <main style={main}>
         {mainTab === 'settings' ? (
           <React.Suspense fallback={<div style={{ padding: 16, color: '#6c7086' }}>加载中…</div>}>
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-              <AdminOverviewPanel />
-              <PlatformAdminManager />
-              <APIKeyManager />
-              <GraylistManager />
-              <AuditLogViewer />
+            <div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                {settingsTabs.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setSettingsTab(tab.key)}
+                    style={{ ...ghostBtn, color: settingsTab === tab.key ? '#89b4fa' : undefined, borderColor: settingsTab === tab.key ? '#89b4fa' : '#313244' }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              {settingsTab === 'overview' && <AdminOverviewPanel />}
+              {settingsTab === 'rbac' && <PlatformAdminManager />}
+              {settingsTab === 'apiKeys' && <APIKeyManager />}
+              {settingsTab === 'graylist' && <GraylistManager />}
+              {settingsTab === 'audit' && <AuditLogViewer />}
             </div>
           </React.Suspense>
         ) : (
