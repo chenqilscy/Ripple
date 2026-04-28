@@ -185,3 +185,58 @@ func TestSearch_LuceneEscape(t *testing.T) {
 
 // 确保 searchableNodeRepo 满足 store.NodeRepository 接口。
 var _ store.NodeRepository = (*searchableNodeRepo)(nil)
+
+// TestSearchFiltered_StateFilter state 过滤只返回指定 state 节点。
+func TestSearchFiltered_StateFilter(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, nodes := newSearchSvc(t)
+
+	lakes.data["lake-1"] = &domain.Lake{ID: "lake-1", OwnerID: "u"}
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-1", Role: domain.RoleOwner})
+	now := time.Now()
+	nodes.data["n1"] = &domain.Node{ID: "n1", LakeID: "lake-1", OwnerID: "u", Content: "keyword 文本", State: domain.StateDrop, Type: domain.NodeTypeText, CreatedAt: now, UpdatedAt: now}
+	nodes.data["n2"] = &domain.Node{ID: "n2", LakeID: "lake-1", OwnerID: "u", Content: "keyword 图片", State: domain.StateFrozen, Type: domain.NodeTypeImage, CreatedAt: now, UpdatedAt: now}
+
+	res, err := svc.SearchNodesFiltered(ctx, &domain.User{ID: "u"}, "lake-1", "keyword", "DROP", "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || res[0].NodeID != "n1" {
+		t.Fatalf("expected only n1 (DROP), got %v", res)
+	}
+}
+
+// TestSearchFiltered_TypeFilter type 过滤只返回指定类型节点。
+func TestSearchFiltered_TypeFilter(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, nodes := newSearchSvc(t)
+
+	lakes.data["lake-1"] = &domain.Lake{ID: "lake-1", OwnerID: "u"}
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-1", Role: domain.RoleOwner})
+	now := time.Now()
+	nodes.data["n1"] = &domain.Node{ID: "n1", LakeID: "lake-1", OwnerID: "u", Content: "keyword", State: domain.StateDrop, Type: domain.NodeTypeText, CreatedAt: now, UpdatedAt: now}
+	nodes.data["n2"] = &domain.Node{ID: "n2", LakeID: "lake-1", OwnerID: "u", Content: "keyword", State: domain.StateDrop, Type: domain.NodeTypeImage, CreatedAt: now, UpdatedAt: now}
+
+	res, err := svc.SearchNodesFiltered(ctx, &domain.User{ID: "u"}, "lake-1", "keyword", "", "TEXT", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || res[0].NodeID != "n1" {
+		t.Fatalf("expected only n1 (TEXT), got %v", res)
+	}
+}
+
+// TestSearchFiltered_InvalidStateRejected 无效 state 返回错误。
+func TestSearchFiltered_InvalidStateRejected(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, _ := newSearchSvc(t)
+
+	lakes.data["lake-1"] = &domain.Lake{ID: "lake-1", OwnerID: "u"}
+	_ = memberships.Upsert(ctx, &domain.LakeMembership{UserID: "u", LakeID: "lake-1", Role: domain.RoleOwner})
+
+	_, err := svc.SearchNodesFiltered(ctx, &domain.User{ID: "u"}, "lake-1", "keyword", "INVALID", "", 20)
+	if err == nil {
+		t.Fatal("expected error for invalid state")
+	}
+}
+

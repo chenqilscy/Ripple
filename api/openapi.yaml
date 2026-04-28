@@ -393,6 +393,14 @@ paths:
         - in: query
           name: limit
           schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - in: query
+          name: state
+          description: "P22: 按节点状态过滤，枚举值: MIST|DROP|FROZEN|VAPOR|GHOST"
+          schema: { type: string, enum: [MIST, DROP, FROZEN, VAPOR, GHOST] }
+        - in: query
+          name: type
+          description: "P22: 按节点类型过滤，枚举值: TEXT|IMAGE|LINK|AUDIO"
+          schema: { type: string, enum: [TEXT, IMAGE, LINK, AUDIO] }
       responses:
         '200':
           description: OK
