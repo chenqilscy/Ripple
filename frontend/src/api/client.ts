@@ -267,6 +267,12 @@ export const api = {
     return request('GET', `/api/v1/search?${params}`)
   },
 
+  // ---- Semantic Search (P20-C) ----
+  semanticSearchNodes(q: string, lakeId: string, limit = 8): Promise<{ results: import('./types').SearchHit[] }> {
+    const params = new URLSearchParams({ q, lake_id: lakeId, limit: String(limit), mode: 'semantic' })
+    return request('GET', `/api/v1/semantic-search?${params}`)
+  },
+
   // ---- Batch Import (P12-A) ----
   batchImportNodes(lakeId: string, nodes: { content: string; type?: string }[]): Promise<{ created: number; nodes: NodeItem[] }> {
     return request('POST', `/api/v1/lakes/${lakeId}/nodes/batch`, { nodes })

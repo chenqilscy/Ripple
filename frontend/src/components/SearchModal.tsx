@@ -1,4 +1,4 @@
-// SearchModal · P12-D 全文搜索浮层
+// SearchModal · P12-D 全文搜索浮层 + P20-C 语义搜索
 // 快捷键 Cmd+K / Ctrl+K 触发；在当前激活的湖内搜索节点。
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
@@ -16,6 +16,7 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
   const [results, setResults] = useState<SearchHit[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [semantic, setSemantic] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -33,12 +34,13 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const doSearch = useCallback(async (query: string) => {
+  const doSearch = useCallback(async (query: string, isSemantic: boolean) => {
     if (!query.trim()) { setResults([]); return }
     setLoading(true)
     setError(null)
     try {
-      const { results: hits } = await api.searchNodes(query.trim(), lakeId)
+      const fn = isSemantic ? api.semanticSearchNodes : api.searchNodes
+      const { results: hits } = await fn(query.trim(), lakeId)
       setResults(hits)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Search failed')
@@ -50,7 +52,13 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
   const handleChange = (val: string) => {
     setQ(val)
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => void doSearch(val), 300)
+    debounceRef.current = setTimeout(() => void doSearch(val, semantic), 300)
+  }
+
+  const handleModeToggle = () => {
+    const next = !semantic
+    setSemantic(next)
+    if (q.trim()) void doSearch(q, next)
   }
 
   return (
@@ -90,6 +98,19 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
               color: '#e0f0ff', fontSize: 15, padding: '6px 0',
             }}
           />
+          {/* P20-C: 语义搜索切换 */}
+          <button
+            onClick={handleModeToggle}
+            title={semantic ? '当前：语义搜索（点击切换为关键词）' : '当前：关键词搜索（点击切换为语义）'}
+            style={{
+              background: semantic ? '#1e4d9e' : 'transparent',
+              border: `1px solid ${semantic ? '#4a8eff' : '#2a3e5c'}`,
+              borderRadius: 5, color: semantic ? '#9ec5ee' : '#6c7086',
+              fontSize: 11, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            {semantic ? '✦ 语义' : '关键词'}
+          </button>
           {loading && (
             <span style={{ color: '#6c7086', fontSize: 12 }}>搜索中…</span>
           )}
@@ -107,7 +128,7 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
           )}
           {!q && (
             <div style={{ padding: '12px 16px', color: '#6c7086', fontSize: 13 }}>
-              输入关键词搜索节点内容 · Esc 关闭
+              {semantic ? '✦ 语义搜索模式 · 输入自然语言描述查找相关节点 · Esc 关闭' : '输入关键词搜索节点内容 · Esc 关闭'}
             </div>
           )}
           {results.map(hit => (
