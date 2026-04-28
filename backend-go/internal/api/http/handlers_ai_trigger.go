@@ -64,6 +64,13 @@ func (h *AiTriggerHandlers) Trigger(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "input_node_ids too many (max 20)")
 		return
 	}
+	// 避免 nil slice → pgx 发送 SQL NULL 违反 NOT NULL 约束
+	if in.InputNodeIDs == nil {
+		in.InputNodeIDs = []string{}
+	}
+	if in.OverrideVars == nil {
+		in.OverrideVars = map[string]string{}
+	}
 
 	job := domain.AiJob{
 		ID:               uuid.New().String(),

@@ -340,8 +340,10 @@ func TestIntegrationPhase15SubscriptionCreateAndGet(t *testing.T) {
 	var org struct {
 		ID string `json:"id"`
 	}
+	orgSuffix := uuid.NewString()[:6]
 	if code := f.do(t, "POST", "/api/v1/organizations", map[string]any{
-		"name": "sub-test-org-" + uuid.NewString()[:6],
+		"name": "sub-test-org-" + orgSuffix,
+		"slug": "subtest" + orgSuffix,
 	}, &org); code != http.StatusCreated {
 		t.Fatalf("create org: want 201, got %d", code)
 	}
