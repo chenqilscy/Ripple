@@ -1,10 +1,10 @@
-param(
+﻿param(
   [string]$RepoRoot = (Resolve-Path "$PSScriptRoot/../..").Path,
   [string]$BackendDir = "backend-go",
   [string]$FrontendDir = "frontend",
   [string]$GoToolchain = "local",
 
-  # staging（可选；未提供则跳过）
+  # staging（可选；not provided则跳过）
   [string]$StagingBase = $env:RIPPLE_STAGING_BASE,
   [string]$StagingFrontendBase = $env:RIPPLE_STAGING_FRONTEND_BASE,
 
@@ -102,7 +102,7 @@ try {
       }
     }
   } elseif (-not $SkipStaging) {
-    Write-Host "[skip staging] RIPPLE_STAGING_BASE 未提供"
+    Write-Host "[skip staging] RIPPLE_STAGING_BASE not provided"
   }
 
 } finally {
