@@ -132,6 +132,39 @@
 
 ---
 
+## CI / 准入策略（自 2026-04-28 起）
+
+### GitHub Actions 禁用规则（强制）
+
+由于 GitHub Actions 已开始按用量收费，本仓库**不再使用** GitHub Actions 作为 CI / 准入门禁。
+
+- ❌ **禁止新增** `.github/workflows/*.yml`
+- ❌ **禁止恢复**已删除的 workflow 文件
+- ❌ **禁止**在交付描述、准入清单、发布说明中以 “GitHub Actions 绿线” 作为质量门
+- ❌ **禁止**调用 `https://api.github.com/repos/.../actions/...` 或 `gh run` 作为门禁查询入口
+- ✅ 所有质量门改为 **本地命令 + staging 手动 / 脚本化 smoke**
+- ✅ 自动化需求优先选择：本地 PowerShell 脚本 / Gitea Actions（自托管）/ 自托管 runner / 手动准入清单
+- ✅ 历史文档中的 “CI 绿线” 记录可保留为历史快照，但 **不得** 作为当前规则
+
+### 当前准入门（替代 GitHub Actions）
+
+| 门 | 命令 / 入口 |
+|----|-----|
+| 后端单测 + race | `go test -race -count=1 ./...`（需 `$env:GOTOOLCHAIN="local"`） |
+| 后端 vet | `go vet ./...` |
+| 前端 lint | `npm.cmd run lint` |
+| 前端单测 | `npm.cmd test -- --run <spec>` |
+| 前端构建 | `npm.cmd run build` |
+| 前端 E2E | Vite dev server + `npm.cmd run e2e` |
+| Staging smoke | `scripts/smoke/phase13-smoke.ps1` 系列 |
+| Phase 准入合并 | `scripts/smoke/phase14-6-acceptance.ps1`（按 Phase 维护） |
+
+### 历史决策
+
+- **2026-04-28**：移除 `.github/workflows/ci.yml`，原因为 GitHub Actions 收费策略变化；切换至本地 + staging 脚本化准入（详见 `docs/system-design/自学习日志.md`）。
+
+---
+
 ## 自学习日志规范（强制）
 
 代理在以下场景**必须**追加日志到 `docs/system-design/自学习日志.md`：

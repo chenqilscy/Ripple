@@ -117,9 +117,17 @@ docs/
 
 ---
 
-## CI
+## 准入门 / 质量门
 
-GitHub Actions（`.github/workflows/ci.yml`）：每次 push/PR 跑后端 `go vet + build + test -race`、前端 `tsc + build`，以及 Phase 13 联调中间件集成测试矩阵。
+> 自 2026-04-28 起本仓库不再使用 GitHub Actions（收费策略调整）。所有质量门改为 **本地命令 + staging 脚本化 smoke**。详见 [AGENTS.md](AGENTS.md) §「CI / 准入策略」。
+
+| 门 | 命令 |
+|---|---|
+| 后端单测 + race | `go test -race -count=1 ./...`（需 `$env:GOTOOLCHAIN="local"`） |
+| 后端 vet | `go vet ./...` |
+| 前端 lint / 单测 / 构建 | `npm.cmd run lint` / `npm.cmd test -- --run <spec>` / `npm.cmd run build` |
+| Staging smoke | `scripts/smoke/phase13-smoke.ps1` 系列 |
+| Phase 准入合并 | `scripts/smoke/phase14-6-acceptance.ps1`（按 Phase 维护） |
 
 ---
 
