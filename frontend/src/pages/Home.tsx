@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
-import type { NodeRevision, NodeSearchResult, NodeTemplate, LakeSnapshot, NodeShare } from '../api/types'
+import type { NodeRevision, NodeSearchResult, NodeTemplate } from '../api/types'
 import { NodeDiffViewer } from '../components/NodeDiffViewer'
 import NodeVersionHistory from '../components/NodeVersionHistory'
 
@@ -14,6 +14,8 @@ const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManag
 const SearchModal = React.lazy(() => import('../components/SearchModal'))
 const ImportModal = React.lazy(() => import('../components/ImportModal'))
 const OrgPanel = React.lazy(() => import('../components/OrgPanel'))
+const NodeShareButton = React.lazy(() => import('../components/NodeShareButton'))
+const SnapshotPanel = React.lazy(() => import('../components/SnapshotPanel'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -104,12 +106,9 @@ export function Home({ onLogout }: Props) {
   const [tplPreviewId, setTplPreviewId] = useState<string | null>(null)
   // P18-D：图谱快照
   const [snapshotPanelOpen, setSnapshotPanelOpen] = useState(false)
-  const [snapshots, setSnapshots] = useState<LakeSnapshot[]>([])
-  const [snapshotBusy, setSnapshotBusy] = useState(false)
   const [graphLayout, setGraphLayout] = useState<Record<string, { x: number; y: number }> | undefined>(undefined)
   // P18-B：节点外链分享
-  const [shareModal, setShareModal] = useState<{ nodeId: string; shares: NodeShare[] } | null>(null)
-  const [shareLoading, setShareLoading] = useState<string | null>(null)
+  const [shareNode, setShareNode] = useState<NodeItem | null>(null)
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -182,8 +181,6 @@ export function Home({ onLogout }: Props) {
     setImportResult(null)
     setBatchSel(new Set())
     setGraphLayout(undefined)
-    // P18-D：加载快照
-    void loadSnapshots(active.id)
     // P13-C：加载湖标签列表
     api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => setLakeTags([]))
 
@@ -602,15 +599,7 @@ export function Home({ onLogout }: Props) {
     } catch (e) { setErr((e as Error).message) }
   }
 
-  // P18-D：加载快照列表
-  async function loadSnapshots(lakeId: string) {
-    try {
-      const r = await api.listSnapshots(lakeId)
-      setSnapshots(r.snapshots)
-    } catch { /* 静默 */ }
-  }
-
-  // P18-D：保存快照
+  // P18-D：保存快照（快捷按钮，直接用当前节点位置）
   async function saveSnapshot() {
     if (!active) return
     const name = await modalPrompt({
@@ -619,47 +608,10 @@ export function Home({ onLogout }: Props) {
       validate: v => (!v.trim() ? '名称不能为空' : null),
     })
     if (name === null) return
-    setSnapshotBusy(true)
     try {
       const layout: Record<string, { x: number; y: number }> = {}
       for (const n of nodes) layout[n.id] = { x: n.position.x, y: n.position.y }
       await api.createSnapshot(active.id, name.trim(), layout)
-      void loadSnapshots(active.id)
-    } catch (e) { setErr((e as Error).message) }
-    finally { setSnapshotBusy(false) }
-  }
-
-  // P18-D：恢复快照布局
-  function restoreSnapshot(snap: LakeSnapshot) {
-    setGraphLayout(snap.layout)
-    setSnapshotPanelOpen(false)
-  }
-
-  // P18-B：加载节点分享
-  async function loadShares(nodeId: string) {
-    setShareLoading(nodeId)
-    try {
-      const r = await api.listNodeShares(nodeId)
-      setShareModal({ nodeId, shares: r.shares })
-    } catch (e) { setErr((e as Error).message) }
-    finally { setShareLoading(null) }
-  }
-
-  // P18-B：创建分享链接
-  async function createShare(nodeId: string) {
-    try {
-      const ttlIn = await modalPrompt({
-        title: '创建分享链接',
-        label: '有效小时数（留空 = 永久）',
-        placeholder: '例如：24',
-      })
-      if (ttlIn === null) return
-      const ttl = ttlIn.trim() ? parseInt(ttlIn.trim(), 10) : undefined
-      const share = await api.createNodeShare(nodeId, ttl)
-      const publicURL = toPublicShareURL(share)
-      const ok = await copyText(publicURL)
-      await modalAlert(`分享链接已创建\n\n${publicURL}\n\n${ok ? '（已复制到剪贴板）' : '（请手动复制链接）'}`)
-      void loadShares(nodeId)
     } catch (e) { setErr((e as Error).message) }
   }
 
@@ -1046,44 +998,29 @@ export function Home({ onLogout }: Props) {
                   <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => void saveSnapshot()}
-                      disabled={snapshotBusy}
                       style={{ ...miniBtn, color: '#a6e3a1' }}
                       title="保存当前图谱布局为快照"
-                    >{snapshotBusy ? '…' : '📷 保存快照'}</button>
+                    >📷 保存快照</button>
                     <button
-                      onClick={() => setSnapshotPanelOpen(o => !o)}
+                      onClick={() => setSnapshotPanelOpen(true)}
                       style={{ ...miniBtn, color: snapshotPanelOpen ? '#89b4fa' : undefined }}
                       title="查看图谱快照"
-                    >🗂 快照 ({snapshots.length})</button>
+                    >🗂 快照</button>
                     {graphLayout && (
                       <button onClick={() => setGraphLayout(undefined)} style={{ ...miniBtn, color: '#f38ba8' }}>
                         ✕ 清除快照布局
                       </button>
                     )}
                   </div>
-                  {snapshotPanelOpen && (
-                    <div style={{
-                      marginBottom: 10, padding: 10, background: '#0a1929',
-                      border: '1px solid #1e3a5a', borderRadius: 6,
-                    }}>
-                      {snapshots.length === 0 && <div style={{ fontSize: 12, opacity: 0.5 }}>暂无快照</div>}
-                      {snapshots.map(snap => (
-                        <div key={snap.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12 }}>
-                          <span style={{ flex: 1 }}>{snap.name}</span>
-                          <span style={{ opacity: 0.5 }}>{new Date(snap.created_at).toLocaleString('zh-CN')}</span>
-                          <button onClick={() => restoreSnapshot(snap)} style={{ ...miniBtn, color: '#89b4fa' }}>恢复</button>
-                          <button
-                            onClick={async () => {
-                              if (!active) return
-                              if (!(await modalConfirm(`删除快照「${snap.name}」？`, { danger: true }))) return
-                              await api.deleteSnapshot(active.id, snap.id).catch(e => setErr((e as Error).message))
-                              void loadSnapshots(active.id)
-                            }}
-                            style={{ ...miniBtn, color: '#f38ba8' }}
-                          >删</button>
-                        </div>
-                      ))}
-                    </div>
+                  {snapshotPanelOpen && active && (
+                    <React.Suspense fallback={null}>
+                      <SnapshotPanel
+                        lakeId={active.id}
+                        currentLayout={Object.fromEntries(nodes.map(n => [n.id, { x: n.position.x, y: n.position.y }]))}
+                        onClose={() => setSnapshotPanelOpen(false)}
+                        onRestore={layout => { setGraphLayout(layout); setSnapshotPanelOpen(false) }}
+                      />
+                    </React.Suspense>
                   )}
                   <React.Suspense fallback={<div style={{ height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a6a8e', fontSize: 13 }}>加载图谱中…</div>}>
                     <LakeGraph nodes={nodes} edges={edges} searchQuery={nodeSearch} snapshotLayout={graphLayout} />
@@ -1207,11 +1144,11 @@ export function Home({ onLogout }: Props) {
                         >{relatedLoading === n.id ? '…' : '⚡关联'}</button>
                         {/* P18-B 节点分享 */}
                         <button
-                          onClick={() => void loadShares(n.id)}
-                          disabled={shareLoading === n.id}
+                          onClick={() => setShareNode(n)}
+                          disabled={false}
                           style={{ ...miniBtn, color: '#f9e2af' }}
                           title="分享节点"
-                        >{shareLoading === n.id ? '…' : '🔗分享'}</button>
+                        >🔗分享</button>
                         {canCrystal && (
                           <button
                             onClick={() => toggleCrystalSel(n.id)}
@@ -1405,50 +1342,11 @@ export function Home({ onLogout }: Props) {
           </div>
         </div>
       )}
-      {/* P18-B：节点分享管理 */}
-      {shareModal && (
-        <div style={modalOverlay} onClick={() => setShareModal(null)}>
-          <div style={{ ...modalBox, minWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <strong style={{ color: '#f9e2af' }}>🔗 节点分享</strong>
-              <button onClick={() => setShareModal(null)} style={miniBtn}>✕</button>
-            </div>
-            <button
-              onClick={() => void createShare(shareModal.nodeId)}
-              style={{ ...miniBtn, marginBottom: 10, color: '#a6e3a1' }}
-            >+ 创建新分享链接</button>
-            {shareModal.shares.length === 0 ? (
-              <div style={{ fontSize: 13, opacity: 0.5 }}>暂无分享链接</div>
-            ) : shareModal.shares.map(s => (
-              <div key={s.id} style={{
-                padding: '8px 10px', marginBottom: 6,
-                background: s.revoked ? 'rgba(255,255,255,0.03)' : 'rgba(249,226,175,0.06)',
-                border: `1px solid ${s.revoked ? '#333' : 'rgba(249,226,175,0.25)'}`,
-                borderRadius: 6, opacity: s.revoked ? 0.5 : 1,
-              }}>
-                <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 4, color: '#89b4fa' }}>
-                  {toPublicShareURL(s)}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.6, display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <span>{s.revoked ? '已撤销' : s.expires_at ? `到期：${new Date(s.expires_at).toLocaleString('zh-CN')}` : '永久有效'}</span>
-                  {!s.revoked && (
-                    <>
-                      <button onClick={() => void copyText(toPublicShareURL(s)).then(ok => { if (ok) void modalAlert('已复制！') })} style={miniBtn}>复制</button>
-                      <button
-                        onClick={async () => {
-                          if (!(await modalConfirm('撤销此分享链接？', { danger: true }))) return
-                          await api.revokeNodeShare(s.id).catch(e => setErr((e as Error).message))
-                          void loadShares(shareModal.nodeId)
-                        }}
-                        style={{ ...miniBtn, color: '#f38ba8' }}
-                      >撤销</button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* P18-B：节点分享管理（NodeShareButton 组件） */}
+      {shareNode && (
+        <React.Suspense fallback={null}>
+          <NodeShareButton node={shareNode} onClose={() => setShareNode(null)} />
+        </React.Suspense>
       )}
       {/* P18-C：节点模板选择器 */}
       {templateModalOpen && (
@@ -1691,10 +1589,6 @@ function statusColor(s: string) {
 }
 function stateColor(s: string) {
   return ({ MIST: '#9ec5ee', DROP: '#52c41a', FROZEN: '#9bb', VAPOR: '#777', ERASED: '#444', GHOST: '#444' } as const)[s as 'MIST'] ?? '#888'
-}
-
-function toPublicShareURL(share: Pick<NodeShare, 'token'>): string {
-  return `${window.location.origin}/share/${encodeURIComponent(share.token)}`
 }
 
 const layout: React.CSSProperties = {
