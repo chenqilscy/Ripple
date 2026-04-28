@@ -100,3 +100,54 @@ go tool pprof -top http://fn.cky:6060/debug/pprof/profile?seconds=30
 - Grafana 数据（图表历史）存于 `grafana_data` volume，重启不丢失；彻底清理：`docker volume rm ripple_grafana_data`。
 - Prometheus 数据保留 15 天（`--storage.tsdb.retention.time=15d`）。
 - 若 staging 网络名不是 `ripple-net`，编辑 `docker-compose.monitoring.yml` 的 `networks.ripple-net.name` 字段。
+
+---
+
+## Phase 15 新增功能监控补充
+
+### AI Job Worker 监控
+
+Phase 15.1 引入了 `AiJobWorker`（3 goroutine，`FOR UPDATE SKIP LOCKED` 轮询），可通过以下 SQL 监控任务积压：
+
+```sql
+-- 查询待处理任务数（积压）
+SELECT COUNT(*) FROM ai_jobs WHERE status = 'pending';
+
+-- 查询处于处理中超过 5 分钟的任务（可能卡死）
+SELECT id, node_id, started_at FROM ai_jobs
+WHERE status = 'processing' AND started_at < NOW() - INTERVAL '5 minutes';
+
+-- 最近 24 小时任务失败率
+SELECT
+  COUNT(*) FILTER (WHERE status='done') AS done,
+  COUNT(*) FILTER (WHERE status='failed') AS failed
+FROM ai_jobs WHERE created_at > NOW() - INTERVAL '24 hours';
+```
+
+服务启动时会自动 `RecoverProcessing`（将 processing→pending），确保重启后无僵尸任务。
+
+### LLM 用量 API 监控
+
+新增端点 `GET /api/v1/organizations/{id}/llm_usage?days=N`，可用于：
+- 定期汇总组织调用成本
+- 告警阈值：单组织 7 天调用量 > 10000 次时人工复查
+
+### 订阅状态监控
+
+```sql
+-- 查询活跃订阅分布
+SELECT plan_id, COUNT(*) FROM org_subscriptions WHERE status='active' GROUP BY plan_id;
+
+-- 查询 7 天内到期的订阅
+SELECT org_id, plan_id, expires_at FROM org_subscriptions
+WHERE status='active' AND expires_at < NOW() + INTERVAL '7 days';
+```
+
+### 告警规则补充（Phase 15）
+
+| 条件 | 建议阈值 | 行动 |
+|------|---------|------|
+| AI 任务积压 | `pending > 50 持续 10min` | 检查 worker 是否存活（日志 `ai job worker started`）|
+| AI 任务失败率 | `失败/总数 > 10%` | 检查 `ai_jobs.error` 字段 + LLM provider 状态 |
+| 处理中超时 | `processing 且 started_at > 5min 前` | 手动重启 worker 触发 RecoverProcessing |
+
