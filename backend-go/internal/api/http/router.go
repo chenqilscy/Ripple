@@ -369,6 +369,18 @@ func NewRouter(d Deps) http.Handler {
 				}
 			}
 
+			// P20-A：自由文本一键转图谱（Paste-to-Graph）
+			if d.LLMRouter != nil {
+				if importRouter, ok := d.LLMRouter.(llm.Router); ok {
+					importTextH := &ImportTextHandlers{
+						Nodes:  d.Nodes,
+						Edges:  d.Edges,
+						Router: importRouter,
+					}
+					r.Post("/lakes/{id}/import/text", importTextH.ImportText)
+				}
+			}
+
 			// P18-A：节点关联推荐
 			r.Get("/nodes/{id}/related", nodeH.GetRelated)
 
