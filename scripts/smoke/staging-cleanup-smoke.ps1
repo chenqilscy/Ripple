@@ -1,7 +1,7 @@
 ﻿param(
   [string]$RemoteHost = $env:RIPPLE_STAGING_SSH_HOST,
   [string]$RemoteUser = $env:RIPPLE_STAGING_SSH_USER,
-  [string]$PgContainer = 'ripple-staging-pg',
+  [string]$PgContainer = 'ripple-staging-postgres',
   [string]$Neo4jContainer = 'ripple-staging-neo4j',
   [string]$PgUser = 'ripple',
   [string]$PgDatabase = 'ripple',
