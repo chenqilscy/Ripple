@@ -169,6 +169,9 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 			if !cursorLimiter.Allow() {
 				continue
 			}
+			if clientMsg.Payload == nil {
+				continue
+			}
 			// 校验 x/y 在 [0,1] 范围，防止越界垃圾数据广播。
 			if x, ok := clientMsg.Payload["x"].(float64); !ok || x < 0 || x > 1 {
 				continue
@@ -184,8 +187,10 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 				// fallback：取 email @ 前部分
 				if idx := strings.Index(user.Email, "@"); idx > 0 {
 					clientMsg.Payload["name"] = user.Email[:idx]
-				} else {
+				} else if len(user.ID) >= 8 {
 					clientMsg.Payload["name"] = user.ID[:8]
+				} else {
+					clientMsg.Payload["name"] = user.ID
 				}
 			}
 			broadcast := realtime.Message{
