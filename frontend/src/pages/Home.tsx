@@ -19,6 +19,7 @@ const OrgPanel = React.lazy(() => import('../components/OrgPanel'))
 const NodeShareButton = React.lazy(() => import('../components/NodeShareButton'))
 const SnapshotPanel = React.lazy(() => import('../components/SnapshotPanel'))
 const NodeExplorer = React.lazy(() => import('../components/NodeExplorer'))
+const NodeDetailPanel = React.lazy(() => import('../components/NodeDetailPanel'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -123,6 +124,8 @@ export function Home({ onLogout }: Props) {
   const [exploredNodeIds, setExploredNodeIds] = useState<Set<string>>(new Set())
   // P19-C：协作光标
   const [remoteCursors, setRemoteCursors] = useState<Map<string, { x: number; y: number }>>(new Map())
+  // P20-D：节点详情侧边栏
+  const [selectedNode, setSelectedNode] = useState<NodeItem | null>(null)
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -1100,6 +1103,7 @@ export function Home({ onLogout }: Props) {
                       remoteCursors={remoteCursors}
                       onSendCursor={(x, y) => wsRef.current?.send({ type: 'cursor.move', payload: { x, y } })}
                       onMultiSelectChange={ids => setMultiSelectedNodeIds(new Set(ids))}
+                      onNodeSelect={node => setSelectedNode(node)}
                     />
                     {multiSelectedNodeIds.size >= 2 && (
                       <div style={{ textAlign: 'center', marginTop: 8 }}>
@@ -1610,6 +1614,17 @@ export function Home({ onLogout }: Props) {
             </div>
           </div>
         </div>
+      )}
+      {/* P20-D：节点详情侧边栏 */}
+      {selectedNode && (
+        <React.Suspense fallback={null}>
+          <NodeDetailPanel
+            node={selectedNode}
+            allNodes={nodes}
+            edges={edges}
+            onClose={() => setSelectedNode(null)}
+          />
+        </React.Suspense>
       )}
     </div>
   )
