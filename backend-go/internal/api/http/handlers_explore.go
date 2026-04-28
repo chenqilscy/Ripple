@@ -52,6 +52,7 @@ func (h *ExploreHandlers) Explore(w http.ResponseWriter, r *http.Request) {
 
 	lakeID := chi.URLParam(r, "id")
 
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req exploreRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -61,6 +62,10 @@ func (h *ExploreHandlers) Explore(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(req.Query)
 	if query == "" {
 		writeError(w, http.StatusBadRequest, "query is required")
+		return
+	}
+	if len([]rune(query)) > 500 {
+		writeError(w, http.StatusBadRequest, "query too long (max 500 chars)")
 		return
 	}
 
@@ -76,6 +81,12 @@ func (h *ExploreHandlers) Explore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 软性限制：节点数量超过 500 时只取前 500，避免大图谱打分耗时过长。
+	const exploreNodeCap = 500
+	if len(nodes) > exploreNodeCap {
+		nodes = nodes[:exploreNodeCap]
+	}
+
 	if len(nodes) == 0 {
 		writeJSON(w, http.StatusOK, exploreResponse{
 			RelevantNodes: []exploreNodeResult{},
@@ -86,6 +97,14 @@ func (h *ExploreHandlers) Explore(w http.ResponseWriter, r *http.Request) {
 
 	// 2. TF 关键词打分
 	queryTokens := exploreTokenize(query)
+	// query 全为特殊字符时 tokens 为空，直接返回空结果
+	if len(queryTokens) == 0 {
+		writeJSON(w, http.StatusOK, exploreResponse{
+			RelevantNodes: []exploreNodeResult{},
+			Summary:       "",
+		})
+		return
+	}
 	type scored struct {
 		id      string
 		content string
