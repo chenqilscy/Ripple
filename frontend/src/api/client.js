@@ -218,6 +218,16 @@ export const api = {
     deleteGraylist(id) {
         return request('DELETE', `/api/v1/admin/graylist/${id}`);
     },
+    // ---- Platform Admins (P14.5) ----
+    listPlatformAdmins() {
+        return request('GET', '/api/v1/admin/platform_admins');
+    },
+    grantPlatformAdmin(input) {
+        return request('POST', '/api/v1/admin/platform_admins', input);
+    },
+    revokePlatformAdmin(userId) {
+        return request('DELETE', `/api/v1/admin/platform_admins/${encodeURIComponent(userId)}`);
+    },
     // ---- Lake Members (P11-C) ----
     listLakeMembers(lakeId) {
         return request('GET', `/api/v1/lakes/${lakeId}/members`);

@@ -239,6 +239,17 @@ export const api = {
     return request('DELETE', `/api/v1/admin/graylist/${id}`)
   },
 
+  // ---- Platform Admins (P14.5) ----
+  listPlatformAdmins(): Promise<{ admins: import('./types').PlatformAdmin[] }> {
+    return request('GET', '/api/v1/admin/platform_admins')
+  },
+  grantPlatformAdmin(input: { user_id?: string; email?: string; role?: import('./types').PlatformAdminRole; note?: string }): Promise<import('./types').PlatformAdmin> {
+    return request('POST', '/api/v1/admin/platform_admins', input)
+  },
+  revokePlatformAdmin(userId: string): Promise<void> {
+    return request('DELETE', `/api/v1/admin/platform_admins/${encodeURIComponent(userId)}`)
+  },
+
   // ---- Lake Members (P11-C) ----
   listLakeMembers(lakeId: string): Promise<{ members: import('./types').LakeMember[] }> {
     return request('GET', `/api/v1/lakes/${lakeId}/members`)

@@ -9,6 +9,7 @@ const AdminOverviewPanel = React.lazy(() => import('../components/AdminOverviewP
 const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
 const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
 const GraylistManager = React.lazy(() => import('../components/GraylistManager'))
+const PlatformAdminManager = React.lazy(() => import('../components/PlatformAdminManager'))
 const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManager'))
 const SearchModal = React.lazy(() => import('../components/SearchModal'))
 const ImportModal = React.lazy(() => import('../components/ImportModal'))
@@ -836,6 +837,7 @@ export function Home({ onLogout }: Props) {
           <React.Suspense fallback={<div style={{ padding: 16, color: '#6c7086' }}>加载中…</div>}>
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
               <AdminOverviewPanel />
+              <PlatformAdminManager />
               <APIKeyManager />
               <GraylistManager />
               <AuditLogViewer />

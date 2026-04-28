@@ -205,6 +205,17 @@ export interface AdminOverview {
   organizations?: OrgOverview[]
 }
 
+export type PlatformAdminRole = 'OWNER' | 'ADMIN'
+
+export interface PlatformAdmin {
+  user_id: string
+  email?: string
+  role: PlatformAdminRole
+  note: string
+  created_by: string
+  created_at: string
+}
+
 // ---- Lake Members (P11-C) ----
 export type LakeRole = 'OWNER' | 'NAVIGATOR' | 'PASSENGER' | 'OBSERVER'
 
