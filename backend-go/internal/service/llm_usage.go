@@ -94,5 +94,5 @@ func estimateCost(provider string, calls int64) float64 {
 	if !ok {
 		rate = 0.01
 	}
-	return float64(calls) * rate / 1000
+	return float64(calls) * rate
 }

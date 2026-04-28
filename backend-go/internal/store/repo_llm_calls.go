@@ -57,7 +57,17 @@ func (r *llmCallsAnalyticsPG) SumByProvider(ctx context.Context, orgID string, s
 
 const sqlLLMCallsByDay = `
 SELECT TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
-       COUNT(*) AS calls
+			 COUNT(*) AS calls,
+			 COALESCE(SUM(
+					 CASE provider
+							 WHEN 'zhipu' THEN 0.01
+							 WHEN 'deepseek' THEN 0.008
+							 WHEN 'openai' THEN 0.02
+							 WHEN 'volc' THEN 0.012
+							 WHEN 'minimax' THEN 0.015
+							 ELSE 0.01
+					 END
+			 ), 0) AS estimated_cost_cny
 FROM llm_calls
 WHERE org_id = $1
   AND created_at >= $2
@@ -75,7 +85,7 @@ func (r *llmCallsAnalyticsPG) SumByDay(ctx context.Context, orgID string, since 
 	var out []domain.DayUsage
 	for rows.Next() {
 		var d domain.DayUsage
-		if err := rows.Scan(&d.Date, &d.Calls); err != nil {
+		if err := rows.Scan(&d.Date, &d.Calls, &d.EstimatedCostCNY); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
