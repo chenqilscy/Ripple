@@ -13,6 +13,7 @@ const PlatformAdminManager = React.lazy(() => import('../components/PlatformAdmi
 const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManager'))
 const SearchModal = React.lazy(() => import('../components/SearchModal'))
 const ImportModal = React.lazy(() => import('../components/ImportModal'))
+const ImportTextModal = React.lazy(() => import('../components/ImportTextModal'))
 const OrgPanel = React.lazy(() => import('../components/OrgPanel'))
 const NodeShareButton = React.lazy(() => import('../components/NodeShareButton'))
 const SnapshotPanel = React.lazy(() => import('../components/SnapshotPanel'))
@@ -68,6 +69,7 @@ export function Home({ onLogout }: Props) {
   const [membersDrawer, setMembersDrawer] = useState<Space | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [importTextOpen, setImportTextOpen] = useState(false)
   const [orgOpen, setOrgOpen] = useState(false)
   const [meId, setMeId] = useState<string>('')
   // P19-C：meIdRef 与 state 同步，供 WS 闭包读取最新值（WS useEffect 依赖 [active]，不依赖 meId）
@@ -780,6 +782,13 @@ export function Home({ onLogout }: Props) {
               style={ghostBtn}
             >📥</button>
           )}
+          {active && (
+            <button
+              onClick={() => setImportTextOpen(true)}
+              title="文本转图谱（Paste-to-Graph）"
+              style={ghostBtn}
+            >✨</button>
+          )}
           <button
             onClick={() => setMainTab(t => t === 'settings' ? 'lakes' : 'settings')}
             style={{ ...ghostBtn, color: mainTab === 'settings' ? '#89b4fa' : undefined }}
@@ -1344,6 +1353,15 @@ export function Home({ onLogout }: Props) {
             lakeId={active.id}
             lakeName={active.name}
             onClose={() => setImportOpen(false)}
+            onImported={() => api.listNodes(active.id).then(r => setNodes(r.nodes))}
+          />
+        </React.Suspense>
+      )}
+      {importTextOpen && active && (
+        <React.Suspense fallback={null}>
+          <ImportTextModal
+            lakeId={active.id}
+            onClose={() => setImportTextOpen(false)}
             onImported={() => api.listNodes(active.id).then(r => setNodes(r.nodes))}
           />
         </React.Suspense>

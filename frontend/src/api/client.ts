@@ -536,6 +536,11 @@ export const api = {
   aiStatus(lakeId: string, nodeId: string): Promise<import('./types').AiJob> {
     return request('GET', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_status`)
   },
+
+  // ---- P20-A：自由文本一键转图谱 ----
+  importText(lakeId: string, text: string, maxNodes = 20): Promise<import('./types').ImportTextResult> {
+    return request('POST', `/api/v1/lakes/${lakeId}/import/text`, { text, max_nodes: maxNodes })
+  },
 }
 
 // 重新导出 types

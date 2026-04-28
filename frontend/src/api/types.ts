@@ -391,3 +391,21 @@ export interface AiJob {
   finished_at?: string | null
 }
 
+// ---- P20-A：自由文本一键转图谱 ----
+export interface ImportTextNodeResult {
+  id: string
+  content: string
+}
+
+export interface ImportTextEdgeResult {
+  source_id: string
+  target_id: string
+  kind: string
+}
+
+export interface ImportTextResult {
+  nodes: ImportTextNodeResult[]
+  edges: ImportTextEdgeResult[]
+  imported: number
+}
+
