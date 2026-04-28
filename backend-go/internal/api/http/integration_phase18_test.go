@@ -208,9 +208,10 @@ func (f *phase18Fixture) createLakeAndNode(t *testing.T) (lakeID, nodeID string)
 	var node struct {
 		ID string `json:"id"`
 	}
-	if code := f.do(t, "POST", "/api/v1/lakes/"+lake.ID+"/nodes", map[string]any{
+	if code := f.do(t, "POST", "/api/v1/nodes", map[string]any{
+		"lake_id": lake.ID,
 		"content": "Phase18 test node content",
-		"type":    "text",
+		"type":    "TEXT",
 	}, &node); code != http.StatusCreated {
 		t.Fatalf("create node: want 201, got %d", code)
 	}
