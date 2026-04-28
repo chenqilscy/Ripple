@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { BillingCycle, OrgSubscription, SubscriptionPlan } from '../api/types'
+import type { BillingCycle, OrgSubscription, OrgUsage, SubscriptionPlan } from '../api/types'
 
 interface Props {
   orgId: string
@@ -31,9 +31,34 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('zh-CN')
 }
 
+/** 用量进度条：max=-1 表示不限 */
+function UsageBar({ label, used, max }: { label: string; used: number; max: number }) {
+  const unlimited = max === -1
+  const pct = unlimited ? 0 : Math.min(100, max === 0 ? 100 : Math.round((used / max) * 100))
+  const danger = !unlimited && pct >= 90
+  const barColor = danger ? '#f5222d' : '#4a8eff'
+  return (
+    <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '10px 16px', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#aaa', marginBottom: 5 }}>
+        <span>{label}</span>
+        <span style={{ color: danger ? '#f5222d' : '#ccc' }}>
+          {used} / {unlimited ? '不限' : max}
+          {!unlimited && <span style={{ color: '#888', marginLeft: 4 }}>({pct}%)</span>}
+        </span>
+      </div>
+      {!unlimited && (
+        <div style={{ height: 4, background: '#2a2a4a', borderRadius: 2 }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 2, transition: 'width 0.3s' }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function SubscriptionPanel({ orgId, isOwner }: Props) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [current, setCurrent] = useState<OrgSubscription | null>(null)
+  const [usage, setUsage] = useState<OrgUsage | null>(null)
   const [loadingPlans, setLoadingPlans] = useState(false)
   const [loadingSub, setLoadingSub] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,9 +70,10 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
     setLoadingPlans(true)
     setLoadingSub(true)
     try {
-      const [plansRes, subRes] = await Promise.allSettled([
+      const [plansRes, subRes, usageRes] = await Promise.allSettled([
         api.listSubscriptionPlans(),
         api.getOrgSubscription(orgId),
+        api.getOrgUsage(orgId),
       ])
       if (plansRes.status === 'fulfilled') {
         setPlans(plansRes.value.plans)
@@ -56,6 +82,9 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
       }
       if (subRes.status === 'fulfilled') {
         setCurrent(subRes.value.subscription)
+      }
+      if (usageRes.status === 'fulfilled') {
+        setUsage(usageRes.value.usage)
       }
       // 404 means no subscription yet — that's OK
     } finally {
@@ -137,6 +166,27 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
             <span style={{ color: '#888', fontSize: 12 }}>
               有效期至 {formatDate(current.current_period_end)}
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Real usage progress bars (Phase 16) */}
+      {usage !== null && currentPlan && (
+        <UsageBar label="成员" used={usage.members} max={currentPlan.quotas.max_members} />
+      )}
+      {usage !== null && currentPlan && (
+        <UsageBar label="湖" used={usage.lakes} max={currentPlan.quotas.max_lakes} />
+      )}
+      {usage !== null && currentPlan && (
+        <UsageBar label="节点" used={usage.nodes} max={currentPlan.quotas.max_nodes} />
+      )}
+      {usage !== null && !currentPlan && (
+        <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: '#aaa', marginBottom: 8 }}>当前用量</div>
+          <div style={{ display: 'flex', gap: 24, fontSize: 13, color: '#ccc' }}>
+            <span>成员 <b style={{ color: '#fff' }}>{usage.members}</b></span>
+            <span>湖 <b style={{ color: '#fff' }}>{usage.lakes}</b></span>
+            <span>节点 <b style={{ color: '#fff' }}>{usage.nodes}</b></span>
           </div>
         </div>
       )}

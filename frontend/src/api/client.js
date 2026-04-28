@@ -482,6 +482,10 @@ export const api = {
     createOrgSubscription(orgId, plan_id, billing_cycle, stub_confirm = false) {
         return request('POST', `/api/v1/organizations/${orgId}/subscription`, { plan_id, billing_cycle, stub_confirm });
     },
+    // Phase 16: 真实用量
+    getOrgUsage(orgId) {
+        return request('GET', `/api/v1/organizations/${orgId}/usage`);
+    },
     // ---- Phase 15-C：AI Job 触发 ----
     aiTrigger(lakeId, nodeId, opts) {
         return request('POST', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_trigger`, opts ?? {});

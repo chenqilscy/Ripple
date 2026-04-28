@@ -371,6 +371,13 @@ export interface OrgSubscription {
   created_at: string
 }
 
+// ---- Phase 16：组织真实用量 ----
+export interface OrgUsage {
+  members: number
+  lakes: number
+  nodes: number
+}
+
 // ---- Phase 15-C：AI Job ----
 export type AiJobStatus = 'pending' | 'processing' | 'done' | 'failed'
 

@@ -516,6 +516,10 @@ export const api = {
   createOrgSubscription(orgId: string, plan_id: string, billing_cycle: import('./types').BillingCycle, stub_confirm = false): Promise<{ subscription: import('./types').OrgSubscription }> {
     return request('POST', `/api/v1/organizations/${orgId}/subscription`, { plan_id, billing_cycle, stub_confirm })
   },
+  // Phase 16: 真实用量
+  getOrgUsage(orgId: string): Promise<{ usage: import('./types').OrgUsage }> {
+    return request('GET', `/api/v1/organizations/${orgId}/usage`)
+  },
 
   // ---- Phase 15-C：AI Job 触发 ----
   aiTrigger(lakeId: string, nodeId: string, opts?: { prompt_template_id?: string; input_node_ids?: string[] }): Promise<import('./types').AiJob> {

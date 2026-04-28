@@ -20,9 +20,18 @@ function formatCycle(cycle) {
 function formatDate(iso) {
     return new Date(iso).toLocaleDateString('zh-CN');
 }
+/** 用量进度条：max=-1 表示不限 */
+function UsageBar({ label, used, max }) {
+    const unlimited = max === -1;
+    const pct = unlimited ? 0 : Math.min(100, max === 0 ? 100 : Math.round((used / max) * 100));
+    const danger = !unlimited && pct >= 90;
+    const barColor = danger ? '#f5222d' : '#4a8eff';
+    return (_jsxs("div", { style: { background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '10px 16px', marginBottom: 8 }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#aaa', marginBottom: 5 }, children: [_jsx("span", { children: label }), _jsxs("span", { style: { color: danger ? '#f5222d' : '#ccc' }, children: [used, " / ", unlimited ? '不限' : max, !unlimited && _jsxs("span", { style: { color: '#888', marginLeft: 4 }, children: ["(", pct, "%)"] })] })] }), !unlimited && (_jsx("div", { style: { height: 4, background: '#2a2a4a', borderRadius: 2 }, children: _jsx("div", { style: { height: '100%', width: `${pct}%`, background: barColor, borderRadius: 2, transition: 'width 0.3s' } }) }))] }));
+}
 export default function SubscriptionPanel({ orgId, isOwner }) {
     const [plans, setPlans] = useState([]);
     const [current, setCurrent] = useState(null);
+    const [usage, setUsage] = useState(null);
     const [loadingPlans, setLoadingPlans] = useState(false);
     const [loadingSub, setLoadingSub] = useState(false);
     const [error, setError] = useState(null);
@@ -33,9 +42,10 @@ export default function SubscriptionPanel({ orgId, isOwner }) {
         setLoadingPlans(true);
         setLoadingSub(true);
         try {
-            const [plansRes, subRes] = await Promise.allSettled([
+            const [plansRes, subRes, usageRes] = await Promise.allSettled([
                 api.listSubscriptionPlans(),
                 api.getOrgSubscription(orgId),
+                api.getOrgUsage(orgId),
             ]);
             if (plansRes.status === 'fulfilled') {
                 setPlans(plansRes.value.plans);
@@ -45,6 +55,9 @@ export default function SubscriptionPanel({ orgId, isOwner }) {
             }
             if (subRes.status === 'fulfilled') {
                 setCurrent(subRes.value.subscription);
+            }
+            if (usageRes.status === 'fulfilled') {
+                setUsage(usageRes.value.usage);
             }
             // 404 means no subscription yet — that's OK
         }
@@ -94,7 +107,7 @@ export default function SubscriptionPanel({ orgId, isOwner }) {
                                     background: current.status === 'active' ? '#1a3a1a' : '#3a1a1a',
                                     color: current.status === 'active' ? '#52c41a' : '#f5222d',
                                     fontSize: 12,
-                                }, children: current.status }), _jsxs("span", { style: { color: '#888', fontSize: 12 }, children: ["\u6709\u6548\u671F\u81F3 ", formatDate(current.current_period_end)] })] })] })), error && (_jsx("div", { style: { color: '#f5222d', background: '#2a1a1a', borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontSize: 13 }, children: error })), isLoading ? (_jsx("div", { style: { color: '#888', textAlign: 'center', padding: 32 }, children: "\u52A0\u8F7D\u4E2D\u2026" })) : (_jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }, children: [plans.map(plan => {
+                                }, children: current.status }), _jsxs("span", { style: { color: '#888', fontSize: 12 }, children: ["\u6709\u6548\u671F\u81F3 ", formatDate(current.current_period_end)] })] })] })), usage !== null && currentPlan && (_jsx(UsageBar, { label: "\u6210\u5458", used: usage.members, max: currentPlan.quotas.max_members })), usage !== null && currentPlan && (_jsx(UsageBar, { label: "\u6E56", used: usage.lakes, max: currentPlan.quotas.max_lakes })), usage !== null && currentPlan && (_jsx(UsageBar, { label: "\u8282\u70B9", used: usage.nodes, max: currentPlan.quotas.max_nodes })), usage !== null && !currentPlan && (_jsxs("div", { style: { background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }, children: [_jsx("div", { style: { fontSize: 13, color: '#aaa', marginBottom: 8 }, children: "\u5F53\u524D\u7528\u91CF" }), _jsxs("div", { style: { display: 'flex', gap: 24, fontSize: 13, color: '#ccc' }, children: [_jsxs("span", { children: ["\u6210\u5458 ", _jsx("b", { style: { color: '#fff' }, children: usage.members })] }), _jsxs("span", { children: ["\u6E56 ", _jsx("b", { style: { color: '#fff' }, children: usage.lakes })] }), _jsxs("span", { children: ["\u8282\u70B9 ", _jsx("b", { style: { color: '#fff' }, children: usage.nodes })] })] })] })), error && (_jsx("div", { style: { color: '#f5222d', background: '#2a1a1a', borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontSize: 13 }, children: error })), isLoading ? (_jsx("div", { style: { color: '#888', textAlign: 'center', padding: 32 }, children: "\u52A0\u8F7D\u4E2D\u2026" })) : (_jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }, children: [plans.map(plan => {
                         const price = selectedCycle === 'monthly' ? plan.price_cny_monthly : plan.price_cny_yearly;
                         const isCurrent = current?.plan_id === plan.id;
                         const isSubmitting = submitting === plan.id;
