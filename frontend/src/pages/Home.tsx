@@ -14,6 +14,7 @@ const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManag
 const SearchModal = React.lazy(() => import('../components/SearchModal'))
 const ImportModal = React.lazy(() => import('../components/ImportModal'))
 const ImportTextModal = React.lazy(() => import('../components/ImportTextModal'))
+const SummarizeGraphModal = React.lazy(() => import('../components/SummarizeGraphModal'))
 const OrgPanel = React.lazy(() => import('../components/OrgPanel'))
 const NodeShareButton = React.lazy(() => import('../components/NodeShareButton'))
 const SnapshotPanel = React.lazy(() => import('../components/SnapshotPanel'))
@@ -70,6 +71,9 @@ export function Home({ onLogout }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [importTextOpen, setImportTextOpen] = useState(false)
+  // P20-B: 多选节点摘要
+  const [multiSelectedNodeIds, setMultiSelectedNodeIds] = useState<Set<string>>(new Set())
+  const [summarizeOpen, setSummarizeOpen] = useState(false)
   const [orgOpen, setOrgOpen] = useState(false)
   const [meId, setMeId] = useState<string>('')
   // P19-C：meIdRef 与 state 同步，供 WS 闭包读取最新值（WS useEffect 依赖 [active]，不依赖 meId）
@@ -1091,7 +1095,22 @@ export function Home({ onLogout }: Props) {
                       snapshotLayout={graphLayout}
                       remoteCursors={remoteCursors}
                       onSendCursor={(x, y) => wsRef.current?.send({ type: 'cursor.move', payload: { x, y } })}
+                      onMultiSelectChange={ids => setMultiSelectedNodeIds(new Set(ids))}
                     />
+                    {multiSelectedNodeIds.size >= 2 && (
+                      <div style={{ textAlign: 'center', marginTop: 8 }}>
+                        <button
+                          onClick={() => setSummarizeOpen(true)}
+                          style={{
+                            background: '#1e4d9e', border: 'none', color: '#9ec5ee',
+                            borderRadius: 6, padding: '6px 18px', fontSize: 13,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ✦ 摘要所选节点 ({multiSelectedNodeIds.size})
+                        </button>
+                      </div>
+                    )}
                   </React.Suspense>
                 </div>
               ) : (
@@ -1363,6 +1382,19 @@ export function Home({ onLogout }: Props) {
             lakeId={active.id}
             onClose={() => setImportTextOpen(false)}
             onImported={() => api.listNodes(active.id).then(r => setNodes(r.nodes))}
+          />
+        </React.Suspense>
+      )}
+      {/* P20-B: 摘要所选节点 */}
+      {summarizeOpen && active && multiSelectedNodeIds.size >= 2 && (
+        <React.Suspense fallback={null}>
+          <SummarizeGraphModal
+            lakeId={active.id}
+            nodeIds={[...multiSelectedNodeIds]}
+            onClose={() => {
+              setSummarizeOpen(false)
+              setMultiSelectedNodeIds(new Set())
+            }}
           />
         </React.Suspense>
       )}

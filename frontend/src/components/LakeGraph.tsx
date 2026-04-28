@@ -106,7 +106,8 @@ interface AnimNodeProps {
   node: NodeItem
   position: [number, number, number]
   selected: boolean
-  onClick: () => void
+  multiSelected: boolean
+  onClick: (isMulti: boolean) => void
   isNew: boolean
   onDragStart: (nodeId: string) => void
   onDragEnd: (nodeId: string, x: number, y: number) => void
@@ -130,7 +131,7 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
-function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, onDragEnd, simNode, highlighted }: AnimNodeProps) {
+function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, onDragEnd, simNode, highlighted }: AnimNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const scaleRef = useRef(isNew ? 0 : 1)
   const color = STATE_COLOR[node.state] ?? '#888888'
@@ -156,7 +157,7 @@ function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, o
       ref={meshRef}
       position={position}
       scale={isNew ? 0 : 1}
-      onClick={e => { if (!isDraggingRef.current) { e.stopPropagation(); onClick() } }}
+      onClick={e => { if (!isDraggingRef.current) { e.stopPropagation(); onClick(e.nativeEvent.ctrlKey || e.nativeEvent.metaKey) } }}
       onPointerDown={e => {
         e.stopPropagation()
         isDraggingRef.current = true
@@ -181,14 +182,21 @@ function AnimatedNode({ node, position, selected, onClick, isNew, onDragStart, o
       onPointerEnter={e => { e.stopPropagation(); if (!isDraggingRef.current) setHovered(true) }}
       onPointerLeave={() => setHovered(false)}
     >
-      <sphereGeometry args={selected ? [7, 14, 14] : [5, 12, 12]} />
+      <sphereGeometry args={(selected || multiSelected) ? [7, 14, 14] : [5, 12, 12]} />
       <meshStandardMaterial
-        color={color}
-        emissive={selected ? color : (highlighted ? '#ffd700' : (hovered ? color : '#000000'))}
-        emissiveIntensity={selected ? 0.6 : (highlighted ? 0.8 : (hovered ? 0.25 : 0))}
+        color={multiSelected ? '#4ecdc4' : color}
+        emissive={multiSelected ? '#4ecdc4' : (selected ? color : (highlighted ? '#ffd700' : (hovered ? color : '#000000')))}
+        emissiveIntensity={multiSelected ? 0.7 : (selected ? 0.6 : (highlighted ? 0.8 : (hovered ? 0.25 : 0)))}
         roughness={0.4}
-        metalness={selected ? 0.3 : 0.1}
+        metalness={(selected || multiSelected) ? 0.3 : 0.1}
       />
+      {/* P20-B: 多选 ring */}
+      {multiSelected && (
+        <mesh scale={1.5}>
+          <torusGeometry args={[5, 0.9, 8, 24]} />
+          <meshBasicMaterial color="#4ecdc4" transparent opacity={0.7} />
+        </mesh>
+      )}
       {/* P17-B: search highlight ring */}
       {highlighted && (
         <mesh scale={1.6}>
@@ -333,16 +341,18 @@ interface SceneProps {
   displayNodes: NodeItem[]
   displayEdges: EdgeItem[]
   onNodeSelect?: (node: NodeItem | null) => void
+  onMultiSelectChange?: (ids: Set<string>) => void
   newNodeIds?: Set<string>
   resetToken?: number
   searchQuery?: string
   snapshotLayout?: Record<string, { x: number; y: number }>
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, resetToken, searchQuery, snapshotLayout }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
+  const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set())
 
   const { sim, simLinks, positions, simNodes } = useMemo(() => {
     const simNodes: SimNode[] = displayNodes.map(n => {
@@ -392,12 +402,26 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, rese
   }, [simNodes])
 
   const handleNodeClick = useCallback(
-    (node: NodeItem) => {
-      const nextId = selectedIdRef.current === node.id ? null : node.id
-      setSelectedId(nextId)
-      onNodeSelect?.(nextId ? node : null)
+    (node: NodeItem, isMulti: boolean) => {
+      if (isMulti) {
+        // Ctrl/Cmd+Click: toggle in multi-select
+        setMultiSelectedIds(prev => {
+          const next = new Set(prev)
+          if (next.has(node.id)) next.delete(node.id)
+          else next.add(node.id)
+          onMultiSelectChange?.(next)
+          return next
+        })
+      } else {
+        // Normal click: single select, clear multi-select
+        const nextId = selectedIdRef.current === node.id ? null : node.id
+        setSelectedId(nextId)
+        setMultiSelectedIds(new Set())
+        onMultiSelectChange?.(new Set())
+        onNodeSelect?.(nextId ? node : null)
+      }
     },
-    [onNodeSelect],
+    [onNodeSelect, onMultiSelectChange],
   )
 
   const handleDragStart = useCallback((nodeId: string) => {
@@ -436,7 +460,8 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, rese
             node={node}
             position={[pos3.x, pos3.y, 0]}
             selected={selectedId === node.id}
-            onClick={() => handleNodeClick(node)}
+            multiSelected={multiSelectedIds.has(node.id)}
+            onClick={(isMulti) => handleNodeClick(node, isMulti)}
             isNew={newNodeIds?.has(node.id) ?? false}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
@@ -463,6 +488,8 @@ export interface LakeGraphProps {
   nodes: NodeItem[]
   edges: EdgeItem[]
   onNodeSelect?: (node: NodeItem | null) => void
+  /** P20-B: 多选节点 IDs 变化回调 */
+  onMultiSelectChange?: (ids: Set<string>) => void
   searchQuery?: string
   snapshotLayout?: Record<string, { x: number; y: number }>
   /** P19-C：协作光标 */
@@ -478,7 +505,7 @@ function cursorColor(userId: string): string {
   return CURSOR_COLORS[h % CURSOR_COLORS.length]
 }
 
-export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery, snapshotLayout, remoteCursors, onSendCursor }: LakeGraphProps) {
+export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectChange, searchQuery, snapshotLayout, remoteCursors, onSendCursor }: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
     [nodes],
@@ -592,6 +619,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery, sna
             displayNodes={displayNodes}
             displayEdges={edges}
             onNodeSelect={onNodeSelect}
+            onMultiSelectChange={onMultiSelectChange}
             newNodeIds={newNodeIds}
             resetToken={resetToken}
             searchQuery={searchQuery}
