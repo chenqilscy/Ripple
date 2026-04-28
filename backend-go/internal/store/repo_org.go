@@ -229,6 +229,34 @@ func (r *orgRepoPG) ListMembers(ctx context.Context, orgID string) ([]domain.Org
 	return out, rows.Err()
 }
 
+const sqlCountOrgMembersByOrgIDs = `
+SELECT org_id, COUNT(*)
+FROM org_members
+WHERE org_id = ANY($1::text[])
+GROUP BY org_id
+`
+
+func (r *orgRepoPG) CountMembersByOrgIDs(ctx context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	if len(orgIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, sqlCountOrgMembersByOrgIDs, orgIDs)
+	if err != nil {
+		return nil, fmt.Errorf("count org members by ids: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var orgID string
+		var count int64
+		if err := rows.Scan(&orgID, &count); err != nil {
+			return nil, fmt.Errorf("scan org member counts: %w", err)
+		}
+		out[orgID] = count
+	}
+	return out, rows.Err()
+}
+
 const sqlUpdateOrgMemberRole = `
 UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2
 `
@@ -270,4 +298,3 @@ func (r *orgRepoPG) CountOwners(ctx context.Context, orgID string) (int, error) 
 	}
 	return n, nil
 }
-

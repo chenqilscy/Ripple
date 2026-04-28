@@ -24,6 +24,16 @@ func (f *fakeGraylistRepo) List(context.Context, int) ([]domain.GraylistEntry, e
 	return out, nil
 }
 
+func (f *fakeGraylistRepo) GetByID(_ context.Context, id string) (*domain.GraylistEntry, error) {
+	for i := range f.entries {
+		if f.entries[i].ID == id {
+			copyEntry := f.entries[i]
+			return &copyEntry, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
 func (f *fakeGraylistRepo) Upsert(_ context.Context, entry *domain.GraylistEntry) (*domain.GraylistEntry, error) {
 	for i := range f.entries {
 		if f.entries[i].Email == entry.Email {
@@ -52,6 +62,20 @@ func (f *fakeGraylistRepo) Delete(_ context.Context, id string) error {
 func (f *fakeGraylistRepo) IsAllowedEmail(context.Context, string) (bool, error) { return false, nil }
 
 var _ store.GraylistRepository = (*fakeGraylistRepo)(nil)
+
+type fakeGraylistAuditRepo struct{ logs []*domain.AuditLog }
+
+func (f *fakeGraylistAuditRepo) Write(_ context.Context, log *domain.AuditLog) error {
+	copyLog := *log
+	f.logs = append(f.logs, &copyLog)
+	return nil
+}
+func (f *fakeGraylistAuditRepo) ListByResource(context.Context, string, string, int) ([]*domain.AuditLog, error) {
+	return nil, nil
+}
+func (f *fakeGraylistAuditRepo) PruneOlderThan(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
 
 func graylistReq(method, target, body, email string) *http.Request {
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
@@ -94,7 +118,8 @@ func TestGraylistHandlers_List(t *testing.T) {
 
 func TestGraylistHandlers_UpsertAndDelete(t *testing.T) {
 	repo := &fakeGraylistRepo{}
-	h := &GraylistHandlers{Repo: repo, AdminEmails: map[string]struct{}{"admin@test.local": {}}}
+	audit := &fakeGraylistAuditRepo{}
+	h := &GraylistHandlers{Repo: repo, AuditLogs: audit, AdminEmails: map[string]struct{}{"admin@test.local": {}}}
 	rr := httptest.NewRecorder()
 
 	h.Upsert(rr, graylistReq(http.MethodPost, "/api/v1/admin/graylist", `{"email":"beta@test.local","note":"wave 1"}`, "admin@test.local"))
@@ -105,6 +130,9 @@ func TestGraylistHandlers_UpsertAndDelete(t *testing.T) {
 	if len(repo.entries) != 1 || repo.entries[0].Email != "beta@test.local" {
 		t.Fatalf("unexpected repo entries: %+v", repo.entries)
 	}
+	if len(audit.logs) != 1 || audit.logs[0].Action != domain.AuditGraylistUpsert || audit.logs[0].ResourceType != "graylist" {
+		t.Fatalf("unexpected upsert audit logs: %+v", audit.logs)
+	}
 
 	deleteReq := graylistReq(http.MethodDelete, "/api/v1/admin/graylist/"+repo.entries[0].ID, "", "admin@test.local")
 	rctx := chi.RouteContext(deleteReq.Context())
@@ -113,6 +141,9 @@ func TestGraylistHandlers_UpsertAndDelete(t *testing.T) {
 	h.Delete(httptest.NewRecorder(), deleteReq)
 	if len(repo.entries) != 0 {
 		t.Fatalf("entry not deleted: %+v", repo.entries)
+	}
+	if len(audit.logs) != 2 || audit.logs[1].Action != domain.AuditGraylistDelete || audit.logs[1].Detail["email"] != "beta@test.local" {
+		t.Fatalf("unexpected delete audit logs: %+v", audit.logs)
 	}
 }
 

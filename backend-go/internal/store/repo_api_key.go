@@ -176,6 +176,34 @@ func (r *apiKeyRepoPG) CountByOrg(ctx context.Context, orgID string) (int64, err
 	return n, nil
 }
 
+const sqlCountAPIKeysByOrgIDs = `
+SELECT org_id, COUNT(*)
+FROM api_keys
+WHERE org_id = ANY($1::text[]) AND revoked_at IS NULL
+GROUP BY org_id
+`
+
+func (r *apiKeyRepoPG) CountByOrgIDs(ctx context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	if len(orgIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, sqlCountAPIKeysByOrgIDs, orgIDs)
+	if err != nil {
+		return nil, fmt.Errorf("api_keys count by org ids: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var orgID string
+		var count int64
+		if err := rows.Scan(&orgID, &count); err != nil {
+			return nil, fmt.Errorf("scan api key org counts: %w", err)
+		}
+		out[orgID] = count
+	}
+	return out, rows.Err()
+}
+
 const sqlRevokeAPIKey = `
 UPDATE api_keys SET revoked_at = now()
 WHERE  id = $1 AND owner_id = $2 AND revoked_at IS NULL

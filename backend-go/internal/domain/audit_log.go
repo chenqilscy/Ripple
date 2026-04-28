@@ -28,4 +28,6 @@ const (
 	AuditAPIKeyCreate     = "api_key.create"
 	AuditAPIKeyRevoke     = "api_key.revoke"
 	AuditOrgQuotaUpdate   = "org_quota.update"
+	AuditGraylistUpsert   = "graylist.upsert"
+	AuditGraylistDelete   = "graylist.delete"
 )

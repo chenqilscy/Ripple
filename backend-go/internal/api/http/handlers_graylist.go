@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -14,7 +15,8 @@ import (
 
 // GraylistHandlers 管理灰度准入邮箱名单。
 type GraylistHandlers struct {
-	Repo       store.GraylistRepository
+	Repo        store.GraylistRepository
+	AuditLogs   store.AuditLogRepository
 	AdminEmails map[string]struct{}
 }
 
@@ -94,6 +96,13 @@ func (h *GraylistHandlers) Upsert(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "upsert failed")
 		return
 	}
+	if err := h.writeAudit(r.Context(), actor.ID, domain.AuditGraylistUpsert, entry.ID, map[string]any{
+		"email": entry.Email,
+		"note":  entry.Note,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "graylist updated but audit failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, toGraylistResp(*entry))
 }
 
@@ -113,9 +122,36 @@ func (h *GraylistHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "id required")
 		return
 	}
+	entry, err := h.Repo.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
 	if err := h.Repo.Delete(r.Context(), id); err != nil {
 		writeError(w, mapDomainError(err), err.Error())
 		return
 	}
+	if err := h.writeAudit(r.Context(), actor.ID, domain.AuditGraylistDelete, id, map[string]any{
+		"email": entry.Email,
+		"note":  entry.Note,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "graylist deleted but audit failed")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *GraylistHandlers) writeAudit(ctx context.Context, actorID, action, resourceID string, detail map[string]any) error {
+	if h.AuditLogs == nil {
+		return nil
+	}
+	return h.AuditLogs.Write(ctx, &domain.AuditLog{
+		ID:           platform.NewID(),
+		ActorID:      actorID,
+		Action:       action,
+		ResourceType: "graylist",
+		ResourceID:   resourceID,
+		Detail:       detail,
+		CreatedAt:    time.Now().UTC(),
+	})
 }

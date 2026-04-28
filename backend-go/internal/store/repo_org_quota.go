@@ -49,6 +49,41 @@ func (r *orgQuotaRepoPG) EnsureDefault(ctx context.Context, orgID string) (*doma
 	return r.GetByOrgID(ctx, orgID)
 }
 
+const sqlEnsureDefaultOrgQuotas = `
+INSERT INTO org_quotas (org_id)
+SELECT unnest($1::text[])
+ON CONFLICT (org_id) DO NOTHING
+`
+
+const sqlListOrgQuotasByIDs = `
+SELECT org_id, max_members, max_lakes, max_nodes, max_attachments, max_api_keys, max_storage_mb, created_at, updated_at
+FROM org_quotas
+WHERE org_id = ANY($1::text[])
+`
+
+func (r *orgQuotaRepoPG) EnsureDefaults(ctx context.Context, orgIDs []string) (map[string]*domain.OrgQuota, error) {
+	out := make(map[string]*domain.OrgQuota, len(orgIDs))
+	if len(orgIDs) == 0 {
+		return out, nil
+	}
+	if _, err := r.pool.Exec(ctx, sqlEnsureDefaultOrgQuotas, orgIDs); err != nil {
+		return nil, fmt.Errorf("org quota ensure defaults: %w", err)
+	}
+	rows, err := r.pool.Query(ctx, sqlListOrgQuotasByIDs, orgIDs)
+	if err != nil {
+		return nil, fmt.Errorf("org quota list defaults: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		q, err := scanOrgQuota(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[q.OrgID] = q
+	}
+	return out, rows.Err()
+}
+
 const sqlGetOrgQuota = `
 SELECT org_id, max_members, max_lakes, max_nodes, max_attachments, max_api_keys, max_storage_mb, created_at, updated_at
 FROM org_quotas WHERE org_id = $1

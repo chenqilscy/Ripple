@@ -51,6 +51,9 @@ func newAuthSvc() *AuthService {
 }
 
 func (r *memGraylistRepo) List(context.Context, int) ([]domain.GraylistEntry, error) { return nil, nil }
+func (r *memGraylistRepo) GetByID(context.Context, string) (*domain.GraylistEntry, error) {
+	return nil, domain.ErrNotFound
+}
 func (r *memGraylistRepo) Upsert(_ context.Context, entry *domain.GraylistEntry) (*domain.GraylistEntry, error) {
 	if r.allowed == nil {
 		r.allowed = map[string]bool{}

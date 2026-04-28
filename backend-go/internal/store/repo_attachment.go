@@ -117,12 +117,64 @@ func (r *attachmentRepoPG) CountByOrg(ctx context.Context, orgID string) (int64,
 	return n, nil
 }
 
+func (r *attachmentRepoPG) CountByOrgIDs(ctx context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	if len(orgIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+SELECT org_id, COUNT(*)
+FROM attachments
+WHERE org_id = ANY($1::text[])
+GROUP BY org_id
+`, orgIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var orgID string
+		var count int64
+		if err := rows.Scan(&orgID, &count); err != nil {
+			return nil, err
+		}
+		out[orgID] = count
+	}
+	return out, rows.Err()
+}
+
 func (r *attachmentRepoPG) SumSizeByOrg(ctx context.Context, orgID string) (int64, error) {
 	var n int64
 	if err := r.pool.QueryRow(ctx, `SELECT coalesce(SUM(size_bytes), 0) FROM attachments WHERE org_id = $1`, orgID).Scan(&n); err != nil {
 		return 0, err
 	}
 	return n, nil
+}
+
+func (r *attachmentRepoPG) SumSizeByOrgIDs(ctx context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	if len(orgIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+SELECT org_id, coalesce(SUM(size_bytes), 0)
+FROM attachments
+WHERE org_id = ANY($1::text[])
+GROUP BY org_id
+`, orgIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var orgID string
+		var size int64
+		if err := rows.Scan(&orgID, &size); err != nil {
+			return nil, err
+		}
+		out[orgID] = size
+	}
+	return out, rows.Err()
 }
 
 func (r *attachmentRepoPG) Delete(ctx context.Context, id string) error {

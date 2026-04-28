@@ -166,24 +166,24 @@ func (r *lakeRepoNeo) UpdateSpaceID(ctx context.Context, id, spaceID string) (*d
 			return nil, domain.ErrNotFound
 		}
 		vals := rec.Record().Values
-			l := &domain.Lake{
-				ID:          asString(vals[0]),
-				Name:        asString(vals[1]),
-				Description: asString(vals[2]),
-				IsPublic:    asBool(vals[3]),
-				OwnerID:     asString(vals[4]),
-				SpaceID:     asString(vals[5]),
-				OrgID:       asString(vals[6]),
-				CreatedAt:   parseTime(asString(vals[7])),
-				UpdatedAt:   parseTime(asString(vals[8])),
-			}
-			return l, nil
-		})
-		if err != nil {
-			return nil, err
+		l := &domain.Lake{
+			ID:          asString(vals[0]),
+			Name:        asString(vals[1]),
+			Description: asString(vals[2]),
+			IsPublic:    asBool(vals[3]),
+			OwnerID:     asString(vals[4]),
+			SpaceID:     asString(vals[5]),
+			OrgID:       asString(vals[6]),
+			CreatedAt:   parseTime(asString(vals[7])),
+			UpdatedAt:   parseTime(asString(vals[8])),
 		}
-		return out.(*domain.Lake), nil
+		return l, nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	return out.(*domain.Lake), nil
+}
 
 // cypherUpdateLakeOrg P13-A
 const cypherUpdateLakeOrg = `
@@ -264,6 +264,41 @@ func (r *lakeRepoNeo) ListByOrg(ctx context.Context, orgID string) ([]domain.Lak
 	return out.([]domain.Lake), nil
 }
 
+const cypherCountLakesByOrgIDs = `
+MATCH (l:Lake)
+WHERE l.org_id IN $org_ids
+RETURN l.org_id AS org_id, count(l) AS count
+`
+
+func (r *lakeRepoNeo) CountLakesByOrgIDs(ctx context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	if len(orgIDs) == 0 {
+		return out, nil
+	}
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	res, err := sess.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		rec, err := tx.Run(ctx, cypherCountLakesByOrgIDs, map[string]any{"org_ids": orgIDs})
+		if err != nil {
+			return nil, err
+		}
+		counts := make(map[string]int64, len(orgIDs))
+		for rec.Next(ctx) {
+			vals := rec.Record().Values
+			if len(vals) < 2 {
+				continue
+			}
+			counts[asString(vals[0])] = asInt64(vals[1])
+		}
+		return counts, rec.Err()
+	})
+	if err != nil {
+		return nil, fmt.Errorf("count lakes by org ids: %w", err)
+	}
+	return res.(map[string]int64), nil
+}
+
 func asString(v any) string {
 	if v == nil {
 		return ""
@@ -272,6 +307,19 @@ func asString(v any) string {
 		return s
 	}
 	return fmt.Sprint(v)
+}
+
+func asInt64(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case float64:
+		return int64(n)
+	default:
+		return 0
+	}
 }
 
 func asBool(v any) bool {

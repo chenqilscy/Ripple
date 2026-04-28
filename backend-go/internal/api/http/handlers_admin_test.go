@@ -27,18 +27,31 @@ func (r *adminOrgRepo) GetByID(_ context.Context, id string) (*domain.Organizati
 	}
 	return nil, domain.ErrNotFound
 }
-func (r *adminOrgRepo) GetBySlug(context.Context, string) (*domain.Organization, error) { return nil, domain.ErrNotFound }
-func (r *adminOrgRepo) ListByUser(context.Context, string) ([]domain.Organization, error) { return nil, nil }
-func (r *adminOrgRepo) AddMember(context.Context, *domain.OrgMember) error                { return nil }
+func (r *adminOrgRepo) GetBySlug(context.Context, string) (*domain.Organization, error) {
+	return nil, domain.ErrNotFound
+}
+func (r *adminOrgRepo) ListByUser(context.Context, string) ([]domain.Organization, error) {
+	return nil, nil
+}
+func (r *adminOrgRepo) AddMember(context.Context, *domain.OrgMember) error { return nil }
 func (r *adminOrgRepo) GetMemberRole(context.Context, string, string) (domain.OrgRole, error) {
 	return domain.OrgRoleAdmin, nil
 }
 func (r *adminOrgRepo) ListMembers(_ context.Context, orgID string) ([]domain.OrgMember, error) {
 	return append([]domain.OrgMember(nil), r.members[orgID]...), nil
 }
-func (r *adminOrgRepo) UpdateMemberRole(context.Context, string, string, domain.OrgRole) error { return nil }
-func (r *adminOrgRepo) RemoveMember(context.Context, string, string) error                       { return nil }
-func (r *adminOrgRepo) CountOwners(context.Context, string) (int, error)                         { return 1, nil }
+func (r *adminOrgRepo) CountMembersByOrgIDs(_ context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	for _, orgID := range orgIDs {
+		out[orgID] = int64(len(r.members[orgID]))
+	}
+	return out, nil
+}
+func (r *adminOrgRepo) UpdateMemberRole(context.Context, string, string, domain.OrgRole) error {
+	return nil
+}
+func (r *adminOrgRepo) RemoveMember(context.Context, string, string) error { return nil }
+func (r *adminOrgRepo) CountOwners(context.Context, string) (int, error)   { return 1, nil }
 func (r *adminOrgRepo) ListAll(context.Context, int) ([]domain.Organization, error) {
 	return append([]domain.Organization(nil), r.orgs...), nil
 }
@@ -48,8 +61,10 @@ var _ store.OrgRepository = (*adminOrgRepo)(nil)
 
 type adminUserRepo struct{ count int64 }
 
-func (r *adminUserRepo) Create(context.Context, *domain.User) error           { return nil }
-func (r *adminUserRepo) GetByID(context.Context, string) (*domain.User, error) { return nil, domain.ErrNotFound }
+func (r *adminUserRepo) Create(context.Context, *domain.User) error { return nil }
+func (r *adminUserRepo) GetByID(context.Context, string) (*domain.User, error) {
+	return nil, domain.ErrNotFound
+}
 func (r *adminUserRepo) GetByEmail(context.Context, string) (*domain.User, error) {
 	return nil, domain.ErrNotFound
 }
@@ -57,17 +72,35 @@ func (r *adminUserRepo) CountAll(context.Context) (int64, error) { return r.coun
 
 type adminQuotaRepo struct{ quota *domain.OrgQuota }
 
-func (r *adminQuotaRepo) EnsureDefault(context.Context, string) (*domain.OrgQuota, error) { return r.quota, nil }
-func (r *adminQuotaRepo) GetByOrgID(context.Context, string) (*domain.OrgQuota, error)     { return r.quota, nil }
-func (r *adminQuotaRepo) Update(context.Context, *domain.OrgQuota) error                    { return nil }
+func (r *adminQuotaRepo) EnsureDefault(context.Context, string) (*domain.OrgQuota, error) {
+	return r.quota, nil
+}
+func (r *adminQuotaRepo) EnsureDefaults(_ context.Context, orgIDs []string) (map[string]*domain.OrgQuota, error) {
+	out := make(map[string]*domain.OrgQuota, len(orgIDs))
+	for _, orgID := range orgIDs {
+		quota := *r.quota
+		quota.OrgID = orgID
+		out[orgID] = &quota
+	}
+	return out, nil
+}
+func (r *adminQuotaRepo) GetByOrgID(context.Context, string) (*domain.OrgQuota, error) {
+	return r.quota, nil
+}
+func (r *adminQuotaRepo) Update(context.Context, *domain.OrgQuota) error { return nil }
 
 type adminGraylistRepo struct{ count int64 }
 
-func (r *adminGraylistRepo) List(context.Context, int) ([]domain.GraylistEntry, error) { return nil, nil }
+func (r *adminGraylistRepo) List(context.Context, int) ([]domain.GraylistEntry, error) {
+	return nil, nil
+}
+func (r *adminGraylistRepo) GetByID(context.Context, string) (*domain.GraylistEntry, error) {
+	return nil, domain.ErrNotFound
+}
 func (r *adminGraylistRepo) Upsert(context.Context, *domain.GraylistEntry) (*domain.GraylistEntry, error) {
 	return nil, nil
 }
-func (r *adminGraylistRepo) Delete(context.Context, string) error                { return nil }
+func (r *adminGraylistRepo) Delete(context.Context, string) error                 { return nil }
 func (r *adminGraylistRepo) IsAllowedEmail(context.Context, string) (bool, error) { return false, nil }
 func (r *adminGraylistRepo) CountAll(context.Context) (int64, error)              { return r.count, nil }
 
@@ -89,6 +122,17 @@ func (r *adminAuditRepo) ListByResource(_ context.Context, resourceType, resourc
 	}
 	return out, nil
 }
+func (r *adminAuditRepo) ListLatestByResources(_ context.Context, resourceType string, resourceIDs []string, limit int) (map[string][]*domain.AuditLog, error) {
+	out := make(map[string][]*domain.AuditLog, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		logs, err := r.ListByResource(context.Background(), resourceType, resourceID, limit)
+		if err != nil {
+			return nil, err
+		}
+		out[resourceID] = logs
+	}
+	return out, nil
+}
 
 func adminReq(email string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/overview", nil)
@@ -105,16 +149,16 @@ func TestAdminHandlers_Overview(t *testing.T) {
 			}},
 			members: map[string][]domain.OrgMember{"org-1": {{OrgID: "org-1", UserID: "u-1", Role: domain.OrgRoleOwner}, {OrgID: "org-1", UserID: "u-2", Role: domain.OrgRoleMember}}},
 		},
-		Quotas: &adminQuotaRepo{quota: &domain.OrgQuota{OrgID: "org-1", MaxMembers: 3, MaxLakes: 5, MaxNodes: 10, MaxAttachments: 2, MaxAPIKeys: 4, MaxStorageMB: 8, CreatedAt: now, UpdatedAt: now}},
-		Lakes: &fakeOrgLakeLister{lakes: []domain.Lake{{ID: "lake-1", OrgID: "org-1"}}},
-		Users: &adminUserRepo{count: 7},
-		Nodes: &fakeOrgNodeCounter{used: 4},
-		APIKeys: &fakeOrgAPIKeyCounter{used: 2},
+		Quotas:      &adminQuotaRepo{quota: &domain.OrgQuota{OrgID: "org-1", MaxMembers: 3, MaxLakes: 5, MaxNodes: 10, MaxAttachments: 2, MaxAPIKeys: 4, MaxStorageMB: 8, CreatedAt: now, UpdatedAt: now}},
+		Lakes:       &fakeOrgLakeLister{lakes: []domain.Lake{{ID: "lake-1", OrgID: "org-1"}}},
+		Users:       &adminUserRepo{count: 7},
+		Nodes:       &fakeOrgNodeCounter{used: 4},
+		APIKeys:     &fakeOrgAPIKeyCounter{used: 2},
 		Attachments: &fakeOrgAttachmentUsage{count: 1, size: 2 * 1024 * 1024},
 		AuditLogs: &adminAuditRepo{logs: []*domain.AuditLog{{
 			ID: "log-1", ActorID: "u-admin", Action: domain.AuditOrgQuotaUpdate, ResourceType: "org_quota", ResourceID: "org-1", CreatedAt: now,
 		}}},
-		Graylist: &adminGraylistRepo{count: 3},
+		Graylist:    &adminGraylistRepo{count: 3},
 		AdminEmails: map[string]struct{}{"admin@test.local": {}},
 	}
 	rr := httptest.NewRecorder()

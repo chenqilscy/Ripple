@@ -278,7 +278,7 @@ func NewRouter(d Deps) http.Handler {
 				for _, email := range d.AdminEmails {
 					adminEmails[email] = struct{}{}
 				}
-				graylistH := &GraylistHandlers{Repo: d.Graylist, AdminEmails: adminEmails}
+				graylistH := &GraylistHandlers{Repo: d.Graylist, AuditLogs: d.AuditLogs, AdminEmails: adminEmails}
 				r.Get("/admin/graylist", graylistH.List)
 				r.Post("/admin/graylist", graylistH.Upsert)
 				r.Delete("/admin/graylist/{id}", graylistH.Delete)

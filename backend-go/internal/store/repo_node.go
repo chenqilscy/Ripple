@@ -178,6 +178,57 @@ func (r *nodeRepoNeo) CountByOrg(ctx context.Context, orgID string) (int64, erro
 	return out.(int64), nil
 }
 
+const cypherCountNodesByOrgIDs = `
+MATCH (l:Lake)
+WHERE l.org_id IN $org_ids
+OPTIONAL MATCH (n:Node {lake_id: l.id})
+WHERE n.state <> 'ERASED'
+RETURN l.org_id AS org_id, count(n) AS count
+`
+
+func (r *nodeRepoNeo) CountByOrgIDs(ctx context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	if len(orgIDs) == 0 {
+		return out, nil
+	}
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+
+	res, err := sess.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		rec, err := tx.Run(ctx, cypherCountNodesByOrgIDs, map[string]any{"org_ids": orgIDs})
+		if err != nil {
+			return nil, err
+		}
+		counts := make(map[string]int64, len(orgIDs))
+		for rec.Next(ctx) {
+			vals := rec.Record().Values
+			if len(vals) < 2 {
+				continue
+			}
+			orgID, _ := vals[0].(string)
+			counts[orgID] = neoInt64(vals[1])
+		}
+		return counts, rec.Err()
+	})
+	if err != nil {
+		return nil, fmt.Errorf("node count by org ids: %w", err)
+	}
+	return res.(map[string]int64), nil
+}
+
+func neoInt64(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case float64:
+		return int64(n)
+	default:
+		return 0
+	}
+}
+
 const cypherUpdateNodeState = `
 MATCH (n:Node {id: $id})
 SET n.state = $state,

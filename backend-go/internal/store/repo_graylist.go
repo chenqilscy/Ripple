@@ -14,6 +14,7 @@ import (
 // GraylistRepository 提供灰度准入邮箱名单读写。
 type GraylistRepository interface {
 	List(ctx context.Context, limit int) ([]domain.GraylistEntry, error)
+	GetByID(ctx context.Context, id string) (*domain.GraylistEntry, error)
 	Upsert(ctx context.Context, entry *domain.GraylistEntry) (*domain.GraylistEntry, error)
 	Delete(ctx context.Context, id string) error
 	IsAllowedEmail(ctx context.Context, email string) (bool, error)
@@ -51,6 +52,24 @@ func (r *graylistRepoPG) List(ctx context.Context, limit int) ([]domain.Graylist
 		out = append(out, entry)
 	}
 	return out, rows.Err()
+}
+
+const sqlGetGraylistEntryByID = `
+SELECT id, email, note, created_by, created_at
+FROM graylist_entries
+WHERE id = $1
+`
+
+func (r *graylistRepoPG) GetByID(ctx context.Context, id string) (*domain.GraylistEntry, error) {
+	var entry domain.GraylistEntry
+	err := r.pool.QueryRow(ctx, sqlGetGraylistEntryByID, id).Scan(&entry.ID, &entry.Email, &entry.Note, &entry.CreatedBy, &entry.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("graylist get: %w", err)
+	}
+	return &entry, nil
 }
 
 const sqlUpsertGraylistEntry = `

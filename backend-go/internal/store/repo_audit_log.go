@@ -88,6 +88,38 @@ func (r *auditLogRepoPG) ListByResource(ctx context.Context, resourceType, resou
 	return out, rows.Err()
 }
 
+const sqlListLatestAuditLogsByResources = `
+SELECT id, actor_id, action, resource_type, resource_id, detail, created_at
+FROM (
+  SELECT id, actor_id, action, resource_type, resource_id, detail, created_at,
+         row_number() OVER (PARTITION BY resource_id ORDER BY created_at DESC) AS rn
+  FROM audit_logs
+  WHERE resource_type = $1 AND resource_id = ANY($2::text[])
+) ranked
+WHERE rn <= $3
+ORDER BY resource_id ASC, created_at DESC
+`
+
+func (r *auditLogRepoPG) ListLatestByResources(ctx context.Context, resourceType string, resourceIDs []string, limitPerResource int) (map[string][]*domain.AuditLog, error) {
+	out := make(map[string][]*domain.AuditLog, len(resourceIDs))
+	if len(resourceIDs) == 0 || limitPerResource <= 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, sqlListLatestAuditLogsByResources, resourceType, resourceIDs, limitPerResource)
+	if err != nil {
+		return nil, fmt.Errorf("audit_log list latest resources: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		l := &domain.AuditLog{}
+		if err := rows.Scan(&l.ID, &l.ActorID, &l.Action, &l.ResourceType, &l.ResourceID, &l.Detail, &l.CreatedAt); err != nil {
+			return nil, fmt.Errorf("audit_log latest scan: %w", err)
+		}
+		out[l.ResourceID] = append(out[l.ResourceID], l)
+	}
+	return out, rows.Err()
+}
+
 const sqlPruneAuditLogs = `
 DELETE FROM audit_logs WHERE created_at < $1
 `

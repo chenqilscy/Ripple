@@ -68,23 +68,61 @@ func (f *fakeOrgLakeLister) ListLakesByOrg(context.Context, *domain.User, string
 	return out, nil
 }
 
+func (f *fakeOrgLakeLister) CountLakesByOrgIDs(_ context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	for _, lake := range f.lakes {
+		out[lake.OrgID]++
+	}
+	return out, nil
+}
+
 type fakeOrgNodeCounter struct{ used int64 }
 
 func (f *fakeOrgNodeCounter) CountByOrg(context.Context, string) (int64, error) { return f.used, nil }
+func (f *fakeOrgNodeCounter) CountByOrgIDs(_ context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	for _, orgID := range orgIDs {
+		out[orgID] = f.used
+	}
+	return out, nil
+}
 
 type fakeOrgAttachmentUsage struct {
 	count int64
 	size  int64
 }
 
-func (f *fakeOrgAttachmentUsage) CountByOrg(context.Context, string) (int64, error) { return f.count, nil }
+func (f *fakeOrgAttachmentUsage) CountByOrg(context.Context, string) (int64, error) {
+	return f.count, nil
+}
+func (f *fakeOrgAttachmentUsage) CountByOrgIDs(_ context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	for _, orgID := range orgIDs {
+		out[orgID] = f.count
+	}
+	return out, nil
+}
 func (f *fakeOrgAttachmentUsage) SumSizeByOrg(context.Context, string) (int64, error) {
 	return f.size, nil
+}
+func (f *fakeOrgAttachmentUsage) SumSizeByOrgIDs(_ context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	for _, orgID := range orgIDs {
+		out[orgID] = f.size
+	}
+	return out, nil
 }
 
 type fakeOrgAPIKeyCounter struct{ used int64 }
 
 func (f *fakeOrgAPIKeyCounter) CountByOrg(context.Context, string) (int64, error) { return f.used, nil }
+func (f *fakeOrgAPIKeyCounter) CountByOrgIDs(_ context.Context, orgIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(orgIDs))
+	for _, orgID := range orgIDs {
+		out[orgID] = f.used
+	}
+	return out, nil
+}
 
 type fakeOrgAuditLogRepo struct{ logs []*domain.AuditLog }
 
@@ -94,7 +132,9 @@ func (f *fakeOrgAuditLogRepo) ListByResource(context.Context, string, string, in
 	copy(out, f.logs)
 	return out, nil
 }
-func (f *fakeOrgAuditLogRepo) PruneOlderThan(context.Context, time.Time) (int64, error) { return 0, nil }
+func (f *fakeOrgAuditLogRepo) PruneOlderThan(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
 
 func (h *handlerQuotaRepo) EnsureDefault(_ context.Context, orgID string) (*domain.OrgQuota, error) {
 	if h.quota == nil {
