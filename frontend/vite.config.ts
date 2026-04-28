@@ -37,4 +37,7 @@ export default defineConfig({
       '/ws': { target: 'ws://fn.cky:18000', ws: true },
     },
   },
+  test: {
+    exclude: ['e2e/**', '**/node_modules/**'],
+  },
 })

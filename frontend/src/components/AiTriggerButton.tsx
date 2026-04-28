@@ -39,6 +39,7 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
   const [error, setError] = useState<string | null>(null)
   const [triggering, setTriggering] = useState(false)
   const pollCount = useRef(0)
+  const [pollCountDisplay, setPollCountDisplay] = useState(0)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const stopPolling = useCallback(() => {
@@ -68,10 +69,12 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
         return
       }
       pollCount.current += 1
+      setPollCountDisplay(pollCount.current)
       pollTimer.current = setTimeout(() => poll(updated), POLL_INTERVAL_MS)
     } catch {
       // transient network error — keep polling
       pollCount.current += 1
+      setPollCountDisplay(pollCount.current)
       pollTimer.current = setTimeout(() => poll(currentJob), POLL_INTERVAL_MS)
     }
   }, [lakeId, nodeId, onDone, onFail, stopPolling])
@@ -84,6 +87,7 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
     setTriggering(true)
     stopPolling()
     pollCount.current = 0
+    setPollCountDisplay(0)
     try {
       const newJob = await api.aiTrigger(lakeId, nodeId, {
         prompt_template_id: promptTemplateId,
@@ -160,7 +164,7 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
           )}
           {isRunning && (
             <span style={{ color: '#555', fontSize: 11 }}>
-              轮询 {pollCount.current}/{POLL_MAX}
+              轮询 {pollCountDisplay}/{POLL_MAX}
             </span>
           )}
           {!isRunning && (
