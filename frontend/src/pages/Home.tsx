@@ -119,6 +119,8 @@ export function Home({ onLogout }: Props) {
   const [snapshotPanelOpen, setSnapshotPanelOpen] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [graphLayout, setGraphLayout] = useState<Record<string, { x: number; y: number }> | undefined>(undefined)
+  // P25：图谱导出
+  const [exportLoading, setExportLoading] = useState(false)
   // P18-B：节点外链分享
   const [shareNode, setShareNode] = useState<NodeItem | null>(null)
   // P19-A：AI 图谱探索
@@ -1058,6 +1060,29 @@ export function Home({ onLogout }: Props) {
                       style={{ ...miniBtn, color: timelineOpen ? '#89b4fa' : '#a6e3a1' }}
                       title="版本历史时间线"
                     >🕐 时间线</button>
+                    {/* P25：图谱导出 */}
+                    {active && (
+                      <>
+                        <button
+                          disabled={exportLoading}
+                          onClick={async () => {
+                            setExportLoading(true)
+                            try { await api.exportLake(active.id, 'json') } catch { /* ignore */ } finally { setExportLoading(false) }
+                          }}
+                          style={{ ...miniBtn, color: exportLoading ? '#4a6a8e' : '#fab387' }}
+                          title="导出为 JSON"
+                        >{exportLoading ? '导出中…' : '↓ JSON'}</button>
+                        <button
+                          disabled={exportLoading}
+                          onClick={async () => {
+                            setExportLoading(true)
+                            try { await api.exportLake(active.id, 'markdown') } catch { /* ignore */ } finally { setExportLoading(false) }
+                          }}
+                          style={{ ...miniBtn, color: exportLoading ? '#4a6a8e' : '#a6e3a1' }}
+                          title="导出为 Markdown"
+                        >{exportLoading ? '导出中…' : '↓ MD'}</button>
+                      </>
+                    )}
                     {graphLayout && (
                       <button onClick={() => setGraphLayout(undefined)} style={{ ...miniBtn, color: '#f38ba8' }}>
                         ✕ 清除快照布局
