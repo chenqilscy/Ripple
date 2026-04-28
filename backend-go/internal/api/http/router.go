@@ -410,6 +410,7 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/subscriptions/plans", subH.GetPlans)
 				r.Get("/organizations/{id}/subscription", subH.GetSubscription)
 				r.Post("/organizations/{id}/subscription", subH.CreateSubscription)
+				r.Get("/organizations/{id}/usage", subH.GetOrgUsage) // Phase 16
 			}
 
 			// Phase 15-D: LLM 用量

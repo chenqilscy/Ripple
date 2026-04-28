@@ -54,7 +54,8 @@ func (h *handlerOrgRepo) UpdateMemberRole(_ context.Context, _, _ string, _ doma
 	return nil
 }
 func (h *handlerOrgRepo) RemoveMember(_ context.Context, _, _ string) error    { return nil }
-func (h *handlerOrgRepo) CountOwners(_ context.Context, _ string) (int, error) { return 1, nil }
+func (h *handlerOrgRepo) CountOwners(_ context.Context, _ string) (int, error)          { return 1, nil }
+func (h *handlerOrgRepo) CountMembersByOrg(_ context.Context, _ string) (int64, error)  { return 0, nil }
 
 type handlerQuotaRepo struct {
 	quota *domain.OrgQuota

@@ -59,7 +59,8 @@ func (f fakeAPIKeyOrgRepo) UpdateMemberRole(context.Context, string, string, dom
 	return nil
 }
 func (f fakeAPIKeyOrgRepo) RemoveMember(context.Context, string, string) error { return nil }
-func (f fakeAPIKeyOrgRepo) CountOwners(context.Context, string) (int, error)   { return 1, nil }
+func (f fakeAPIKeyOrgRepo) CountOwners(context.Context, string) (int, error)          { return 1, nil }
+func (f fakeAPIKeyOrgRepo) CountMembersByOrg(context.Context, string) (int64, error)  { return 0, nil }
 
 type fakeAPIKeyQuotaRepo struct{}
 

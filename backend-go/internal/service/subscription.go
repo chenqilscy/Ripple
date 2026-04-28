@@ -14,6 +14,9 @@ import (
 type SubscriptionService struct {
 	subs   store.SubscriptionRepository
 	quotas store.OrgQuotaRepository
+	orgs   store.OrgRepository   // Phase 16: 成员数真实用量
+	lakes  store.LakeRepository  // Phase 16: 湖数真实用量
+	nodes  store.NodeRepository  // Phase 16: 节点数真实用量
 }
 
 // NewSubscriptionService 构造。
@@ -22,6 +25,14 @@ func NewSubscriptionService(
 	quotas store.OrgQuotaRepository,
 ) *SubscriptionService {
 	return &SubscriptionService{subs: subs, quotas: quotas}
+}
+
+// WithUsageRepos 注入真实用量仓储（Phase 16）；返回 self 支持链式调用。
+func (s *SubscriptionService) WithUsageRepos(orgs store.OrgRepository, lakes store.LakeRepository, nodes store.NodeRepository) *SubscriptionService {
+	s.orgs = orgs
+	s.lakes = lakes
+	s.nodes = nodes
+	return s
 }
 
 // GetPlans 返回内置套餐列表（顺序固定：free → pro → team）。
@@ -127,18 +138,66 @@ func (s *SubscriptionService) GetActive(ctx context.Context, orgID string) (*dom
 	return sub, nil
 }
 
+// GetRealUsage 查询组织真实资源用量（Phase 16）。
+// 若任意仓储未注入（WithUsageRepos 未调用），对应字段返回 0。
+func (s *SubscriptionService) GetRealUsage(ctx context.Context, orgID string) (*domain.OrgUsage, error) {
+	usage := &domain.OrgUsage{}
+	if s.orgs != nil {
+		n, err := s.orgs.CountMembersByOrg(ctx, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("count members: %w", err)
+		}
+		usage.Members = n
+	}
+	if s.lakes != nil {
+		n, err := s.lakes.CountByOrg(ctx, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("count lakes: %w", err)
+		}
+		usage.Lakes = n
+	}
+	if s.nodes != nil {
+		n, err := s.nodes.CountByOrg(ctx, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("count nodes: %w", err)
+		}
+		usage.Nodes = n
+	}
+	return usage, nil
+}
+
 // validateDowngrade 如果目标套餐低于当前用量，返回 ErrDowngradeBlocked。
-// Phase 15.2：区分"配额查询失败（放行+warn）"和"超出配额（拦截）"。
-// Phase 16 补充真实用量统计（members/lakes/nodes）。
+// Phase 16：使用真实用量（members/lakes/nodes count）而非配额配置值。
+// 若用量仓储未注入（Phase 15 兼容模式），回退到与配额值的比较。
 func (s *SubscriptionService) validateDowngrade(ctx context.Context, orgID string, targetPlan domain.Plan) error {
-	quota, err := s.quotas.GetByOrgID(ctx, orgID)
-	if err != nil {
-		// 配额数据不可用（未初始化或数据库故障）：放行降级，由调用方记录日志
-		// 注意：这是宽松模式，Phase 16 在有完整用量统计后可改为拦截
+	// Phase 16：有真实用量仓储时，使用实际数据
+	if s.orgs != nil || s.lakes != nil || s.nodes != nil {
+		usage, err := s.GetRealUsage(ctx, orgID)
+		if err != nil {
+			// 查询失败：放行，由调用方记录日志
+			return nil
+		}
+		var exceeded []string
+		if targetPlan.Quotas.MaxMembers >= 0 && usage.Members > targetPlan.Quotas.MaxMembers {
+			exceeded = append(exceeded, "max_members")
+		}
+		if targetPlan.Quotas.MaxLakes >= 0 && usage.Lakes > targetPlan.Quotas.MaxLakes {
+			exceeded = append(exceeded, "max_lakes")
+		}
+		if targetPlan.Quotas.MaxNodes >= 0 && usage.Nodes > targetPlan.Quotas.MaxNodes {
+			exceeded = append(exceeded, "max_nodes")
+		}
+		if len(exceeded) > 0 {
+			return &ErrDowngradeBlocked{Exceeded: exceeded}
+		}
 		return nil
 	}
-	// 检查配额上限：若目标套餐上限 < 当前已分配配额，说明降级会超额
-	// Phase 15.2 简化：与当前配额比较（非实际用量）；Phase 16 改为统计真实用量
+
+	// Phase 15 兼容模式（无 usage repos）：与当前已分配配额比较
+	quota, err := s.quotas.GetByOrgID(ctx, orgID)
+	if err != nil {
+		return nil
+	}
 	var exceeded []string
 	if targetPlan.Quotas.MaxNodes < quota.MaxNodes {
 		exceeded = append(exceeded, "max_nodes")

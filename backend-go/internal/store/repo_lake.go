@@ -22,6 +22,8 @@ type LakeRepository interface {
 	UpdateOrgID(ctx context.Context, id, orgID string) (*domain.Lake, error)
 	// ListByOrg 查询某组织下所有湖（P13-A）。
 	ListByOrg(ctx context.Context, orgID string) ([]domain.Lake, error)
+	// CountByOrg 统计某组织的湖数量（Phase 16 真实用量）。
+	CountByOrg(ctx context.Context, orgID string) (int64, error)
 }
 
 type lakeRepoNeo struct {
@@ -269,6 +271,14 @@ MATCH (l:Lake)
 WHERE l.org_id IN $org_ids
 RETURN l.org_id AS org_id, count(l) AS count
 `
+
+func (r *lakeRepoNeo) CountByOrg(ctx context.Context, orgID string) (int64, error) {
+	counts, err := r.CountLakesByOrgIDs(ctx, []string{orgID})
+	if err != nil {
+		return 0, err
+	}
+	return counts[orgID], nil
+}
 
 func (r *lakeRepoNeo) CountLakesByOrgIDs(ctx context.Context, orgIDs []string) (map[string]int64, error) {
 	out := make(map[string]int64, len(orgIDs))

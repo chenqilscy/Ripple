@@ -172,3 +172,29 @@ func (h *SubscriptionHandlers) CreateSubscription(w http.ResponseWriter, r *http
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"subscription": toSubResp(sub)})
 }
+
+// GetOrgUsage GET /api/v1/organizations/{id}/usage (Phase 16)
+func (h *SubscriptionHandlers) GetOrgUsage(w http.ResponseWriter, r *http.Request) {
+	u, ok := CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID := chi.URLParam(r, "id")
+
+	// 权限校验：必须是组织成员
+	if h.Orgs != nil {
+		isMember, err := h.Orgs.IsMember(r.Context(), u.ID, orgID)
+		if err != nil || !isMember {
+			writeError(w, http.StatusForbidden, "access denied")
+			return
+		}
+	}
+
+	usage, err := h.Svc.GetRealUsage(r.Context(), orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get usage")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"usage": usage})
+}

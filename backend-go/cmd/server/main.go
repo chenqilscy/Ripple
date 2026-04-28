@@ -230,7 +230,8 @@ func main() {
 	go aiJobWorker.Run(aiWorkerCtx)
 
 	// Phase 15-D：订阅服务 + LLM 用量服务
-	subSvc := service.NewSubscriptionService(subRepo, orgQuotaRepo)
+	subSvc := service.NewSubscriptionService(subRepo, orgQuotaRepo).
+		WithUsageRepos(orgRepo, lakes, nodes) // Phase 16: 真实用量
 	llmUsageSvc := service.NewLLMUsageService(llmAnalyticsRepo)
 
 	crystallizeSvc := service.NewCrystallizeService(permaRepo, nodes, memberships, llmRouter)

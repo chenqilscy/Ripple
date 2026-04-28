@@ -87,7 +87,8 @@ func (s *stubOrgRepo) RemoveMember(_ context.Context, _ string, userID string) e
 	s.removedUser = userID
 	return nil
 }
-func (s *stubOrgRepo) CountOwners(_ context.Context, _ string) (int, error) { return 1, nil }
+func (s *stubOrgRepo) CountOwners(_ context.Context, _ string) (int, error)          { return 1, nil }
+func (s *stubOrgRepo) CountMembersByOrg(_ context.Context, _ string) (int64, error)  { return 0, nil }
 
 func TestOrgService_RemoveMember_RejectsSelfRemoval(t *testing.T) {
 	repo := &stubOrgRepo{roles: map[string]domain.OrgRole{

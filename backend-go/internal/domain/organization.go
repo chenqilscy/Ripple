@@ -54,3 +54,11 @@ type OrgMember struct {
 	Role     OrgRole
 	JoinedAt time.Time
 }
+
+// OrgUsage 组织的真实资源用量（Phase 16）。
+type OrgUsage struct {
+	Members int64 // 当前成员数（含 OWNER）
+	Lakes   int64 // 当前归属该组织的湖数
+	Nodes   int64 // 当前归属该组织湖中的非已删除节点数
+}
+

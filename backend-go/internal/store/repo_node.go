@@ -23,6 +23,8 @@ type NodeRepository interface {
 	BatchCreate(ctx context.Context, nodes []*domain.Node) error
 	// FindRelated P18-A：在同湖内找与指定节点内容相近的节点（全文搜索）。
 	FindRelated(ctx context.Context, nodeID, lakeID, keyword string, limit int) ([]domain.NodeSearchResult, error)
+	// CountByOrg 统计某组织所有湖中的非已删除节点总数（Phase 16 真实用量）。
+	CountByOrg(ctx context.Context, orgID string) (int64, error)
 }
 
 type nodeRepoNeo struct {
@@ -481,3 +483,4 @@ func (r *nodeRepoNeo) FindRelated(ctx context.Context, nodeID, lakeID, keyword s
 	}
 	return out.([]domain.NodeSearchResult), nil
 }
+

@@ -26,6 +26,8 @@ type OrgRepository interface {
 	UpdateMemberRole(ctx context.Context, orgID, userID string, role domain.OrgRole) error
 	RemoveMember(ctx context.Context, orgID, userID string) error
 	CountOwners(ctx context.Context, orgID string) (int, error)
+	// CountMembersByOrg 返回指定组织的真实成员总数（Phase 16 用量统计）。
+	CountMembersByOrg(ctx context.Context, orgID string) (int64, error)
 }
 
 type orgRepoPG struct{ pool *pgxpool.Pool }
@@ -295,6 +297,18 @@ func (r *orgRepoPG) CountOwners(ctx context.Context, orgID string) (int, error) 
 	var n int
 	if err := r.pool.QueryRow(ctx, sqlCountOrgOwners, orgID).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count org owners: %w", err)
+	}
+	return n, nil
+}
+
+const sqlCountOrgMembers = `
+SELECT COUNT(*) FROM org_members WHERE org_id = $1
+`
+
+func (r *orgRepoPG) CountMembersByOrg(ctx context.Context, orgID string) (int64, error) {
+	var n int64
+	if err := r.pool.QueryRow(ctx, sqlCountOrgMembers, orgID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count org members: %w", err)
 	}
 	return n, nil
 }

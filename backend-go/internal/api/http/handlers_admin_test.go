@@ -51,7 +51,8 @@ func (r *adminOrgRepo) UpdateMemberRole(context.Context, string, string, domain.
 	return nil
 }
 func (r *adminOrgRepo) RemoveMember(context.Context, string, string) error { return nil }
-func (r *adminOrgRepo) CountOwners(context.Context, string) (int, error)   { return 1, nil }
+func (r *adminOrgRepo) CountOwners(context.Context, string) (int, error)          { return 1, nil }
+func (r *adminOrgRepo) CountMembersByOrg(context.Context, string) (int64, error)  { return 0, nil }
 func (r *adminOrgRepo) ListAll(context.Context, int) ([]domain.Organization, error) {
 	return append([]domain.Organization(nil), r.orgs...), nil
 }

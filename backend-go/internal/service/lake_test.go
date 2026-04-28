@@ -63,6 +63,15 @@ func (r *memLakeRepo) ListByOrg(_ context.Context, orgID string) ([]domain.Lake,
 	}
 	return out, nil
 }
+func (r *memLakeRepo) CountByOrg(_ context.Context, orgID string) (int64, error) {
+	var n int64
+	for _, l := range r.data {
+		if l.OrgID == orgID {
+			n++
+		}
+	}
+	return n, nil
+}
 
 type memMembershipRepo struct {
 	data map[string]map[string]*domain.LakeMembership // userID -> lakeID -> m
