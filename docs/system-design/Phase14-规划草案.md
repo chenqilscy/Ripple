@@ -83,6 +83,14 @@ Phase 13 已完成可信交付闭环：远端 staging、性能基线、故障演
 - 运营 SOP：灰度名单、管理员总览、配额调整、审计追踪与回滚；
 - Phase 14 准入清单：后端 race 测试、前端构建、staging smoke、敏感信息与性能观察项。
 
+### Sprint 14.5：发布后优化与规则收紧
+
+- Admin Overview 聚合优化：当组织数继续增长时，将逐组织 usage 聚合迁移为批量 SQL 或 `org_usage_snapshots` 读取；
+- 平台管理员 RBAC：正式企业版前评估从 `RIPPLE_ADMIN_EMAILS` 迁移到平台管理员角色表；
+- 前端 lint 规则收紧：当前已恢复 0 error / 0 warning gate，后续按组件分批恢复 Fast Refresh 与 Hooks 依赖规则；
+- 灰度名单审计增强：灰度名单 CRUD 写入 audit log，便于运营追溯；
+- 真实体验补录：补普通用户超限拦截、组织管理员配额调整、平台管理员灰度名单三条完整操作录像 / 记录。
+
 ## 5. 暂缓项
 
 - GraphQL：当前 REST + 聚合 handler 仍足够；待前端页面出现明显 N+1 请求问题再启动。
