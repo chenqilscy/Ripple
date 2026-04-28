@@ -359,6 +359,14 @@ func NewRouter(d Deps) http.Handler {
 				r.Put("/nodes/{id}/tags", tagH.SetNodeTags)
 			}
 
+			// P19-A：AI 图谱探索
+			if d.LLMRouter != nil {
+				if exploreRouter, ok := d.LLMRouter.(llm.Router); ok {
+					exploreH := &ExploreHandlers{Nodes: d.Nodes, Router: exploreRouter}
+					r.Post("/lakes/{id}/explore", exploreH.Explore)
+				}
+			}
+
 			// P18-A：节点关联推荐
 			r.Get("/nodes/{id}/related", nodeH.GetRelated)
 

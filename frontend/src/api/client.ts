@@ -440,6 +440,14 @@ export const api = {
     return request('GET', `/api/v1/share/${token}`)
   },
 
+  // P19-A：AI 图谱探索
+  exploreGraph(lakeId: string, query: string, maxNodes = 20): Promise<{
+    relevant_nodes: Array<{ node_id: string; content: string; score: number }>
+    summary: string
+  }> {
+    return request('POST', `/api/v1/lakes/${lakeId}/explore`, { query, max_nodes: maxNodes })
+  },
+
   streamWeave(
     lakeID: string,
     prompt: string,

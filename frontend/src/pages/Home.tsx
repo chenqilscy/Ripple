@@ -16,6 +16,7 @@ const ImportModal = React.lazy(() => import('../components/ImportModal'))
 const OrgPanel = React.lazy(() => import('../components/OrgPanel'))
 const NodeShareButton = React.lazy(() => import('../components/NodeShareButton'))
 const SnapshotPanel = React.lazy(() => import('../components/SnapshotPanel'))
+const NodeExplorer = React.lazy(() => import('../components/NodeExplorer'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -109,6 +110,9 @@ export function Home({ onLogout }: Props) {
   const [graphLayout, setGraphLayout] = useState<Record<string, { x: number; y: number }> | undefined>(undefined)
   // P18-B：节点外链分享
   const [shareNode, setShareNode] = useState<NodeItem | null>(null)
+  // P19-A：AI 图谱探索
+  const [explorerOpen, setExplorerOpen] = useState(false)
+  const [exploredNodeIds, setExploredNodeIds] = useState<Set<string>>(new Set())
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -1011,6 +1015,19 @@ export function Home({ onLogout }: Props) {
                         ✕ 清除快照布局
                       </button>
                     )}
+                    {/* P19-A：AI 探索 */}
+                    <button
+                      onClick={() => setExplorerOpen(v => !v)}
+                      style={{ ...miniBtn, color: explorerOpen ? '#89b4fa' : '#cba6f7' }}
+                      title="AI 图谱探索"
+                    >🔍 AI探索</button>
+                    {exploredNodeIds.size > 0 && (
+                      <button
+                        onClick={() => setExploredNodeIds(new Set())}
+                        style={{ ...miniBtn, color: '#f38ba8' }}
+                        title="清除探索高亮"
+                      >✕ 清除高亮</button>
+                    )}
                   </div>
                   {snapshotPanelOpen && active && (
                     <React.Suspense fallback={null}>
@@ -1019,6 +1036,16 @@ export function Home({ onLogout }: Props) {
                         currentLayout={Object.fromEntries(nodes.map(n => [n.id, { x: n.position.x, y: n.position.y }]))}
                         onClose={() => setSnapshotPanelOpen(false)}
                         onRestore={layout => { setGraphLayout(layout); setSnapshotPanelOpen(false) }}
+                      />
+                    </React.Suspense>
+                  )}
+                  {/* P19-A：AI 图谱探索面板 */}
+                  {explorerOpen && active && (
+                    <React.Suspense fallback={null}>
+                      <NodeExplorer
+                        lakeId={active.id}
+                        onHighlight={ids => setExploredNodeIds(ids)}
+                        onClose={() => { setExplorerOpen(false); setExploredNodeIds(new Set()) }}
                       />
                     </React.Suspense>
                   )}
