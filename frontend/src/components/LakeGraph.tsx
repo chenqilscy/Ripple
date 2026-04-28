@@ -454,21 +454,46 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, newNodeIds, rese
 // ---------------------------------------------------------------------------
 // LakeGraph -- public export
 // ---------------------------------------------------------------------------
+export interface RemoteCursor {
+  x: number // 0-1 归一化（相对容器宽）
+  y: number // 0-1 归一化（相对容器高）
+}
+
 export interface LakeGraphProps {
   nodes: NodeItem[]
   edges: EdgeItem[]
   onNodeSelect?: (node: NodeItem | null) => void
   searchQuery?: string
   snapshotLayout?: Record<string, { x: number; y: number }>
+  /** P19-C：协作光标 */
+  remoteCursors?: Map<string, RemoteCursor> // user_id → 归一化坐标
+  onSendCursor?: (x: number, y: number) => void
 }
 
-export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery, snapshotLayout }: LakeGraphProps) {
+// P19-C：协作光标颜色（按 user_id hash 分配）
+const CURSOR_COLORS = ['#ff6b6b', '#4ecdc4', '#ffd93d', '#a8e6cf', '#ff8b94', '#b3cde0']
+function cursorColor(userId: string): string {
+  let h = 0
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) >>> 0
+  return CURSOR_COLORS[h % CURSOR_COLORS.length]
+}
+
+export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery, snapshotLayout, remoteCursors, onSendCursor }: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
     [nodes],
   )
   const tooMany =
     nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').length > MAX_NODES
+
+  // P19-C: throttle ref for cursor send（50ms）
+  const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // P19-C: 组件卸载时清理 throttle 计时器，防止卸载后回调更新失效 ref
+  useEffect(() => {
+    return () => {
+      if (cursorThrottleRef.current) clearTimeout(cursorThrottleRef.current)
+    }
+  }, [])
 
   // P15-C: reset layout token — incrementing re-randomizes force simulation
   const [resetToken, setResetToken] = useState(0)
@@ -518,6 +543,18 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery, sna
         overflow: 'hidden',
         background: '#060d1a',
       }}
+      onMouseMove={onSendCursor ? (e) => {
+        if (cursorThrottleRef.current) return
+        cursorThrottleRef.current = setTimeout(() => { cursorThrottleRef.current = null }, 50)
+        const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
+        onSendCursor(
+          (e.clientX - rect.left) / rect.width,
+          (e.clientY - rect.top) / rect.height,
+        )
+      } : undefined}
+      onMouseLeave={onSendCursor ? () => {
+        if (cursorThrottleRef.current) { clearTimeout(cursorThrottleRef.current); cursorThrottleRef.current = null }
+      } : undefined}
     >
       {tooMany && (
         <div
@@ -562,6 +599,47 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, searchQuery, sna
           />
         </React.Suspense>
       </Canvas>
+      {/* P19-C: 协作光标 DOM overlay（百分比定位，避免 SVG preserveAspectRatio 字体变形） */}
+      {remoteCursors && remoteCursors.size > 0 && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 20, overflow: 'hidden' }}>
+          {[...remoteCursors.entries()].map(([uid, pos]) => {
+            const color = cursorColor(uid)
+            return (
+              <div
+                key={uid}
+                style={{
+                  position: 'absolute',
+                  left: `${pos.x * 100}%`,
+                  top: `${pos.y * 100}%`,
+                  transform: 'translate(0, 0)',
+                  pointerEvents: 'none',
+                }}
+              >
+                {/* 光标三角形 */}
+                <svg width="14" height="18" viewBox="0 0 14 18" style={{ display: 'block' }}>
+                  <polygon points="0,0 0,14 5,10" fill={color} opacity="0.9" />
+                </svg>
+                {/* 用户名标签 */}
+                <div style={{
+                  background: color,
+                  color: '#fff',
+                  fontSize: 10,
+                  padding: '1px 5px',
+                  borderRadius: 3,
+                  marginTop: -2,
+                  maxWidth: 80,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  opacity: 0.9,
+                }}>
+                  {uid.slice(0, 8)}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

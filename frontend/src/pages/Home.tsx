@@ -70,6 +70,8 @@ export function Home({ onLogout }: Props) {
   const [importOpen, setImportOpen] = useState(false)
   const [orgOpen, setOrgOpen] = useState(false)
   const [meId, setMeId] = useState<string>('')
+  // P19-C：meIdRef 与 state 同步，供 WS 闭包读取最新值（WS useEffect 依赖 [active]，不依赖 meId）
+  const meIdRef = useRef<string>('')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
   const [importBusy, setImportBusy] = useState(false)
@@ -113,10 +115,12 @@ export function Home({ onLogout }: Props) {
   // P19-A：AI 图谱探索
   const [explorerOpen, setExplorerOpen] = useState(false)
   const [exploredNodeIds, setExploredNodeIds] = useState<Set<string>>(new Set())
+  // P19-C：协作光标
+  const [remoteCursors, setRemoteCursors] = useState<Map<string, { x: number; y: number }>>(new Map())
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
-    api.me().then(u => setMeId(u.id)).catch(() => { /* 静默 */ })
+    api.me().then(u => { meIdRef.current = u.id; setMeId(u.id) }).catch(() => { /* 静默 */ })
   }, [])
 
   // P12-E：PWA shortcut 处理 — ?action=search|import（需等 active 湖加载完毕）
@@ -185,6 +189,7 @@ export function Home({ onLogout }: Props) {
     setImportResult(null)
     setBatchSel(new Set())
     setGraphLayout(undefined)
+    setRemoteCursors(new Map())
     // P13-C：加载湖标签列表
     api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => setLakeTags([]))
 
@@ -207,6 +212,14 @@ export function Home({ onLogout }: Props) {
         }
         if (msg.type.startsWith('presence.')) {
           void loadPresence(active.id)
+          // P19-C：用户离开时清理其协作光标
+          if (msg.type === 'presence.left' && msg.payload?.user_id) {
+            setRemoteCursors(prev => {
+              const next = new Map(prev)
+              next.delete(msg.payload.user_id as string)
+              return next
+            })
+          }
         }
         // cloud 事件 → 刷新任务列表（如有 task_id）
         if (msg.type.startsWith('cloud.') && msg.payload?.task_id) {
@@ -217,6 +230,18 @@ export function Home({ onLogout }: Props) {
         // P14-A：通知实时推送 → 转发给 NotificationBell
         if (msg.type === 'notification.new') {
           window.dispatchEvent(new CustomEvent('ripple:notification', { detail: msg.payload }))
+        }
+        // P19-C：协作光标位置更新
+        if (msg.type === 'cursor.move' && msg.payload?.user_id) {
+          const { user_id, x, y } = msg.payload as { user_id: string; x: number; y: number }
+          // 过滤自己（后端广播包含发送者自身；用 ref 读最新 meId，避免闭包捕获旧值导致渲染自己光标）
+          if (typeof x === 'number' && typeof y === 'number' && user_id !== meIdRef.current) {
+            setRemoteCursors(prev => {
+              const next = new Map(prev)
+              next.set(user_id, { x, y })
+              return next
+            })
+          }
         }
       },
       online => setWsOnline(online),
@@ -1050,7 +1075,14 @@ export function Home({ onLogout }: Props) {
                     </React.Suspense>
                   )}
                   <React.Suspense fallback={<div style={{ height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a6a8e', fontSize: 13 }}>加载图谱中…</div>}>
-                    <LakeGraph nodes={nodes} edges={edges} searchQuery={nodeSearch} snapshotLayout={graphLayout} />
+                    <LakeGraph
+                      nodes={nodes}
+                      edges={edges}
+                      searchQuery={nodeSearch}
+                      snapshotLayout={graphLayout}
+                      remoteCursors={remoteCursors}
+                      onSendCursor={(x, y) => wsRef.current?.send({ type: 'cursor.move', payload: { x, y } })}
+                    />
                   </React.Suspense>
                 </div>
               ) : (

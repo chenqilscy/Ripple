@@ -13,6 +13,7 @@ import (
 	"github.com/chenqilscy/ripple/backend-go/internal/realtime"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
 )
 
@@ -135,18 +136,53 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Write(ctx, websocket.MessageText, b)
 	}
 
-	// 读循环：消费 ping/控制帧。客户端断开时退出。
+	// P19-C：连接级速率限制，防止恶意客户端绕过前端 throttle 高频广播（20 msg/s，burst=5）。
+	cursorLimiter := rate.NewLimiter(rate.Every(50*time.Millisecond), 5)
+
+	// 读循环：消费客户端消息（ping/cursor.move 等）。客户端断开时退出。
 	for {
-		_, _, err := conn.Read(ctx)
+		_, raw, err := conn.Read(ctx)
 		if err != nil {
 			cancel()
 			conn.Close(websocket.StatusNormalClosure, "client gone")
 			return
 		}
+		// P19-C：先做大小检查，超限消息不计入心跳，避免被利用维持 presence。
+		if len(raw) > 256 {
+			continue
+		}
 		metrics.WSMessagesIn.Inc()
-		// 客户端任意消息都视为心跳；刷新 presence score。
+		// 客户端任意合法消息都视为心跳；刷新 presence score。
 		if h.Presence != nil {
 			_ = h.Presence.Heartbeat(ctx, lakeID, user.ID)
+		}
+		// P19-C：cursor.move 消息转发给同湖其他在线用户。
+		var clientMsg struct {
+			Type    string         `json:"type"`
+			Payload map[string]any `json:"payload"`
+		}
+		if json.Unmarshal(raw, &clientMsg) != nil {
+			continue
+		}
+		if clientMsg.Type == "cursor.move" {
+			// 速率限制：超限直接丢弃，不广播。
+			if !cursorLimiter.Allow() {
+				continue
+			}
+			// 校验 x/y 在 [0,1] 范围，防止越界垃圾数据广播。
+			if x, ok := clientMsg.Payload["x"].(float64); !ok || x < 0 || x > 1 {
+				continue
+			}
+			if y, ok := clientMsg.Payload["y"].(float64); !ok || y < 0 || y > 1 {
+				continue
+			}
+			// 后端注入 user_id，防止客户端伪造他人 ID。
+			clientMsg.Payload["user_id"] = user.ID
+			broadcast := realtime.Message{
+				Type:    "cursor.move",
+				Payload: clientMsg.Payload,
+			}
+			_ = h.Broker.Publish(ctx, topic, broadcast)
 		}
 	}
 }
