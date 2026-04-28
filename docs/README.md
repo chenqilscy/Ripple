@@ -47,6 +47,7 @@
 | [Phase13-canonical-path-repair-20260428](dev/Phase13-canonical-path-repair-20260428.md) | 远端 `/home/admin/Ripple` 标准源码路径权限修复记录 |
 | [v0.13.0-release-notes](dev/v0.13.0-release-notes.md) | Phase 13 灰度准入版本发布说明 |
 | [Phase14-A-技术方案评审-20260427](dev/Phase14-A-技术方案评审-20260427.md) | Org 配额数据模型第一切片评审与验证记录 |
+| [Phase14-6-运营化回归与准入设计-20260428](dev/Phase14-6-运营化回归与准入设计-20260428.md) | Phase 14.6 运营化回归、WebSocket smoke 与准入 Gate 设计 |
 | [Phase13-故障演练验收记录模板](dev/Phase13-故障演练验收记录模板.md) | 演练结果记录模板 |
 
 ### Layer 2 · 系统设计 (`docs/system-design/`)

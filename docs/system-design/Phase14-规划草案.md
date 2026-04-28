@@ -91,6 +91,13 @@ Phase 13 已完成可信交付闭环：远端 staging、性能基线、故障演
 - ✅ 灰度名单审计增强：灰度名单新增 / 更新 / 删除写入 `audit_logs`，`resource_type=graylist`，便于运营追溯；
 - 真实体验补录：补普通用户超限拦截、组织管理员配额调整、平台管理员灰度名单三条完整操作录像 / 记录。
 
+### Sprint 14.6：运营化回归与准入 Gate
+
+- ✅ 已启动设计：见 `docs/dev/Phase14-6-运营化回归与准入设计-20260428.md`；
+- ✅ WebSocket 回归：LakeWS 与 yjs-bridge 已统一将完整 CORS URL 转为 `nhooyr` 所需 host pattern，staging `/api/v1/lakes/{id}/ws` 与 `/yjs/<room>` smoke 均返回 `101 Switching Protocols`；
+- ✅ Settings E2E：新增 Playwright 覆盖 Settings 子 Tab（管理员总览 / 平台管理员 / API Key / 灰度名单 / 审计日志）；
+- 后续：将 staging smoke 数据清理脚本与 Phase 14 准入清单固化为可重复执行门禁。
+
 ## 5. 暂缓项
 
 - GraphQL：当前 REST + 聚合 handler 仍足够；待前端页面出现明显 N+1 请求问题再启动。
