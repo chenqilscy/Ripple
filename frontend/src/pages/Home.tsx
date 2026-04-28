@@ -20,6 +20,7 @@ const NodeShareButton = React.lazy(() => import('../components/NodeShareButton')
 const SnapshotPanel = React.lazy(() => import('../components/SnapshotPanel'))
 const NodeExplorer = React.lazy(() => import('../components/NodeExplorer'))
 const NodeDetailPanel = React.lazy(() => import('../components/NodeDetailPanel'))
+const SnapshotTimeline = React.lazy(() => import('../components/SnapshotTimeline'))
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
@@ -116,6 +117,7 @@ export function Home({ onLogout }: Props) {
   const [tplPreviewId, setTplPreviewId] = useState<string | null>(null)
   // P18-D：图谱快照
   const [snapshotPanelOpen, setSnapshotPanelOpen] = useState(false)
+  const [timelineOpen, setTimelineOpen] = useState(false)
   const [graphLayout, setGraphLayout] = useState<Record<string, { x: number; y: number }> | undefined>(undefined)
   // P18-B：节点外链分享
   const [shareNode, setShareNode] = useState<NodeItem | null>(null)
@@ -1051,6 +1053,11 @@ export function Home({ onLogout }: Props) {
                       style={{ ...miniBtn, color: snapshotPanelOpen ? '#89b4fa' : undefined }}
                       title="查看图谱快照"
                     >🗂 快照</button>
+                    <button
+                      onClick={() => setTimelineOpen(v => !v)}
+                      style={{ ...miniBtn, color: timelineOpen ? '#89b4fa' : '#a6e3a1' }}
+                      title="版本历史时间线"
+                    >🕐 时间线</button>
                     {graphLayout && (
                       <button onClick={() => setGraphLayout(undefined)} style={{ ...miniBtn, color: '#f38ba8' }}>
                         ✕ 清除快照布局
@@ -1614,6 +1621,16 @@ export function Home({ onLogout }: Props) {
             </div>
           </div>
         </div>
+      )}
+      {/* P23：版本历史时间线 */}
+      {timelineOpen && active && (
+        <React.Suspense fallback={null}>
+          <SnapshotTimeline
+            lakeId={active.id}
+            onRestore={layout => { setGraphLayout(layout); setTimelineOpen(false) }}
+            onClose={() => setTimelineOpen(false)}
+          />
+        </React.Suspense>
       )}
       {/* P20-D：节点详情侧边栏 */}
       {selectedNode && (
