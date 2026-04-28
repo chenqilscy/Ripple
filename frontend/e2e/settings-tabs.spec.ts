@@ -2,6 +2,14 @@ import { expect, test } from '@playwright/test'
 
 interface MockState {
   graylist: { id: string; email: string; note: string; created_by: string; created_at: string }[]
+  platformAdmins: {
+    user_id: string
+    email: string
+    role: 'OWNER' | 'ADMIN'
+    note: string
+    created_by: string
+    created_at: string
+  }[]
 }
 
 function makeMock(state: MockState) {
@@ -36,8 +44,30 @@ function makeMock(state: MockState) {
           },
           recent_organizations: [],
         }
-      } else if (url.pathname === '/api/v1/admin/platform_admins') {
-        body = { admins: [] }
+      } else if (url.pathname === '/api/v1/admin/platform_admins' && method === 'GET') {
+        body = { admins: state.platformAdmins }
+      } else if (url.pathname === '/api/v1/admin/platform_admins' && method === 'POST') {
+        const payload = JSON.parse(route.request().postData() ?? '{}') as {
+          user_id?: string
+          email?: string
+          role?: 'OWNER' | 'ADMIN'
+          note?: string
+        }
+        const admin = {
+          user_id: payload.user_id ?? `u-${state.platformAdmins.length + 1}`,
+          email: payload.email ?? '',
+          role: payload.role ?? 'ADMIN',
+          note: payload.note ?? '',
+          created_by: 'u-e2e',
+          created_at: new Date().toISOString(),
+        }
+        state.platformAdmins = [admin, ...state.platformAdmins.filter(a => a.user_id !== admin.user_id)]
+        body = admin
+      } else if (url.pathname.startsWith('/api/v1/admin/platform_admins/') && method === 'DELETE') {
+        const id = decodeURIComponent(url.pathname.split('/').pop() ?? '')
+        state.platformAdmins = state.platformAdmins.filter(a => a.user_id !== id)
+        status = 204
+        body = {}
       } else if (url.pathname === '/api/v1/api_keys') {
         body = { api_keys: [] }
       } else if (url.pathname === '/api/v1/organizations') {
@@ -82,7 +112,7 @@ async function loginAndOpenSettings(page: import('@playwright/test').Page) {
 
 test.describe('Settings 子 Tab', () => {
   test('可以在管理概览、平台管理员、API Key、灰度名单和审计日志之间切换', async ({ page }) => {
-    const state: MockState = { graylist: [] }
+    const state: MockState = { graylist: [], platformAdmins: [] }
     await makeMock(state)(page)
     await loginAndOpenSettings(page)
 
@@ -102,7 +132,7 @@ test.describe('Settings 子 Tab', () => {
   })
 
   test('灰度名单可以新增并删除一条记录', async ({ page }) => {
-    const state: MockState = { graylist: [] }
+    const state: MockState = { graylist: [], platformAdmins: [] }
     await makeMock(state)(page)
     await loginAndOpenSettings(page)
 
@@ -122,6 +152,46 @@ test.describe('Settings 子 Tab', () => {
 
     await expect(page.getByText('phase14_smoke_e2e@ripple.test')).toHaveCount(0)
     expect(state.graylist).toHaveLength(0)
+  })
+
+  test('平台管理员 OWNER 撤销必须经过高危 confirm', async ({ page }) => {
+    const state: MockState = {
+      graylist: [],
+      platformAdmins: [
+        {
+          user_id: 'u-owner-2',
+          email: 'owner2@example.com',
+          role: 'OWNER',
+          note: 'bootstrap',
+          created_by: 'u-e2e',
+          created_at: new Date().toISOString(),
+        },
+      ],
+    }
+    await makeMock(state)(page)
+    await loginAndOpenSettings(page)
+
+    await page.getByRole('button', { name: '平台管理员' }).click()
+    await expect(page.getByRole('heading', { name: '平台管理员 RBAC' })).toBeVisible()
+    await expect(page.getByText('owner2@example.com')).toBeVisible()
+
+    // 第一次：取消 confirm，记录不变
+    page.once('dialog', dialog => {
+      expect(dialog.message()).toContain('撤销平台 OWNER')
+      void dialog.dismiss()
+    })
+    await page.getByRole('button', { name: '撤销' }).click()
+    await expect(page.getByText('owner2@example.com')).toBeVisible()
+    expect(state.platformAdmins).toHaveLength(1)
+
+    // 第二次：接受 confirm，记录被移除
+    page.once('dialog', dialog => {
+      expect(dialog.message()).toContain('撤销平台 OWNER')
+      void dialog.accept()
+    })
+    await page.getByRole('button', { name: '撤销' }).click()
+    await expect(page.getByText('owner2@example.com')).toHaveCount(0)
+    expect(state.platformAdmins).toHaveLength(0)
   })
 })
 
