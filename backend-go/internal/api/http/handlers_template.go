@@ -65,6 +65,7 @@ func (h *NodeTemplateHandlers) ListTemplates(w http.ResponseWriter, r *http.Requ
 func (h *NodeTemplateHandlers) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 	u, _ := CurrentUser(r.Context())
 
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB 上限
 	var req struct {
 		Name        string   `json:"name"`
 		Description string   `json:"description"`
@@ -86,6 +87,24 @@ func (h *NodeTemplateHandlers) CreateTemplate(w http.ResponseWriter, r *http.Req
 	if len(req.Name) > 100 {
 		writeError(w, http.StatusBadRequest, "name too long (max 100)")
 		return
+	}
+	if len([]rune(req.Content)) > 10000 {
+		writeError(w, http.StatusBadRequest, "content too long (max 10000 chars)")
+		return
+	}
+	if len([]rune(req.Description)) > 500 {
+		writeError(w, http.StatusBadRequest, "description too long (max 500 chars)")
+		return
+	}
+	if len(req.Tags) > 20 {
+		writeError(w, http.StatusBadRequest, "too many tags (max 20)")
+		return
+	}
+	for _, tag := range req.Tags {
+		if len(tag) > 50 {
+			writeError(w, http.StatusBadRequest, "tag too long (max 50 chars each)")
+			return
+		}
 	}
 
 	now := time.Now().UTC()

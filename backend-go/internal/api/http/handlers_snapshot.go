@@ -44,6 +44,7 @@ func (h *LakeSnapshotHandlers) CreateSnapshot(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxSnapshotLayoutBytes+4096) // layout + JSON overhead
 	var req struct {
 		Name   string          `json:"name"`
 		Layout json.RawMessage `json:"layout"`
@@ -54,6 +55,10 @@ func (h *LakeSnapshotHandlers) CreateSnapshot(w http.ResponseWriter, r *http.Req
 	}
 	if req.Name == "" {
 		writeError(w, http.StatusBadRequest, "name required")
+		return
+	}
+	if len(req.Name) > 100 {
+		writeError(w, http.StatusBadRequest, "name too long (max 100)")
 		return
 	}
 	if len(req.Layout) == 0 {

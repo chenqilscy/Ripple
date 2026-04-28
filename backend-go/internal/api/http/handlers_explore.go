@@ -64,6 +64,10 @@ func (h *ExploreHandlers) Explore(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "query is required")
 		return
 	}
+	if len([]rune(query)) < 2 {
+		writeError(w, http.StatusBadRequest, "query too short (min 2 chars)")
+		return
+	}
 	if len([]rune(query)) > 500 {
 		writeError(w, http.StatusBadRequest, "query too long (max 500 chars)")
 		return
@@ -151,15 +155,16 @@ func (h *ExploreHandlers) Explore(w http.ResponseWriter, r *http.Request) {
 }
 
 // generateExploreSummary 用一次 LLM 调用生成探索摘要。失败静默降级（返回空串）。
+// 安全：用 XML 风格分隔符将用户 query 与节点内容隔离，缓解 prompt injection。
 func (h *ExploreHandlers) generateExploreSummary(
 	ctx context.Context,
 	query string,
 	relevant []exploreNodeResult,
 ) string {
 	var sb strings.Builder
-	sb.WriteString("以下是与查询「")
-	sb.WriteString(query)
-	sb.WriteString("」最相关的图谱节点内容：\n\n")
+	// 系统指令在最前，用结构化标签包裹用户输入，防止注入攻击。
+	sb.WriteString("你是一个图谱内容分析助手。请根据以下节点内容，用 2-3 句话概括核心主题和相互关系，并给出进一步探索的建议。只输出摘要本身，不加额外说明。\n\n")
+	sb.WriteString("<nodes>\n")
 	limit := len(relevant)
 	if limit > 10 {
 		limit = 10
@@ -169,7 +174,11 @@ func (h *ExploreHandlers) generateExploreSummary(
 		sb.WriteString(relevant[i].Content)
 		sb.WriteString("\n")
 	}
-	sb.WriteString("\n请用 2-3 句话概括这些节点的核心主题和相互关系，并给出进一步探索的建议。只输出摘要本身，不加额外说明。")
+	sb.WriteString("</nodes>\n\n")
+	// 用户 query 放在最后并用标签包裹，使模型将其视为参考而非新指令。
+	sb.WriteString("<query>")
+	sb.WriteString(strings.NewReplacer("<", "＜", ">", "＞").Replace(query))
+	sb.WriteString("</query>")
 
 	ctx2, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
