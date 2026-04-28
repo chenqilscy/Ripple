@@ -18,10 +18,27 @@
   [switch]$IncludeStagingCleanup,
   [switch]$StagingCleanupApply,
   [string]$StagingPgContainer = 'ripple-staging-postgres',
-  [string]$StagingNeo4jContainer = 'ripple-staging-neo4j'
+  [string]$StagingNeo4jContainer = 'ripple-staging-neo4j',
+
+  # 时间戳日志归档（默认 ON）；归档目录：docs/launch/acceptance-logs/
+  [switch]$NoLogFile,
+  [string]$LogDir = (Join-Path (Resolve-Path "$PSScriptRoot/../..").Path 'docs/launch/acceptance-logs')
 )
 
 $ErrorActionPreference = "Stop"
+
+# 启动 transcript 归档（必须在任何业务输出之前）
+$logPath = $null
+if (-not $NoLogFile) {
+  if (-not (Test-Path $LogDir)) {
+    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+  }
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $logPath = Join-Path $LogDir ("acceptance-{0}.log" -f $stamp)
+  Start-Transcript -Path $logPath -Force | Out-Null
+  Write-Host "[log] transcript -> $logPath"
+}
+
 $results = New-Object System.Collections.Generic.List[object]
 
 function Invoke-Step {
@@ -132,6 +149,8 @@ $results | Format-Table -AutoSize | Out-String | Write-Host
 $failed = @($results | Where-Object { $_.Status -ne "PASS" })
 if ($failed.Count -gt 0) {
   Write-Host "FAILED steps: $($failed.Count)"
+  if (-not $NoLogFile) { Stop-Transcript | Out-Null }
   exit 1
 }
 Write-Host "ALL PASS"
+if (-not $NoLogFile) { Stop-Transcript | Out-Null }
