@@ -27,7 +27,11 @@ func (auditHandlerRepo) ListByResource(context.Context, string, string, int) ([]
 }
 
 func auditReq(email string) *http.Request {
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit_logs?resource_type=graylist&resource_id=entry-1", nil)
+	return auditReqFor(email, "graylist", "entry-1")
+}
+
+func auditReqFor(email, resourceType, resourceID string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit_logs?resource_type="+resourceType+"&resource_id="+resourceID, nil)
 	ctx := context.WithValue(req.Context(), ctxUserKey, &domain.User{ID: "u-admin", Email: email})
 	return req.WithContext(ctx)
 }
@@ -51,5 +55,16 @@ func TestAuditLogHandlers_List_RejectsGraylistForNonAdmin(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("want 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAuditLogHandlers_List_AllowsPlatformAdminAuditForPlatformAdmin(t *testing.T) {
+	h := &AuditLogHandlers{Repo: auditHandlerRepo{}, AdminEmails: map[string]struct{}{"admin@test.local": {}}}
+	rr := httptest.NewRecorder()
+
+	h.List(rr, auditReqFor("admin@test.local", "platform_admin", "u-target"))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 }

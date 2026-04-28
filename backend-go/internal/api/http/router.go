@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/llm"
@@ -46,8 +47,9 @@ type Deps struct {
 	// AdminEmails 平台管理员邮箱名单。
 	AdminEmails []string
 	// OrgRepo / OrgQuotas 用于平台管理员总览（P14.3）。
-	OrgRepo   store.OrgRepository
-	OrgQuotas store.OrgQuotaRepository
+	OrgRepo        store.OrgRepository
+	OrgQuotas      store.OrgQuotaRepository
+	PlatformAdmins store.PlatformAdminRepository
 	// Orgs 非 nil 时挂载 /organizations 端点（P12-C）。
 	Orgs *service.OrgService
 	// Notifications 非 nil 时挂载 /notifications 端点（P13-B）。
@@ -244,18 +246,19 @@ func NewRouter(d Deps) http.Handler {
 
 			// P10-B：审计日志查询
 			if d.AuditLogs != nil {
-				auditH := &AuditLogHandlers{Repo: d.AuditLogs, Lakes: d.Lakes, Nodes: d.Nodes, Orgs: d.Orgs, AdminEmails: adminEmails}
+				auditH := &AuditLogHandlers{Repo: d.AuditLogs, Lakes: d.Lakes, Nodes: d.Nodes, Orgs: d.Orgs, PlatformAdmins: d.PlatformAdmins, AdminEmails: adminEmails}
 				r.Get("/audit_logs", auditH.List)
 			}
-			if d.OrgRepo != nil && d.OrgQuotas != nil && len(d.AdminEmails) > 0 {
+			if d.OrgRepo != nil && d.OrgQuotas != nil && hasPlatformAdminSource(adminEmails, d.PlatformAdmins) {
 				adminH := &AdminHandlers{
-					OrgRepo:     d.OrgRepo,
-					Quotas:      d.OrgQuotas,
-					Lakes:       d.Lakes,
-					Users:       d.Users,
-					AuditLogs:   d.AuditLogs,
-					Graylist:    d.Graylist,
-					AdminEmails: adminEmails,
+					OrgRepo:        d.OrgRepo,
+					Quotas:         d.OrgQuotas,
+					Lakes:          d.Lakes,
+					Users:          d.Users,
+					AuditLogs:      d.AuditLogs,
+					Graylist:       d.Graylist,
+					PlatformAdmins: d.PlatformAdmins,
+					AdminEmails:    adminEmails,
 				}
 				if counter, ok := d.NodeCounts.(orgNodeCounter); ok {
 					adminH.Nodes = counter
@@ -270,8 +273,8 @@ func NewRouter(d Deps) http.Handler {
 				}
 				r.Get("/admin/overview", adminH.Overview)
 			}
-			if d.Graylist != nil && len(d.AdminEmails) > 0 {
-				graylistH := &GraylistHandlers{Repo: d.Graylist, AuditLogs: d.AuditLogs, AdminEmails: adminEmails}
+			if d.Graylist != nil && hasPlatformAdminSource(adminEmails, d.PlatformAdmins) {
+				graylistH := &GraylistHandlers{Repo: d.Graylist, AuditLogs: d.AuditLogs, PlatformAdmins: d.PlatformAdmins, AdminEmails: adminEmails}
 				r.Get("/admin/graylist", graylistH.List)
 				r.Post("/admin/graylist", graylistH.Upsert)
 				r.Delete("/admin/graylist/{id}", graylistH.Delete)
@@ -379,7 +382,15 @@ func NewRouter(d Deps) http.Handler {
 func adminEmailSet(emails []string) map[string]struct{} {
 	out := make(map[string]struct{}, len(emails))
 	for _, email := range emails {
-		out[email] = struct{}{}
+		key := strings.ToLower(strings.TrimSpace(email))
+		if key == "" {
+			continue
+		}
+		out[key] = struct{}{}
 	}
 	return out
+}
+
+func hasPlatformAdminSource(adminEmails map[string]struct{}, platformAdmins store.PlatformAdminRepository) bool {
+	return len(adminEmails) > 0 || platformAdmins != nil
 }

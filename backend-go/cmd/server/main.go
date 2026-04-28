@@ -87,12 +87,13 @@ func main() {
 	nodeRevs := store.NewNodeRevisionRepository(pg)
 	spaceRepo := store.NewSpaceRepository(pg)
 	permaRepo := store.NewPermaNodeRepository(pg)
-	docStateRepo := store.NewNodeDocStateRepository(pg) // P8-A/B/C
-	apiKeyRepo := store.NewAPIKeyRepository(pg)         // P10-A
-	auditLogRepo := store.NewAuditLogRepository(pg)     // P10-B
-	orgRepo := store.NewOrgRepository(pg)               // P12-C
-	orgQuotaRepo := store.NewOrgQuotaRepository(pg)     // P14-A
-	graylistRepo := store.NewGraylistRepository(pg)     // P14.3
+	docStateRepo := store.NewNodeDocStateRepository(pg)       // P8-A/B/C
+	apiKeyRepo := store.NewAPIKeyRepository(pg)               // P10-A
+	auditLogRepo := store.NewAuditLogRepository(pg)           // P10-B
+	orgRepo := store.NewOrgRepository(pg)                     // P12-C
+	orgQuotaRepo := store.NewOrgQuotaRepository(pg)           // P14-A
+	graylistRepo := store.NewGraylistRepository(pg)           // P14.3
+	platformAdminRepo := store.NewPlatformAdminRepository(pg) // P14.5
 
 	// P10-B：启动时清理 30 天以前的审计日志（非阻塞）
 	go func() {
@@ -266,6 +267,7 @@ func main() {
 		NodeCounts:     nodes,
 		AuditLogs:      auditLogRepo,
 		Graylist:       graylistRepo,
+		PlatformAdmins: platformAdminRepo,
 		AdminEmails:    cfg.AdminEmailList(),
 		OrgRepo:        orgRepo,
 		OrgQuotas:      orgQuotaRepo,

@@ -104,6 +104,20 @@ func (r *adminGraylistRepo) Delete(context.Context, string) error               
 func (r *adminGraylistRepo) IsAllowedEmail(context.Context, string) (bool, error) { return false, nil }
 func (r *adminGraylistRepo) CountAll(context.Context) (int64, error)              { return r.count, nil }
 
+type adminPlatformRepo struct{ active map[string]bool }
+
+func (r *adminPlatformRepo) IsActive(_ context.Context, userID string) (bool, error) {
+	return r.active[userID], nil
+}
+func (r *adminPlatformRepo) GetActive(context.Context, string) (*domain.PlatformAdmin, error) {
+	return nil, domain.ErrNotFound
+}
+func (r *adminPlatformRepo) ListActive(context.Context, int) ([]domain.PlatformAdmin, error) {
+	return nil, nil
+}
+func (r *adminPlatformRepo) Grant(context.Context, *domain.PlatformAdmin) error { return nil }
+func (r *adminPlatformRepo) Revoke(context.Context, string, time.Time) error    { return nil }
+
 type adminAuditRepo struct{ logs []*domain.AuditLog }
 
 func (r *adminAuditRepo) Write(context.Context, *domain.AuditLog) error { return nil }
@@ -137,6 +151,12 @@ func (r *adminAuditRepo) ListLatestByResources(_ context.Context, resourceType s
 func adminReq(email string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/overview", nil)
 	ctx := context.WithValue(req.Context(), ctxUserKey, &domain.User{ID: "u-admin", Email: email})
+	return req.WithContext(ctx)
+}
+
+func adminReqWithAPIKey(email string) *http.Request {
+	req := adminReq(email)
+	ctx := context.WithValue(req.Context(), ctxAPIKeyKey, &domain.APIKey{ID: "key-1", OwnerID: "u-admin"})
 	return req.WithContext(ctx)
 }
 
@@ -195,6 +215,46 @@ func TestAdminHandlers_Overview_RejectsNonAdmin(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	h.Overview(rr, adminReq("member@test.local"))
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAdminHandlers_Overview_AllowsPlatformAdminRepository(t *testing.T) {
+	now := time.Now().UTC()
+	h := &AdminHandlers{
+		OrgRepo: &adminOrgRepo{
+			orgs:    []domain.Organization{{ID: "org-1", Name: "Alpha", Slug: "alpha", OwnerID: "u-1", CreatedAt: now, UpdatedAt: now}},
+			members: map[string][]domain.OrgMember{"org-1": {{OrgID: "org-1", UserID: "u-1", Role: domain.OrgRoleOwner}}},
+		},
+		Quotas:         &adminQuotaRepo{quota: &domain.OrgQuota{OrgID: "org-1", MaxMembers: 3, MaxLakes: 5, MaxNodes: 10, MaxAttachments: 2, MaxAPIKeys: 4, MaxStorageMB: 8, CreatedAt: now, UpdatedAt: now}},
+		Lakes:          &fakeOrgLakeLister{},
+		Users:          &adminUserRepo{count: 1},
+		Nodes:          &fakeOrgNodeCounter{},
+		APIKeys:        &fakeOrgAPIKeyCounter{},
+		Attachments:    &fakeOrgAttachmentUsage{},
+		Graylist:       &adminGraylistRepo{},
+		PlatformAdmins: &adminPlatformRepo{active: map[string]bool{"u-admin": true}},
+	}
+	rr := httptest.NewRecorder()
+
+	h.Overview(rr, adminReq("not-in-env@test.local"))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAdminHandlers_Overview_RejectsAPIKeyAdminAccess(t *testing.T) {
+	h := &AdminHandlers{
+		OrgRepo:     &adminOrgRepo{},
+		Quotas:      &adminQuotaRepo{},
+		AdminEmails: map[string]struct{}{"admin@test.local": {}},
+	}
+	rr := httptest.NewRecorder()
+
+	h.Overview(rr, adminReqWithAPIKey("admin@test.local"))
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("want 403, got %d: %s", rr.Code, rr.Body.String())

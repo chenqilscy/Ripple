@@ -15,9 +15,10 @@ import (
 
 // GraylistHandlers 管理灰度准入邮箱名单。
 type GraylistHandlers struct {
-	Repo        store.GraylistRepository
-	AuditLogs   store.AuditLogRepository
-	AdminEmails map[string]struct{}
+	Repo           store.GraylistRepository
+	AuditLogs      store.AuditLogRepository
+	PlatformAdmins store.PlatformAdminRepository
+	AdminEmails    map[string]struct{}
 }
 
 type graylistEntryResp struct {
@@ -45,7 +46,12 @@ func (h *GraylistHandlers) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if _, ok := h.AdminEmails[strings.ToLower(strings.TrimSpace(actor.Email))]; !ok {
+	isAdmin, err := isPlatformAdmin(r.Context(), actor, h.AdminEmails, h.PlatformAdmins)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "platform admin check failed")
+		return
+	}
+	if !isAdmin {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -68,7 +74,12 @@ func (h *GraylistHandlers) Upsert(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if _, ok := h.AdminEmails[strings.ToLower(strings.TrimSpace(actor.Email))]; !ok {
+	isAdmin, err := isPlatformAdmin(r.Context(), actor, h.AdminEmails, h.PlatformAdmins)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "platform admin check failed")
+		return
+	}
+	if !isAdmin {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -113,7 +124,12 @@ func (h *GraylistHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if _, ok := h.AdminEmails[strings.ToLower(strings.TrimSpace(actor.Email))]; !ok {
+	isAdmin, err := isPlatformAdmin(r.Context(), actor, h.AdminEmails, h.PlatformAdmins)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "platform admin check failed")
+		return
+	}
+	if !isAdmin {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}

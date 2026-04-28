@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
@@ -63,21 +62,17 @@ type adminOverviewResp struct {
 }
 
 type AdminHandlers struct {
-	OrgRepo     store.OrgRepository
-	Quotas      store.OrgQuotaRepository
-	Lakes       orgLakeLister
-	Users       store.UserRepository
-	Nodes       orgNodeCounter
-	APIKeys     apiKeyOrgCounter
-	Attachments orgAttachmentUsageReader
-	AuditLogs   store.AuditLogRepository
-	Graylist    store.GraylistRepository
-	AdminEmails map[string]struct{}
-}
-
-func isPlatformAdminEmail(email string, adminEmails map[string]struct{}) bool {
-	_, ok := adminEmails[strings.ToLower(strings.TrimSpace(email))]
-	return ok
+	OrgRepo        store.OrgRepository
+	Quotas         store.OrgQuotaRepository
+	Lakes          orgLakeLister
+	Users          store.UserRepository
+	Nodes          orgNodeCounter
+	APIKeys        apiKeyOrgCounter
+	Attachments    orgAttachmentUsageReader
+	AuditLogs      store.AuditLogRepository
+	Graylist       store.GraylistRepository
+	PlatformAdmins store.PlatformAdminRepository
+	AdminEmails    map[string]struct{}
 }
 
 // Overview GET /api/v1/admin/overview
@@ -87,7 +82,12 @@ func (h *AdminHandlers) Overview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if !isPlatformAdminEmail(actor.Email, h.AdminEmails) {
+	isAdmin, err := isPlatformAdmin(r.Context(), actor, h.AdminEmails, h.PlatformAdmins)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "platform admin check failed")
+		return
+	}
+	if !isAdmin {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
