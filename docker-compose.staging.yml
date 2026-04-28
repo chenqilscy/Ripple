@@ -112,6 +112,10 @@ services:
       RIPPLE_UPLOAD_DIR: /app/data/uploads
       RIPPLE_METRICS_ENABLED: "true"
       RIPPLE_LOG_LEVEL: ${LOG_LEVEL:-info}
+      # LLM providers (P20-A)
+      RIPPLE_ZHIPU_ENDPOINT: ${RIPPLE_ZHIPU_ENDPOINT:-}
+      RIPPLE_ZHIPU_API_KEY: ${RIPPLE_ZHIPU_API_KEY:-}
+      RIPPLE_ZHIPU_MODEL: ${RIPPLE_ZHIPU_MODEL:-glm-4-flash}
     ports:
       - "${STAGING_BACKEND_PORT:-18000}:8000"
     volumes:
