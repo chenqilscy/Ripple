@@ -15,7 +15,7 @@ version: "3.9"
 
 services:
   prometheus:
-    image: prom/prometheus:v2.51.2
+    image: prom/prometheus:v2.53.0
     container_name: ripple-monitoring-prometheus
     restart: unless-stopped
     ports:
@@ -27,10 +27,10 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=15d"
     networks:
-      - ripple-net
+      - ripple_default
 
   grafana:
-    image: grafana/grafana-oss:10.4.2
+    image: grafana/grafana:11.0.0
     container_name: ripple-monitoring-grafana
     restart: unless-stopped
     ports:
@@ -43,13 +43,13 @@ services:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     networks:
-      - ripple-net
+      - ripple_default
 
 volumes:
   prometheus_data:
   grafana_data:
 
 networks:
-  ripple-net:
+  ripple_default:
     external: true
-    name: ripple-net
+    name: ripple_default
