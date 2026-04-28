@@ -49,6 +49,8 @@
 | [Phase13-rollback-acceptance-20260427](dev/Phase13-rollback-acceptance-20260427.md) | Phase 13 应用回滚、数据库 down/up 与 CI 验收记录 |
 | [Phase13-canonical-path-repair-20260428](dev/Phase13-canonical-path-repair-20260428.md) | 远端 `/home/admin/Ripple` 标准源码路径权限修复记录 |
 | [v0.13.0-release-notes](dev/v0.13.0-release-notes.md) | Phase 13 灰度准入版本发布说明 |
+| [v0.14.0-release-notes](dev/v0.14.0-release-notes.md) | Phase 14 产品化与运营化版本发布说明 |
+| [v0.14.0-GA-公告草稿](pinpai/v0.14.0-GA-公告草稿.md) | Phase 14 正式发布对外公告口径草稿 |
 | [Phase14-A-技术方案评审-20260427](dev/Phase14-A-技术方案评审-20260427.md) | Org 配额数据模型第一切片评审与验证记录 |
 | [Phase14-6-运营化回归与准入设计-20260428](dev/Phase14-6-运营化回归与准入设计-20260428.md) | Phase 14.6 运营化回归、WebSocket smoke 与准入 Gate 设计 |
 | [Phase13-故障演练验收记录模板](dev/Phase13-故障演练验收记录模板.md) | 演练结果记录模板 |
