@@ -261,9 +261,11 @@ export const api = {
     return request('DELETE', `/api/v1/lakes/${lakeId}/members/${userId}`)
   },
 
-  // ---- Full-text Search (P12-D) ----
-  searchNodes(q: string, lakeId: string, limit = 20): Promise<{ results: import('./types').SearchHit[] }> {
+  // ---- Full-text Search (P12-D / P22) ----
+  searchNodes(q: string, lakeId: string, limit = 20, state?: string, type?: string): Promise<{ results: import('./types').SearchHit[] }> {
     const params = new URLSearchParams({ q, lake_id: lakeId, limit: String(limit) })
+    if (state) params.set('state', state)
+    if (type) params.set('type', type)
     return request('GET', `/api/v1/search?${params}`)
   },
 

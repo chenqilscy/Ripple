@@ -37,6 +37,34 @@ func (r *searchableNodeRepo) Search(_ context.Context, lakeID, q string, limit i
 	return out, nil
 }
 
+func (r *searchableNodeRepo) SearchFiltered(_ context.Context, lakeID, q, state, nodeType string, limit int) ([]domain.NodeSearchResult, error) {
+	var out []domain.NodeSearchResult
+	for _, n := range r.data {
+		if n.LakeID != lakeID || n.State == domain.StateErased {
+			continue
+		}
+		if state != "" && string(n.State) != state {
+			continue
+		}
+		if nodeType != "" && string(n.Type) != nodeType {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(n.Content), strings.ToLower(q)) {
+			continue
+		}
+		out = append(out, domain.NodeSearchResult{
+			NodeID:  n.ID,
+			LakeID:  n.LakeID,
+			Snippet: n.Content,
+			Score:   1.0,
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 func newSearchSvc(t *testing.T) (*NodeService, *memLakeRepo, *memMembershipRepo, *searchableNodeRepo) {
 	t.Helper()
 	lakes := newMemLakeRepo()

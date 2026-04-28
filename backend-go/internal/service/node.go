@@ -429,6 +429,27 @@ func (s *NodeService) SearchNodes(ctx context.Context, actor *domain.User, lakeI
 	return s.nodes.Search(ctx, lakeID, q, limit)
 }
 
+// SearchNodesFiltered P22：全文搜索 + state/type 过滤。
+// state 和 nodeType 为空字符串时不过滤。
+func (s *NodeService) SearchNodesFiltered(ctx context.Context, actor *domain.User, lakeID, q, state, nodeType string, limit int) ([]domain.NodeSearchResult, error) {
+	if err := s.assertReadable(ctx, actor, lakeID); err != nil {
+		return nil, err
+	}
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, nil
+	}
+	// 校验可选枚举值（防注入）
+	if state != "" && !domain.NodeState(state).IsValid() {
+		return nil, domain.ErrInvalidInput
+	}
+	if nodeType != "" && !domain.NodeType(nodeType).IsValid() {
+		return nil, domain.ErrInvalidInput
+	}
+	q = escapeLuceneQuery(q)
+	return s.nodes.SearchFiltered(ctx, lakeID, q, state, nodeType, limit)
+}
+
 // FindRelated P18-A：取目标节点所在湖内的相关节点（基于全文索引）。
 // 使用节点内容的前 50 字作为关键词查询。
 func (s *NodeService) FindRelated(ctx context.Context, actor *domain.User, nodeID string, limit int) ([]domain.NodeSearchResult, error) {

@@ -17,6 +17,9 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [semantic, setSemantic] = useState(false)
+  // P22：过滤参数
+  const [stateFilter, setStateFilter] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -34,14 +37,18 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const doSearch = useCallback(async (query: string, isSemantic: boolean) => {
+  const doSearch = useCallback(async (query: string, isSemantic: boolean, st: string, tp: string) => {
     if (!query.trim()) { setResults([]); return }
     setLoading(true)
     setError(null)
     try {
-      const fn = isSemantic ? api.semanticSearchNodes : api.searchNodes
-      const { results: hits } = await fn(query.trim(), lakeId)
-      setResults(hits)
+      if (isSemantic) {
+        const { results: hits } = await api.semanticSearchNodes(query.trim(), lakeId)
+        setResults(hits)
+      } else {
+        const { results: hits } = await api.searchNodes(query.trim(), lakeId, 20, st || undefined, tp || undefined)
+        setResults(hits)
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Search failed')
     } finally {
@@ -52,13 +59,17 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
   const handleChange = (val: string) => {
     setQ(val)
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => void doSearch(val, semantic), 300)
+    debounceRef.current = setTimeout(() => void doSearch(val, semantic, stateFilter, typeFilter), 300)
   }
 
   const handleModeToggle = () => {
     const next = !semantic
     setSemantic(next)
-    if (q.trim()) void doSearch(q, next)
+    if (q.trim()) void doSearch(q, next, stateFilter, typeFilter)
+  }
+
+  const handleFilterChange = (newState: string, newType: string) => {
+    if (q.trim()) void doSearch(q, semantic, newState, newType)
   }
 
   return (
@@ -119,6 +130,50 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
         </div>
 
         <div style={{ height: 1, background: '#1e3050', margin: '10px 0 0' }} />
+
+        {/* P22：过滤器行（仅关键词搜索可用） */}
+        {!semantic && (
+          <div style={{ padding: '6px 16px', display: 'flex', gap: 8, borderBottom: '1px solid #1a2840' }}>
+            <select
+              value={stateFilter}
+              onChange={e => { setStateFilter(e.target.value); handleFilterChange(e.target.value, typeFilter) }}
+              style={{
+                background: '#1a2840', border: '1px solid #2a3e5c', borderRadius: 4,
+                color: stateFilter ? '#c8d8e8' : '#5a7a9e', fontSize: 11, padding: '3px 6px', cursor: 'pointer',
+              }}
+            >
+              <option value="">所有状态</option>
+              <option value="MIST">雾态</option>
+              <option value="DROP">水滴</option>
+              <option value="FROZEN">冻结</option>
+              <option value="VAPOR">蒸发</option>
+              <option value="GHOST">幽灵</option>
+            </select>
+            <select
+              value={typeFilter}
+              onChange={e => { setTypeFilter(e.target.value); handleFilterChange(stateFilter, e.target.value) }}
+              style={{
+                background: '#1a2840', border: '1px solid #2a3e5c', borderRadius: 4,
+                color: typeFilter ? '#c8d8e8' : '#5a7a9e', fontSize: 11, padding: '3px 6px', cursor: 'pointer',
+              }}
+            >
+              <option value="">所有类型</option>
+              <option value="TEXT">文本</option>
+              <option value="IMAGE">图片</option>
+              <option value="LINK">链接</option>
+              <option value="AUDIO">音频</option>
+            </select>
+            {(stateFilter || typeFilter) && (
+              <button
+                onClick={() => { setStateFilter(''); setTypeFilter(''); handleFilterChange('', '') }}
+                style={{
+                  background: 'none', border: 'none', color: '#f38ba8',
+                  fontSize: 11, cursor: 'pointer', padding: '2px 4px',
+                }}
+              >✕ 清除过滤</button>
+            )}
+          </div>
+        )}
 
         {/* Results */}
         <div style={{ maxHeight: 400, overflowY: 'auto', padding: '4px 0 8px' }}>

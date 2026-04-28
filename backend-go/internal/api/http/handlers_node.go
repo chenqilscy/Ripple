@@ -260,8 +260,9 @@ func (h *NodeHandlers) Rollback(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toNodeResp(n))
 }
 
-// Search GET /api/v1/search?q=TEXT&lake_id=UUID&limit=N
+// Search GET /api/v1/search?q=TEXT&lake_id=UUID&limit=N&state=STATE&type=TYPE
 // P12-D：湖内节点全文搜索，调用方须是湖成员（或湖为公开湖）。
+// P22：支持可选 state/type 过滤（空字符串不过滤）。
 func (h *NodeHandlers) Search(w http.ResponseWriter, r *http.Request) {
 	u, ok := CurrentUser(r.Context())
 	if !ok {
@@ -288,7 +289,19 @@ func (h *NodeHandlers) Search(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	results, err := h.Nodes.SearchNodes(r.Context(), u, lakeID, q, limit)
+	// P22：可选过滤参数
+	stateFilter := r.URL.Query().Get("state")
+	typeFilter := r.URL.Query().Get("type")
+
+	var (
+		results []domain.NodeSearchResult
+		err     error
+	)
+	if stateFilter != "" || typeFilter != "" {
+		results, err = h.Nodes.SearchNodesFiltered(r.Context(), u, lakeID, q, stateFilter, typeFilter, limit)
+	} else {
+		results, err = h.Nodes.SearchNodes(r.Context(), u, lakeID, q, limit)
+	}
 	if err != nil {
 		writeError(w, mapDomainError(err), err.Error())
 		return
