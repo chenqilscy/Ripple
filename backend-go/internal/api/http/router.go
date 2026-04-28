@@ -37,8 +37,17 @@ type Deps struct {
 	DocStates store.NodeDocStateRepository
 	// APIKeys 非 nil 时挂载 /api_keys 端点并开启 ApiKey 鉴权（P10-A）。
 	APIKeys store.APIKeyRepository
+	// NodeCounts P14.3：组织运营视图需要节点用量聚合。
+	NodeCounts store.NodeRepository
 	// AuditLogs 非 nil 时挂载 GET /audit_logs（P10-B）。
 	AuditLogs store.AuditLogRepository
+	// Graylist 非 nil 时挂载 /admin/graylist（P14.3 灰度名单入口）。
+	Graylist store.GraylistRepository
+	// AdminEmails 平台管理员邮箱名单。
+	AdminEmails []string
+	// OrgRepo / OrgQuotas 用于平台管理员总览（P14.3）。
+	OrgRepo   store.OrgRepository
+	OrgQuotas store.OrgQuotaRepository
 	// Orgs 非 nil 时挂载 /organizations 端点（P12-C）。
 	Orgs *service.OrgService
 	// Notifications 非 nil 时挂载 /notifications 端点（P13-B）。
@@ -237,6 +246,43 @@ func NewRouter(d Deps) http.Handler {
 				auditH := &AuditLogHandlers{Repo: d.AuditLogs, Lakes: d.Lakes, Nodes: d.Nodes, Orgs: d.Orgs}
 				r.Get("/audit_logs", auditH.List)
 			}
+			if d.OrgRepo != nil && d.OrgQuotas != nil && len(d.AdminEmails) > 0 {
+				adminEmails := make(map[string]struct{}, len(d.AdminEmails))
+				for _, email := range d.AdminEmails {
+					adminEmails[email] = struct{}{}
+				}
+				adminH := &AdminHandlers{
+					OrgRepo:     d.OrgRepo,
+					Quotas:      d.OrgQuotas,
+					Lakes:       d.Lakes,
+					Users:       d.Users,
+					AuditLogs:   d.AuditLogs,
+					Graylist:    d.Graylist,
+					AdminEmails: adminEmails,
+				}
+				if counter, ok := d.NodeCounts.(orgNodeCounter); ok {
+					adminH.Nodes = counter
+				}
+				if counter, ok := d.APIKeys.(apiKeyOrgCounter); ok {
+					adminH.APIKeys = counter
+				}
+				if d.Attachments != nil {
+					if usage, ok := d.Attachments.Repo.(orgAttachmentUsageReader); ok {
+						adminH.Attachments = usage
+					}
+				}
+				r.Get("/admin/overview", adminH.Overview)
+			}
+			if d.Graylist != nil && len(d.AdminEmails) > 0 {
+				adminEmails := make(map[string]struct{}, len(d.AdminEmails))
+				for _, email := range d.AdminEmails {
+					adminEmails[email] = struct{}{}
+				}
+				graylistH := &GraylistHandlers{Repo: d.Graylist, AdminEmails: adminEmails}
+				r.Get("/admin/graylist", graylistH.List)
+				r.Post("/admin/graylist", graylistH.Upsert)
+				r.Delete("/admin/graylist/{id}", graylistH.Delete)
+			}
 
 			// P10-C：湖成员角色变更
 			r.Put("/lakes/{id}/members/{userID}/role", lakeH.UpdateMemberRole)
@@ -247,10 +293,23 @@ func NewRouter(d Deps) http.Handler {
 
 			// P12-C：组织
 			if d.Orgs != nil {
-				orgH := &OrgHandlers{Orgs: d.Orgs, Lakes: d.Lakes, Users: d.Users}
+				orgH := &OrgHandlers{Orgs: d.Orgs, Lakes: d.Lakes, Users: d.Users, AuditLogs: d.AuditLogs}
+				if counter, ok := d.NodeCounts.(orgNodeCounter); ok {
+					orgH.Nodes = counter
+				}
+				if counter, ok := d.APIKeys.(apiKeyOrgCounter); ok {
+					orgH.APIKeys = counter
+				}
+				if d.Attachments != nil {
+					if usage, ok := d.Attachments.Repo.(orgAttachmentUsageReader); ok {
+						orgH.Attachments = usage
+					}
+				}
 				r.Post("/organizations", orgH.CreateOrg)
 				r.Get("/organizations", orgH.ListMyOrgs)
+				r.Get("/organizations/overview", orgH.ListOrgOverviews)
 				r.Get("/organizations/{id}", orgH.GetOrg)
+				r.Get("/organizations/{id}/overview", orgH.GetOrgOverview)
 				r.Get("/organizations/{id}/quota", orgH.GetOrgQuota)
 				r.Patch("/organizations/{id}/quota", orgH.UpdateOrgQuota)
 				r.Get("/organizations/{id}/members", orgH.ListMembers)

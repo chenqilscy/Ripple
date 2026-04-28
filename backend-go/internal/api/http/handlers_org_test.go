@@ -20,7 +20,9 @@ type fakeUserRepo struct {
 }
 
 type handlerOrgRepo struct {
-	roles map[string]domain.OrgRole
+	roles   map[string]domain.OrgRole
+	members []domain.OrgMember
+	orgs    []domain.Organization
 }
 
 func (h *handlerOrgRepo) Create(_ context.Context, _ *domain.Organization) error { return nil }
@@ -31,7 +33,9 @@ func (h *handlerOrgRepo) GetBySlug(_ context.Context, _ string) (*domain.Organiz
 	return h.GetByID(context.Background(), "org-1")
 }
 func (h *handlerOrgRepo) ListByUser(_ context.Context, _ string) ([]domain.Organization, error) {
-	return nil, nil
+	out := make([]domain.Organization, len(h.orgs))
+	copy(out, h.orgs)
+	return out, nil
 }
 func (h *handlerOrgRepo) AddMember(_ context.Context, _ *domain.OrgMember) error { return nil }
 func (h *handlerOrgRepo) GetMemberRole(_ context.Context, _ string, userID string) (domain.OrgRole, error) {
@@ -42,7 +46,9 @@ func (h *handlerOrgRepo) GetMemberRole(_ context.Context, _ string, userID strin
 	return role, nil
 }
 func (h *handlerOrgRepo) ListMembers(_ context.Context, _ string) ([]domain.OrgMember, error) {
-	return nil, nil
+	out := make([]domain.OrgMember, len(h.members))
+	copy(out, h.members)
+	return out, nil
 }
 func (h *handlerOrgRepo) UpdateMemberRole(_ context.Context, _, _ string, _ domain.OrgRole) error {
 	return nil
@@ -53,6 +59,42 @@ func (h *handlerOrgRepo) CountOwners(_ context.Context, _ string) (int, error) {
 type handlerQuotaRepo struct {
 	quota *domain.OrgQuota
 }
+
+type fakeOrgLakeLister struct{ lakes []domain.Lake }
+
+func (f *fakeOrgLakeLister) ListLakesByOrg(context.Context, *domain.User, string, *service.OrgService) ([]domain.Lake, error) {
+	out := make([]domain.Lake, len(f.lakes))
+	copy(out, f.lakes)
+	return out, nil
+}
+
+type fakeOrgNodeCounter struct{ used int64 }
+
+func (f *fakeOrgNodeCounter) CountByOrg(context.Context, string) (int64, error) { return f.used, nil }
+
+type fakeOrgAttachmentUsage struct {
+	count int64
+	size  int64
+}
+
+func (f *fakeOrgAttachmentUsage) CountByOrg(context.Context, string) (int64, error) { return f.count, nil }
+func (f *fakeOrgAttachmentUsage) SumSizeByOrg(context.Context, string) (int64, error) {
+	return f.size, nil
+}
+
+type fakeOrgAPIKeyCounter struct{ used int64 }
+
+func (f *fakeOrgAPIKeyCounter) CountByOrg(context.Context, string) (int64, error) { return f.used, nil }
+
+type fakeOrgAuditLogRepo struct{ logs []*domain.AuditLog }
+
+func (f *fakeOrgAuditLogRepo) Write(context.Context, *domain.AuditLog) error { return nil }
+func (f *fakeOrgAuditLogRepo) ListByResource(context.Context, string, string, int) ([]*domain.AuditLog, error) {
+	out := make([]*domain.AuditLog, len(f.logs))
+	copy(out, f.logs)
+	return out, nil
+}
+func (f *fakeOrgAuditLogRepo) PruneOlderThan(context.Context, time.Time) (int64, error) { return 0, nil }
 
 func (h *handlerQuotaRepo) EnsureDefault(_ context.Context, orgID string) (*domain.OrgQuota, error) {
 	if h.quota == nil {
@@ -184,6 +226,149 @@ func TestOrgHandlers_GetOrgQuota(t *testing.T) {
 	}
 	if out.OrgID != "org-1" || out.MaxMembers != 20 {
 		t.Fatalf("unexpected quota response: %+v", out)
+	}
+}
+
+func TestOrgHandlers_GetOrgQuota_IncludesUsage(t *testing.T) {
+	svc := service.NewOrgService(&handlerOrgRepo{
+		roles: map[string]domain.OrgRole{"u-1": domain.OrgRoleAdmin},
+		members: []domain.OrgMember{
+			{OrgID: "org-1", UserID: "u-1", Role: domain.OrgRoleAdmin},
+			{OrgID: "org-1", UserID: "u-2", Role: domain.OrgRoleMember},
+		},
+	}).WithQuotaRepository(&handlerQuotaRepo{})
+	h := &OrgHandlers{
+		Orgs:        svc,
+		Lakes:       &fakeOrgLakeLister{lakes: []domain.Lake{{ID: "lake-1"}, {ID: "lake-2"}}},
+		Nodes:       &fakeOrgNodeCounter{used: 7},
+		APIKeys:     &fakeOrgAPIKeyCounter{used: 3},
+		Attachments: &fakeOrgAttachmentUsage{count: 5, size: 3*1024*1024 + 1},
+	}
+	rr := httptest.NewRecorder()
+	req := authReq(http.MethodGet, "/api/v1/organizations/org-1/quota", "")
+
+	h.GetOrgQuota(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var out orgQuotaResp
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode quota with usage: %v", err)
+	}
+	if out.Usage == nil {
+		t.Fatal("want usage in quota response")
+	}
+	if out.Usage.MembersUsed != 2 || out.Usage.LakesUsed != 2 || out.Usage.NodesUsed != 7 || out.Usage.AttachmentsUsed != 5 || out.Usage.APIKeysUsed != 3 || out.Usage.StorageMBUsed != 4 {
+		t.Fatalf("unexpected usage response: %+v", out.Usage)
+	}
+}
+
+func TestOrgHandlers_GetOrgOverview(t *testing.T) {
+	now := time.Now().UTC()
+	svc := service.NewOrgService(&handlerOrgRepo{
+		roles: map[string]domain.OrgRole{"u-1": domain.OrgRoleAdmin},
+		members: []domain.OrgMember{
+			{OrgID: "org-1", UserID: "u-1", Role: domain.OrgRoleAdmin},
+			{OrgID: "org-1", UserID: "u-2", Role: domain.OrgRoleMember},
+		},
+	}).WithQuotaRepository(&handlerQuotaRepo{})
+	h := &OrgHandlers{
+		Orgs:        svc,
+		Lakes:       &fakeOrgLakeLister{lakes: []domain.Lake{{ID: "lake-1"}}},
+		Nodes:       &fakeOrgNodeCounter{used: 9},
+		APIKeys:     &fakeOrgAPIKeyCounter{used: 2},
+		Attachments: &fakeOrgAttachmentUsage{count: 4, size: 2 * 1024 * 1024},
+		AuditLogs: &fakeOrgAuditLogRepo{logs: []*domain.AuditLog{{
+			ID:           "audit-1",
+			ActorID:      "u-1",
+			Action:       domain.AuditOrgQuotaUpdate,
+			ResourceType: "org_quota",
+			ResourceID:   "org-1",
+			Detail:       map[string]any{"after": map[string]any{"max_members": 30}},
+			CreatedAt:    now,
+		}}},
+	}
+	rr := httptest.NewRecorder()
+	req := authReq(http.MethodGet, "/api/v1/organizations/org-1/overview", "")
+
+	h.GetOrgOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var out orgOverviewResp
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode org overview: %v", err)
+	}
+	if out.Organization.ID != "org-1" {
+		t.Fatalf("unexpected organization: %+v", out.Organization)
+	}
+	if out.Quota.Usage == nil || out.Quota.Usage.MembersUsed != 2 || out.Quota.Usage.NodesUsed != 9 || out.Quota.Usage.StorageMBUsed != 2 {
+		t.Fatalf("unexpected overview quota usage: %+v", out.Quota.Usage)
+	}
+	if len(out.RecentQuotaAudits) != 1 || out.RecentQuotaAudits[0].ID != "audit-1" || out.RecentQuotaAudits[0].Action != domain.AuditOrgQuotaUpdate {
+		t.Fatalf("unexpected recent audits: %+v", out.RecentQuotaAudits)
+	}
+}
+
+func TestOrgHandlers_ListOrgOverviews(t *testing.T) {
+	now := time.Now().UTC()
+	svc := service.NewOrgService(&handlerOrgRepo{
+		orgs: []domain.Organization{{
+			ID:        "org-1",
+			Name:      "Org One",
+			Slug:      "org-one",
+			OwnerID:   "u-1",
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		roles: map[string]domain.OrgRole{"u-1": domain.OrgRoleAdmin},
+		members: []domain.OrgMember{
+			{OrgID: "org-1", UserID: "u-1", Role: domain.OrgRoleAdmin},
+			{OrgID: "org-1", UserID: "u-2", Role: domain.OrgRoleMember},
+		},
+	}).WithQuotaRepository(&handlerQuotaRepo{})
+	h := &OrgHandlers{
+		Orgs:        svc,
+		Lakes:       &fakeOrgLakeLister{lakes: []domain.Lake{{ID: "lake-1"}}},
+		Nodes:       &fakeOrgNodeCounter{used: 4},
+		APIKeys:     &fakeOrgAPIKeyCounter{used: 1},
+		Attachments: &fakeOrgAttachmentUsage{count: 2, size: 1 * 1024 * 1024},
+		AuditLogs: &fakeOrgAuditLogRepo{logs: []*domain.AuditLog{{
+			ID:           "audit-1",
+			ActorID:      "u-1",
+			Action:       domain.AuditOrgQuotaUpdate,
+			ResourceType: "org_quota",
+			ResourceID:   "org-1",
+			CreatedAt:    now,
+		}}},
+	}
+	rr := httptest.NewRecorder()
+	req := authReq(http.MethodGet, "/api/v1/organizations/overview", "")
+
+	h.ListOrgOverviews(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var out struct {
+		Organizations []orgOverviewResp `json:"organizations"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode org overview list: %v", err)
+	}
+	if len(out.Organizations) != 1 {
+		t.Fatalf("want 1 organization, got %d", len(out.Organizations))
+	}
+	if out.Organizations[0].Organization.ID != "org-1" {
+		t.Fatalf("unexpected organization: %+v", out.Organizations[0].Organization)
+	}
+	if out.Organizations[0].Quota.Usage == nil || out.Organizations[0].Quota.Usage.MembersUsed != 2 || out.Organizations[0].Quota.Usage.LakesUsed != 1 {
+		t.Fatalf("unexpected overview list usage: %+v", out.Organizations[0].Quota.Usage)
+	}
+	if len(out.Organizations[0].RecentQuotaAudits) != 1 || out.Organizations[0].RecentQuotaAudits[0].ID != "audit-1" {
+		t.Fatalf("unexpected overview list audits: %+v", out.Organizations[0].RecentQuotaAudits)
 	}
 }
 

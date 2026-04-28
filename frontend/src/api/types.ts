@@ -186,6 +186,25 @@ export interface AuditLogItem {
   created_at: string
 }
 
+export interface GraylistEntry {
+  id: string
+  email: string
+  note: string
+  created_by: string
+  created_at: string
+}
+
+export interface AdminOverviewStats {
+  organizations_count: number
+  users_count: number
+  graylist_entries_count: number
+}
+
+export interface AdminOverview {
+  stats: AdminOverviewStats
+  organizations?: OrgOverview[]
+}
+
 // ---- Lake Members (P11-C) ----
 export type LakeRole = 'OWNER' | 'NAVIGATOR' | 'PASSENGER' | 'OBSERVER'
 
@@ -230,8 +249,24 @@ export interface OrgQuota {
   max_attachments: number
   max_api_keys: number
   max_storage_mb: number
+  usage?: OrgQuotaUsage
   created_at: string
   updated_at: string
+}
+
+export interface OrgQuotaUsage {
+  members_used: number
+  lakes_used: number
+  nodes_used: number
+  attachments_used: number
+  api_keys_used: number
+  storage_mb_used: number
+}
+
+export interface OrgOverview {
+  organization: Organization
+  quota: OrgQuota
+  recent_quota_audits?: AuditLogItem[]
 }
 
 export type OrgQuotaPatch = Partial<Pick<OrgQuota,

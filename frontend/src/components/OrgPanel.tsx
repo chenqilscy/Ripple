@@ -4,7 +4,8 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { Lake, OrgMember, OrgQuota, OrgQuotaPatch, OrgRole, Organization } from '../api/types'
+import AuditLogViewer from './AuditLogViewer'
+import type { Lake, OrgMember, OrgOverview, OrgQuota, OrgQuotaPatch, OrgRole, Organization } from '../api/types'
 
 const ROLE_COLOR: Record<OrgRole, string> = {
   OWNER:  '#f5a623',
@@ -13,6 +14,14 @@ const ROLE_COLOR: Record<OrgRole, string> = {
 }
 
 const INVITE_ROLE_OPTIONS: OrgRole[] = ['ADMIN', 'MEMBER']
+
+export function orgRecentQuotaAudits(overview: OrgOverview | null | undefined) {
+  return overview?.recent_quota_audits ?? []
+}
+
+export function orgLatestQuotaAudit(org: Pick<OrgOverview, 'recent_quota_audits'>) {
+  return (org.recent_quota_audits ?? [])[0]
+}
 
 interface MemberListProps {
   org: Organization
@@ -50,9 +59,23 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
   const [quotaLoading, setQuotaLoading] = useState(false)
   const [quotaSaving, setQuotaSaving] = useState(false)
   const [quotaError, setQuotaError] = useState<string | null>(null)
+  const [overview, setOverview] = useState<OrgOverview | null>(null)
+  const [showQuotaAuditLog, setShowQuotaAuditLog] = useState(false)
 
   const currentMember = members.find(m => m.user_id === currentUserId)
   const isAdmin = currentMember?.role === 'OWNER' || currentMember?.role === 'ADMIN'
+
+  const applyQuotaState = useCallback((nextQuota: OrgQuota) => {
+    setQuota(nextQuota)
+    setQuotaDraft({
+      max_members: String(nextQuota.max_members),
+      max_lakes: String(nextQuota.max_lakes),
+      max_nodes: String(nextQuota.max_nodes),
+      max_attachments: String(nextQuota.max_attachments),
+      max_api_keys: String(nextQuota.max_api_keys),
+      max_storage_mb: String(nextQuota.max_storage_mb),
+    })
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -84,22 +107,15 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
     setQuotaLoading(true)
     setQuotaError(null)
     try {
-      const q = await api.getOrgQuota(org.id)
-      setQuota(q)
-      setQuotaDraft({
-        max_members: String(q.max_members),
-        max_lakes: String(q.max_lakes),
-        max_nodes: String(q.max_nodes),
-        max_attachments: String(q.max_attachments),
-        max_api_keys: String(q.max_api_keys),
-        max_storage_mb: String(q.max_storage_mb),
-      })
+      const nextOverview = await api.getOrgOverview(org.id)
+      setOverview(nextOverview)
+      applyQuotaState(nextOverview.quota)
     } catch (e: unknown) {
       setQuotaError(e instanceof Error ? e.message : 'Failed to load quota')
     } finally {
       setQuotaLoading(false)
     }
-  }, [org.id])
+  }, [org.id, applyQuotaState])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => { if (tab === 'lakes') void loadLakes() }, [tab, loadLakes])
@@ -182,22 +198,26 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
     setQuotaSaving(true)
     setQuotaError(null)
     try {
-      const next = await api.updateOrgQuota(org.id, patch)
-      setQuota(next)
-      setQuotaDraft({
-        max_members: String(next.max_members),
-        max_lakes: String(next.max_lakes),
-        max_nodes: String(next.max_nodes),
-        max_attachments: String(next.max_attachments),
-        max_api_keys: String(next.max_api_keys),
-        max_storage_mb: String(next.max_storage_mb),
-      })
+      await api.updateOrgQuota(org.id, patch)
+      const nextOverview = await api.getOrgOverview(org.id)
+      setOverview(nextOverview)
+      applyQuotaState(nextOverview.quota)
     } catch (e: unknown) {
       setQuotaError(e instanceof Error ? e.message : 'Failed to update quota')
     } finally {
       setQuotaSaving(false)
     }
-  }, [org.id, quotaDraft])
+  }, [org.id, quotaDraft, applyQuotaState])
+
+  const quotaUsageItems: { label: string; used: number; limit: number }[] = quota?.usage ? [
+    { label: 'Members', used: quota.usage.members_used, limit: quota.max_members },
+    { label: 'Lakes', used: quota.usage.lakes_used, limit: quota.max_lakes },
+    { label: 'Nodes', used: quota.usage.nodes_used, limit: quota.max_nodes },
+    { label: 'Attachments', used: quota.usage.attachments_used, limit: quota.max_attachments },
+    { label: 'API Keys', used: quota.usage.api_keys_used, limit: quota.max_api_keys },
+    { label: 'Storage (MB)', used: quota.usage.storage_mb_used, limit: quota.max_storage_mb },
+  ] : []
+  const recentQuotaAudits = orgRecentQuotaAudits(overview)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -349,6 +369,53 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
           {quotaLoading && <div style={{ color: '#4a6a8e', fontSize: 12, padding: 12 }}>Loading quota…</div>}
           {quota && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {quotaUsageItems.length > 0 && (
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8, marginBottom: 4 }}>
+                  {quotaUsageItems.map(item => {
+                    const ratio = item.limit > 0 ? Math.min(1, item.used / item.limit) : 0
+                    const barColor = ratio >= 1 ? '#ff6b6b' : ratio >= 0.8 ? '#f5a623' : '#4a8eff'
+                    return (
+                      <div key={item.label} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 8, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, color: '#8ab0d0' }}>
+                          <span>{item.label}</span>
+                          <span>{item.used} / {item.limit}</span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                          <div style={{ width: `${ratio * 100}%`, height: '100%', background: barColor }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {overview && (
+                <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#8ab0d0', fontSize: 11, fontWeight: 600, flex: 1 }}>Recent quota audits</span>
+                    <button onClick={() => setShowQuotaAuditLog(prev => !prev)} style={btnStyle}>
+                      {showQuotaAuditLog ? 'Hide full log' : 'View full log'}
+                    </button>
+                  </div>
+                  {recentQuotaAudits.length > 0 ? recentQuotaAudits.slice(0, 3).map(log => (
+                    <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '8px 10px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ color: '#c0d8f0', fontSize: 11 }}>{log.action}</span>
+                        <span style={{ color: '#4a6a8e', fontSize: 10 }}>Actor {log.actor_id}</span>
+                      </div>
+                      <span style={{ color: '#4a6a8e', fontSize: 10, textAlign: 'right' }}>{new Date(log.created_at).toLocaleString()}</span>
+                    </div>
+                  )) : (
+                    <div style={{ color: '#4a6a8e', fontSize: 11, padding: '2px 0 6px' }}>
+                      No quota audits yet
+                    </div>
+                  )}
+                  {showQuotaAuditLog && (
+                    <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+                      <AuditLogViewer defaultResourceType="org_quota" defaultResourceId={org.id} />
+                    </div>
+                  )}
+                </div>
+              )}
               {quotaFields.map(f => (
                 <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 4, color: '#8ab0d0', fontSize: 11 }}>
                   {f.label}
@@ -397,7 +464,7 @@ interface Props {
 }
 
 export default function OrgPanel({ currentUserId, onClose }: Props) {
-  const [orgs, setOrgs] = useState<Organization[]>([])
+  const [orgs, setOrgs] = useState<OrgOverview[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -405,14 +472,14 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
   const [newSlug, setNewSlug] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [creating2, setCreating2] = useState(false)
-  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
+  const [selectedOrg, setSelectedOrg] = useState<OrgOverview | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await api.listOrgs()
-      setOrgs(res.organizations)
+      const res = await api.listOrgOverviews()
+      setOrgs(res.organizations ?? [])
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load organizations')
     } finally {
@@ -429,8 +496,8 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
     setCreating2(true)
     setError(null)
     try {
-      const org = await api.createOrg(name, slug, newDesc.trim())
-      setOrgs(prev => [org, ...prev])
+      await api.createOrg(name, slug, newDesc.trim())
+      await load()
       setNewName('')
       setNewSlug('')
       setNewDesc('')
@@ -440,7 +507,7 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
     } finally {
       setCreating2(false)
     }
-  }, [newName, newSlug, newDesc])
+  }, [newName, newSlug, newDesc, load])
 
   return (
     <div style={panelStyle}>
@@ -459,7 +526,7 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
       {/* Member view */}
       {selectedOrg ? (
         <OrgMemberList
-          org={selectedOrg}
+          org={selectedOrg.organization}
           currentUserId={currentUserId}
           onBack={() => setSelectedOrg(null)}
         />
@@ -467,15 +534,32 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
         <>
           {/* Org list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-            {orgs.map(org => (
-              <div key={org.id} style={memberRowStyle}>
-                <div style={{ flex: 1 }}>
-                  <span style={{ color: '#c0d8f0', fontSize: 13, fontWeight: 500 }}>{org.name}</span>
-                  <span style={{ color: '#4a6a8e', fontSize: 11, marginLeft: 6 }}>/{org.slug}</span>
+            {orgs.map(org => {
+              const latestAudit = orgLatestQuotaAudit(org)
+              return (
+                <div key={org.organization.id} style={{ ...memberRowStyle, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div>
+                      <span style={{ color: '#c0d8f0', fontSize: 13, fontWeight: 500 }}>{org.organization.name}</span>
+                      <span style={{ color: '#4a6a8e', fontSize: 11, marginLeft: 6 }}>/{org.organization.slug}</span>
+                    </div>
+                    {org.quota.usage && (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', color: '#4a6a8e', fontSize: 10 }}>
+                        <span>Members {org.quota.usage.members_used}/{org.quota.max_members}</span>
+                        <span>Lakes {org.quota.usage.lakes_used}/{org.quota.max_lakes}</span>
+                        <span>Nodes {org.quota.usage.nodes_used}/{org.quota.max_nodes}</span>
+                      </div>
+                    )}
+                    {latestAudit && (
+                      <div style={{ color: '#4a6a8e', fontSize: 10 }}>
+                        Latest audit {new Date(latestAudit.created_at).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => setSelectedOrg(org)} style={btnStyle}>Members</button>
                 </div>
-                <button onClick={() => setSelectedOrg(org)} style={btnStyle}>Members</button>
-              </div>
-            ))}
+              )
+            })}
             {orgs.length === 0 && !loading && (
               <div style={{ color: '#4a6a8e', fontSize: 12, textAlign: 'center', padding: 16 }}>
                 No organizations yet

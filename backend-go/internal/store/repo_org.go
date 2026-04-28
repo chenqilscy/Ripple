@@ -129,6 +129,45 @@ func (r *orgRepoPG) ListByUser(ctx context.Context, userID string) ([]domain.Org
 	return out, rows.Err()
 }
 
+const sqlListAllOrgs = `
+SELECT id, name, slug, description, owner_id, created_at, updated_at
+FROM organizations
+ORDER BY created_at DESC
+LIMIT $1
+`
+
+func (r *orgRepoPG) ListAll(ctx context.Context, limit int) ([]domain.Organization, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := r.pool.Query(ctx, sqlListAllOrgs, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list all orgs: %w", err)
+	}
+	defer rows.Close()
+	out := make([]domain.Organization, 0)
+	for rows.Next() {
+		var o domain.Organization
+		if err := rows.Scan(&o.ID, &o.Name, &o.Slug, &o.Description, &o.OwnerID, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan all orgs row: %w", err)
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+const sqlCountAllOrgs = `
+SELECT COUNT(*) FROM organizations
+`
+
+func (r *orgRepoPG) CountAll(ctx context.Context) (int64, error) {
+	var n int64
+	if err := r.pool.QueryRow(ctx, sqlCountAllOrgs).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count all orgs: %w", err)
+	}
+	return n, nil
+}
+
 // --- 成员 ---
 
 const sqlInsertOrgMember = `

@@ -16,13 +16,30 @@ import (
 
 // AuthService 提供注册、登录、Token 校验。
 type AuthService struct {
-	users store.UserRepository
-	jwt   *platform.JWTSigner
+	users            store.UserRepository
+	jwt              *platform.JWTSigner
+	graylist         store.GraylistRepository
+	graylistEnabled  bool
+	adminEmailsByKey map[string]struct{}
 }
 
 // NewAuthService 装配。
 func NewAuthService(users store.UserRepository, jwt *platform.JWTSigner) *AuthService {
-	return &AuthService{users: users, jwt: jwt}
+	return &AuthService{users: users, jwt: jwt, adminEmailsByKey: map[string]struct{}{}}
+}
+
+// WithRegistrationGraylist 注入灰度名单仓库与平台管理员邮箱列表。
+func (s *AuthService) WithRegistrationGraylist(repo store.GraylistRepository, enabled bool, adminEmails []string) *AuthService {
+	s.graylist = repo
+	s.graylistEnabled = enabled
+	s.adminEmailsByKey = make(map[string]struct{}, len(adminEmails))
+	for _, email := range adminEmails {
+		normalized := strings.ToLower(strings.TrimSpace(email))
+		if normalized != "" {
+			s.adminEmailsByKey[normalized] = struct{}{}
+		}
+	}
+	return s
 }
 
 // RegisterInput 注册入参。
@@ -37,6 +54,20 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput) (*domain.U
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	if email == "" || !strings.Contains(email, "@") {
 		return nil, fmt.Errorf("%w: invalid email", domain.ErrInvalidInput)
+	}
+	if s.graylistEnabled {
+		if _, ok := s.adminEmailsByKey[email]; !ok {
+			if s.graylist == nil {
+				return nil, fmt.Errorf("%w: registration graylist not configured", domain.ErrPermissionDenied)
+			}
+			allowed, err := s.graylist.IsAllowedEmail(ctx, email)
+			if err != nil {
+				return nil, err
+			}
+			if !allowed {
+				return nil, fmt.Errorf("%w: registration email not in graylist", domain.ErrPermissionDenied)
+			}
+		}
 	}
 	if in.DisplayName == "" {
 		return nil, fmt.Errorf("%w: display_name required", domain.ErrInvalidInput)

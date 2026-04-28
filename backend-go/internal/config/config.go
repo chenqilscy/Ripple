@@ -44,6 +44,8 @@ type Config struct {
 	// JWT
 	JWTSecret    string        `envconfig:"JWT_SECRET" required:"true"`
 	JWTExpiresIn time.Duration `envconfig:"JWT_EXPIRES_IN" default:"24h"`
+	AdminEmails  string        `envconfig:"ADMIN_EMAILS" default:""`
+	RegistrationGraylistEnabled bool `envconfig:"REGISTRATION_GRAYLIST_ENABLED" default:"false"`
 
 	// LLM
 	// 多 provider 支持：zhipu / openai / deepseek / volc(豆包) / minimax / 任意 openai-compat。
@@ -137,10 +139,25 @@ func (c *Config) validate() error {
 	if c.PGMaxConns < c.PGMinConns {
 		errs = append(errs, "PG_MAX_CONNS 必须 >= PG_MIN_CONNS")
 	}
+	if c.RegistrationGraylistEnabled && len(c.AdminEmailList()) == 0 {
+		errs = append(errs, "REGISTRATION_GRAYLIST_ENABLED=true 时必须配置 ADMIN_EMAILS")
+	}
 	if len(errs) > 0 {
 		return errors.New("config: " + strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// AdminEmailList 返回平台管理员邮箱列表。
+func (c *Config) AdminEmailList() []string {
+	out := make([]string, 0)
+	for _, item := range strings.Split(c.AdminEmails, ",") {
+		item = strings.ToLower(strings.TrimSpace(item))
+		if item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 // CORSOriginList 返回切片化的 CORS 列表。

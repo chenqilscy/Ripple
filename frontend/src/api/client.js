@@ -205,6 +205,19 @@ export const api = {
         const q = new URLSearchParams({ resource_type: resourceType, resource_id: resourceId, limit: String(limit) });
         return request('GET', `/api/v1/audit_logs?${q}`);
     },
+    // ---- Graylist (P14.3) ----
+    listGraylist() {
+        return request('GET', '/api/v1/admin/graylist');
+    },
+    getAdminOverview() {
+        return request('GET', '/api/v1/admin/overview');
+    },
+    upsertGraylist(email, note = '') {
+        return request('POST', '/api/v1/admin/graylist', { email, note });
+    },
+    deleteGraylist(id) {
+        return request('DELETE', `/api/v1/admin/graylist/${id}`);
+    },
     // ---- Lake Members (P11-C) ----
     listLakeMembers(lakeId) {
         return request('GET', `/api/v1/lakes/${lakeId}/members`);
@@ -231,8 +244,14 @@ export const api = {
     listOrgs() {
         return request('GET', '/api/v1/organizations');
     },
+    listOrgOverviews() {
+        return request('GET', '/api/v1/organizations/overview');
+    },
     getOrg(id) {
         return request('GET', `/api/v1/organizations/${id}`);
+    },
+    getOrgOverview(orgId) {
+        return request('GET', `/api/v1/organizations/${orgId}/overview`);
     },
     listOrgMembers(orgId) {
         return request('GET', `/api/v1/organizations/${orgId}/members`);

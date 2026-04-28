@@ -225,6 +225,20 @@ export const api = {
     return request('GET', `/api/v1/audit_logs?${q}`)
   },
 
+  // ---- Graylist (P14.3) ----
+  listGraylist(): Promise<{ entries: import('./types').GraylistEntry[] }> {
+    return request('GET', '/api/v1/admin/graylist')
+  },
+  getAdminOverview(): Promise<import('./types').AdminOverview> {
+    return request('GET', '/api/v1/admin/overview')
+  },
+  upsertGraylist(email: string, note = ''): Promise<import('./types').GraylistEntry> {
+    return request('POST', '/api/v1/admin/graylist', { email, note })
+  },
+  deleteGraylist(id: string): Promise<void> {
+    return request('DELETE', `/api/v1/admin/graylist/${id}`)
+  },
+
   // ---- Lake Members (P11-C) ----
   listLakeMembers(lakeId: string): Promise<{ members: import('./types').LakeMember[] }> {
     return request('GET', `/api/v1/lakes/${lakeId}/members`)
@@ -254,8 +268,14 @@ export const api = {
   listOrgs(): Promise<{ organizations: import('./types').Organization[] }> {
     return request('GET', '/api/v1/organizations')
   },
+  listOrgOverviews(): Promise<{ organizations: import('./types').OrgOverview[] }> {
+    return request('GET', '/api/v1/organizations/overview')
+  },
   getOrg(id: string): Promise<import('./types').Organization> {
     return request('GET', `/api/v1/organizations/${id}`)
+  },
+  getOrgOverview(orgId: string): Promise<import('./types').OrgOverview> {
+    return request('GET', `/api/v1/organizations/${orgId}/overview`)
   },
   listOrgMembers(orgId: string): Promise<{ members: import('./types').OrgMember[] }> {
     return request('GET', `/api/v1/organizations/${orgId}/members`)

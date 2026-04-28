@@ -16,6 +16,10 @@ type memUserRepo struct {
 	byID    map[string]*domain.User
 }
 
+type memGraylistRepo struct {
+	allowed map[string]bool
+}
+
 func newMemUserRepo() *memUserRepo {
 	return &memUserRepo{byEmail: map[string]*domain.User{}, byID: map[string]*domain.User{}}
 }
@@ -44,6 +48,20 @@ func (r *memUserRepo) GetByEmail(_ context.Context, email string) (*domain.User,
 func newAuthSvc() *AuthService {
 	jwt := platform.NewJWTSigner("test-secret-32-chars-long-xxxxxx", time.Hour)
 	return NewAuthService(newMemUserRepo(), jwt)
+}
+
+func (r *memGraylistRepo) List(context.Context, int) ([]domain.GraylistEntry, error) { return nil, nil }
+func (r *memGraylistRepo) Upsert(_ context.Context, entry *domain.GraylistEntry) (*domain.GraylistEntry, error) {
+	if r.allowed == nil {
+		r.allowed = map[string]bool{}
+	}
+	r.allowed[entry.Email] = true
+	copyEntry := *entry
+	return &copyEntry, nil
+}
+func (r *memGraylistRepo) Delete(context.Context, string) error { return nil }
+func (r *memGraylistRepo) IsAllowedEmail(_ context.Context, email string) (bool, error) {
+	return r.allowed[email], nil
 }
 
 func TestAuth_RegisterAndLogin(t *testing.T) {
@@ -111,5 +129,35 @@ func TestAuth_Register_InvalidEmail(t *testing.T) {
 		RegisterInput{Email: "no-at-sign", Password: "password-123", DisplayName: "X"})
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestAuth_Register_GraylistRejectsUnknownEmail(t *testing.T) {
+	svc := newAuthSvc().WithRegistrationGraylist(&memGraylistRepo{allowed: map[string]bool{}}, true, []string{"admin@test.local"})
+	_, err := svc.Register(context.Background(), RegisterInput{Email: "user@test.local", Password: "password-123", DisplayName: "User"})
+	if !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Fatalf("expected ErrPermissionDenied, got %v", err)
+	}
+}
+
+func TestAuth_Register_GraylistAllowsListedEmail(t *testing.T) {
+	svc := newAuthSvc().WithRegistrationGraylist(&memGraylistRepo{allowed: map[string]bool{"user@test.local": true}}, true, []string{"admin@test.local"})
+	u, err := svc.Register(context.Background(), RegisterInput{Email: "user@test.local", Password: "password-123", DisplayName: "User"})
+	if err != nil {
+		t.Fatalf("register listed email: %v", err)
+	}
+	if u.Email != "user@test.local" {
+		t.Fatalf("unexpected email: %s", u.Email)
+	}
+}
+
+func TestAuth_Register_GraylistAllowsAdminBypass(t *testing.T) {
+	svc := newAuthSvc().WithRegistrationGraylist(&memGraylistRepo{allowed: map[string]bool{}}, true, []string{"admin@test.local"})
+	u, err := svc.Register(context.Background(), RegisterInput{Email: "admin@test.local", Password: "password-123", DisplayName: "Admin"})
+	if err != nil {
+		t.Fatalf("register admin bypass: %v", err)
+	}
+	if u.Email != "admin@test.local" {
+		t.Fatalf("unexpected email: %s", u.Email)
 	}
 }

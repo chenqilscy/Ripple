@@ -5,8 +5,10 @@ import { NodeDiffViewer } from '../components/NodeDiffViewer'
 import NodeVersionHistory from '../components/NodeVersionHistory'
 
 const LakeGraph = React.lazy(() => import('../components/LakeGraph'))
+const AdminOverviewPanel = React.lazy(() => import('../components/AdminOverviewPanel'))
 const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
 const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
+const GraylistManager = React.lazy(() => import('../components/GraylistManager'))
 const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManager'))
 const SearchModal = React.lazy(() => import('../components/SearchModal'))
 const ImportModal = React.lazy(() => import('../components/ImportModal'))
@@ -833,7 +835,9 @@ export function Home({ onLogout }: Props) {
         {mainTab === 'settings' ? (
           <React.Suspense fallback={<div style={{ padding: 16, color: '#6c7086' }}>加载中…</div>}>
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              <AdminOverviewPanel />
               <APIKeyManager />
+              <GraylistManager />
               <AuditLogViewer />
             </div>
           </React.Suspense>

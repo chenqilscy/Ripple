@@ -92,6 +92,7 @@ func main() {
 	auditLogRepo := store.NewAuditLogRepository(pg)     // P10-B
 	orgRepo := store.NewOrgRepository(pg)               // P12-C
 	orgQuotaRepo := store.NewOrgQuotaRepository(pg)     // P14-A
+	graylistRepo := store.NewGraylistRepository(pg)     // P14.3
 
 	// P10-B：启动时清理 30 天以前的审计日志（非阻塞）
 	go func() {
@@ -116,7 +117,8 @@ func main() {
 		}
 	}()
 
-	authSvc := service.NewAuthService(users, jwt)
+	authSvc := service.NewAuthService(users, jwt).
+		WithRegistrationGraylist(graylistRepo, cfg.RegistrationGraylistEnabled, cfg.AdminEmailList())
 	lakeSvc := service.NewLakeService(lakes, memberships, outbox, txRunner)
 	spaceSvc := service.NewSpaceService(spaceRepo)
 	orgSvc := service.NewOrgService(orgRepo).
@@ -261,7 +263,12 @@ func main() {
 		WsToken:        wsTokenH,
 		DocStates:      docStateRepo,
 		APIKeys:        apiKeyRepo,
+		NodeCounts:     nodes,
 		AuditLogs:      auditLogRepo,
+		Graylist:       graylistRepo,
+		AdminEmails:    cfg.AdminEmailList(),
+		OrgRepo:        orgRepo,
+		OrgQuotas:      orgQuotaRepo,
 		Orgs:           orgSvc,
 		Notifications:  notifSvc,
 		Tags:           tagSvc,

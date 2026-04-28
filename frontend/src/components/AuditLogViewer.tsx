@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, type AuditLogItem } from '../api/client'
 
 interface Props {
@@ -37,6 +37,28 @@ export default function AuditLogViewer({ defaultResourceType = '', defaultResour
     }
   }
 
+  useEffect(() => {
+    const rt = defaultResourceType.trim()
+    const rid = defaultResourceId.trim()
+    setResourceType(defaultResourceType)
+    setResourceId(defaultResourceId)
+    if (!rt || !rid) return
+    void (async () => {
+      setLoading(true)
+      setErr(null)
+      try {
+        const res = await api.listAuditLogs(rt, rid, limit)
+        setLogs(res.logs ?? [])
+        setTotal(res.total ?? 0)
+        setQueried(true)
+      } catch (e: any) {
+        setErr(e?.message ?? 'query failed')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [defaultResourceType, defaultResourceId, limit])
+
   return (
     <div style={{ padding: '16px', maxWidth: 900 }}>
       <h3 style={{ margin: '0 0 12px', color: '#cdd6f4' }}>审计日志</h3>
@@ -52,6 +74,8 @@ export default function AuditLogViewer({ defaultResourceType = '', defaultResour
           <option value="node">node</option>
           <option value="edge">edge</option>
           <option value="lake">lake</option>
+          <option value="organization">organization</option>
+          <option value="org_quota">org_quota</option>
           <option value="api_key">api_key</option>
         </select>
         <input

@@ -66,6 +66,18 @@ func (r *userRepoPG) GetByEmail(ctx context.Context, email string) (*domain.User
 	return scanUser(row)
 }
 
+const sqlCountUsers = `
+SELECT COUNT(*) FROM users
+`
+
+func (r *userRepoPG) CountAll(ctx context.Context) (int64, error) {
+	var n int64
+	if err := r.pool.QueryRow(ctx, sqlCountUsers).Scan(&n); err != nil {
+		return 0, fmt.Errorf("user count: %w", err)
+	}
+	return n, nil
+}
+
 // scanUser 把单行扫描成 domain.User，未找到返回 ErrNotFound。
 func scanUser(row pgx.Row) (*domain.User, error) {
 	var u domain.User

@@ -63,17 +63,25 @@ Phase 13 已完成可信交付闭环：远端 staging、性能基线、故障演
 
 ### Sprint 14.3：运营台 API 与 UI
 
-- 后端管理员 API；
-- 前端 Org 配额面板；
-- 审计日志联动；
-- 灰度名单入口。
+- ✅ 最小切片已完成：组织 quota API 已返回 usage 聚合（members / lakes / nodes / attachments / api_keys / storage_mb）；
+- ✅ `GET /api/v1/organizations/{id}/overview` 已返回组织信息、quota/usage 与最近 quota audit；
+- ✅ 前端 Org `Quota` Tab 已展示已用量 / 限额进度条，并补充最近 quota audit 摘要；
+- ✅ 已完成 staging 回归：`quota` / `overview` API 实流通过，前端 `Quota` Tab 已在 `fn.cky:14173` 实机展示 `2 / 3` 等 usage 值与 `Recent quota audits` 审计摘要；
+- ✅ 已补齐列表总览 API：`GET /api/v1/organizations/overview` 返回当前用户组织列表的 `organization + quota/usage + recent_quota_audits` 聚合视图；
+- ✅ 前端 Org 列表页已切到 overview-list 数据源，列表态直接展示 `Members/Lakes/Nodes` usage 摘要与 `Latest audit` 时间；
+- ✅ 已完成本地 + staging 实流回归：`http://localhost:5234` 与 `http://fn.cky:14173` 均可在组织列表直接看到 usage 摘要与最近 quota audit；
+- ✅ 审计日志联动已补齐：前端 `Quota` Tab 可直接展开 `AuditLogViewer`，自动查询 `resource_type=org_quota` 的完整审计记录；
+- ✅ 灰度名单入口已补齐：后端新增 `/api/v1/admin/graylist` CRUD 与注册灰度校验，前端 `Settings` 页已提供邮箱增删入口；本地 `go test -run "Graylist|Auth" ./internal/service/... ./internal/api/http/...` 与 `npm run build` 通过；
+- ✅ 管理员总览已补齐：`GET /api/v1/admin/overview` 聚合平台组织数、用户数、灰度名单数与组织 quota usage / latest audit；前端 `Settings` 管理员总览已完成 `recent_quota_audits` / `organizations` 缺省容错并在 staging 实机验证无崩溃；
+- ✅ 灰度名单 UI staging smoke 已完成新增 / 移除闭环，移除后列表恢复为空；
 
 ### Sprint 14.4：发布与体验闭环
 
-- 体验方试用；
-- 配额文档；
-- 运营 SOP；
-- Phase 14 准入清单。
+- ✅ 已启动：发布与体验闭环执行清单见 `docs/dev/Phase14-4-发布体验闭环-20260428.md`；
+- 体验方试用：按普通用户 / 组织管理员 / 平台管理员三类脚本执行；
+- 配额文档：补默认免费配额、触发点、错误语义与运营调整方式；
+- 运营 SOP：灰度名单、管理员总览、配额调整、审计追踪与回滚；
+- Phase 14 准入清单：后端 race 测试、前端构建、staging smoke、敏感信息与性能观察项。
 
 ## 5. 暂缓项
 
