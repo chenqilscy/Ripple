@@ -10,11 +10,17 @@ interface SummarizeGraphModalProps {
   onSuccess?: () => void
 }
 
+interface SummarizeResult {
+  summary_node: { id: string; content: string }
+  edges: Array<{ source_id: string; target_id: string; kind: string }>
+  source_count: number
+}
+
 export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSuccess }: SummarizeGraphModalProps) {
   const [titleHint, setTitleHint] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState(false)
+  const [result, setResult] = useState<SummarizeResult | null>(null)
 
   const handleSubmit = async () => {
     setLoading(true)
@@ -33,8 +39,8 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
         const body = await res.json().catch(() => ({}))
         throw new Error(body.error ?? `HTTP ${res.status}`)
       }
-      setDone(true)
-      onSuccess?.()
+      const data: SummarizeResult = await res.json()
+      setResult(data)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '请求失败')
     } finally {
@@ -42,12 +48,17 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
     }
   }
 
+  const handleClose = () => {
+    if (result) onSuccess?.()
+    onClose()
+  }
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,
       background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={onClose}>
+    }} onClick={handleClose}>
       <div
         style={{
           background: '#0e1f3a', border: '1px solid #2a4a7e',
@@ -61,7 +72,7 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
         <p style={{ margin: '0 0 14px', color: '#7a9ab0', fontSize: 13 }}>
           已选 <b style={{ color: '#9ec5ee' }}>{nodeIds.length}</b> 个节点，LLM 将生成摘要节点并自动关联。
         </p>
-        {!done ? (
+        {!result ? (
           <>
             <label style={{ display: 'block', color: '#7a9ab0', fontSize: 12, marginBottom: 6 }}>
               方向提示（可选）
@@ -87,7 +98,7 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
             )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 disabled={loading}
                 style={{
                   background: 'transparent', border: '1px solid #2a4a7e',
@@ -118,18 +129,30 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
           </>
         ) : (
           <>
-            <div style={{ color: '#4ecdc4', fontSize: 14, marginBottom: 16 }}>
-              ✓ 摘要节点已生成，图谱将自动更新。
+            <div style={{ color: '#4ecdc4', fontSize: 13, marginBottom: 12 }}>
+              ✓ 摘要节点已生成（{result.source_count} 个源节点 → {result.edges.length} 条 derives 边）
+            </div>
+            <div style={{
+              background: '#060d1a', border: '1px solid #1a3a6a',
+              borderRadius: 6, padding: '10px 14px', marginBottom: 16,
+              maxHeight: 180, overflowY: 'auto',
+              color: '#c0d8f0', fontSize: 13, lineHeight: 1.7,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>
+              {result.summary_node.content}
+            </div>
+            <div style={{ color: '#4a6a8e', fontSize: 11, marginBottom: 16 }}>
+              节点 ID: {result.summary_node.id}
             </div>
             <div style={{ textAlign: 'right' }}>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 style={{
                   background: '#1e4d9e', border: 'none', color: '#9ec5ee',
                   borderRadius: 6, padding: '7px 18px', fontSize: 13, cursor: 'pointer',
                 }}
               >
-                关闭
+                关闭并刷新图谱
               </button>
             </div>
           </>

@@ -1414,6 +1414,12 @@ export function Home({ onLogout }: Props) {
               setSummarizeOpen(false)
               setMultiSelectedNodeIds(new Set())
             }}
+            onSuccess={() => {
+              if (active) {
+                api.listNodes(active.id).then(r => setNodes(r.nodes))
+                api.listEdges(active.id).then(r => setEdges(r.edges))
+              }
+            }}
           />
         </React.Suspense>
       )}
