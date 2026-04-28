@@ -179,6 +179,17 @@ func NewRouter(d Deps) http.Handler {
 			}
 
 			r.Get("/search", nodeH.Search)
+			// P20-C: 语义搜索增强（mode=semantic，有 LLM Router 时启用，无时等同全文搜索）
+			{
+				var ssRouter llm.Router
+				if d.LLMRouter != nil {
+					if r2, ok := d.LLMRouter.(llm.Router); ok {
+						ssRouter = r2
+					}
+				}
+				semanticH := &SemanticSearchHandlers{Nodes: d.Nodes, Router: ssRouter}
+				r.Get("/semantic-search", semanticH.Search)
+			}
 
 			if d.Clouds != nil {
 				r.Post("/clouds", cloudH.Create)
