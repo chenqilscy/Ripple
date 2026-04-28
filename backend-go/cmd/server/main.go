@@ -137,6 +137,12 @@ func main() {
 		logger.Warn().Err(err).Msg("ensure system templates failed (non-fatal)")
 	}
 
+	// Phase 15-C/D：AI 任务 + Prompt 模板 + 订阅 + LLM 用量
+	aiJobRepo := store.NewAiJobRepository(pg)
+	promptTplRepo := store.NewPromptTemplateRepository(pg)
+	subRepo := store.NewSubscriptionRepository(pg)
+	llmAnalyticsRepo := store.NewLLMCallsAnalyticsRepository(pg)
+
 	broker := newBroker(cfg, rds, logger)
 	defer func() { _ = broker.Close() }()
 
@@ -217,6 +223,16 @@ func main() {
 	defer weaverCancel()
 	go weaver.Run(weaverCtx)
 
+	// Phase 15-C：AI 节点填充 worker
+	aiJobWorker := service.NewAiJobWorker(aiJobRepo, nodes, lakes, promptTplRepo, llmRouter, logger, cfg.AiWorkerN)
+	aiWorkerCtx, aiWorkerCancel := context.WithCancel(context.Background())
+	defer aiWorkerCancel()
+	go aiJobWorker.Run(aiWorkerCtx)
+
+	// Phase 15-D：订阅服务 + LLM 用量服务
+	subSvc := service.NewSubscriptionService(subRepo, orgQuotaRepo)
+	llmUsageSvc := service.NewLLMUsageService(llmAnalyticsRepo)
+
 	crystallizeSvc := service.NewCrystallizeService(permaRepo, nodes, memberships, llmRouter)
 
 	feedbackRepo := store.NewFeedbackRepository(pg)
@@ -283,6 +299,12 @@ func main() {
 		NodeShares:    nodeShareRepo,
 		Memberships:   memberships,
 		Users:         users, // P12-C: Org by_email 邀请
+		// Phase 15
+		AiJobs:             aiJobRepo,
+		PromptTemplates:    promptTplRepo,
+		Subscriptions:      subSvc,
+		LLMUsage:           llmUsageSvc,
+		StubPaymentEnabled: cfg.StubPaymentEnabled,
 	})
 
 	srv := &http.Server{

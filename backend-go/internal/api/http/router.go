@@ -71,6 +71,19 @@ type Deps struct {
 	Memberships store.MembershipRepository
 	// Users 用于按 email 查找用户（P12-C Org by_email 邀请）。
 	Users store.UserRepository
+
+	// Phase 15-C: AI 节点填充任务
+	// AiJobs 非 nil 时挂载 /nodes/{id}/ai_trigger 及 /nodes/{id}/ai_status 端点。
+	AiJobs         store.AiJobRepository
+	PromptTemplates store.PromptTemplateRepository
+
+	// Phase 15-D: 订阅 & LLM 用量
+	// Subscriptions 非 nil 时挂载套餐订阅端点。
+	Subscriptions *service.SubscriptionService
+	// LLMUsage 非 nil 时挂载 /organizations/{id}/llm_usage 端点。
+	LLMUsage *service.LLMUsageService
+	// StubPaymentEnabled 透传 config.StubPaymentEnabled 给 SubscriptionHandlers。
+	StubPaymentEnabled bool
 }
 
 // NewRouter 装配 Chi 路由。
@@ -372,6 +385,37 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/nodes/{id}/share", shareH.CreateShare)
 				r.Get("/nodes/{id}/shares", shareH.ListShares)
 				r.Delete("/shares/{id}", shareH.RevokeShare)
+			}
+
+			// Phase 15-C: AI 节点填充任务 + Prompt 模板库
+			if d.AiJobs != nil && d.PromptTemplates != nil {
+				aiTriggerH := &AiTriggerHandlers{
+					Jobs:        d.AiJobs,
+					Memberships: d.Memberships,
+				}
+				r.Post("/lakes/{lake_id}/nodes/{node_id}/ai_trigger", aiTriggerH.Trigger)
+				r.Get("/lakes/{lake_id}/nodes/{node_id}/ai_status", aiTriggerH.Status)
+
+				promptTplH := &PromptTemplateHandlers{Repo: d.PromptTemplates}
+				r.Post("/prompt_templates", promptTplH.Create)
+				r.Get("/prompt_templates", promptTplH.List)
+				r.Get("/prompt_templates/{id}", promptTplH.Get)
+				r.Patch("/prompt_templates/{id}", promptTplH.Update)
+				r.Delete("/prompt_templates/{id}", promptTplH.Delete)
+			}
+
+			// Phase 15-D: 套餐订阅
+			if d.Subscriptions != nil {
+				subH := &SubscriptionHandlers{Svc: d.Subscriptions, StubPaymentEnabled: d.StubPaymentEnabled}
+				r.Get("/subscriptions/plans", subH.GetPlans)
+				r.Get("/organizations/{id}/subscription", subH.GetSubscription)
+				r.Post("/organizations/{id}/subscription", subH.CreateSubscription)
+			}
+
+			// Phase 15-D: LLM 用量
+			if d.LLMUsage != nil {
+				usageH := &LLMUsageHandlers{Svc: d.LLMUsage}
+				r.Get("/organizations/{id}/llm_usage", usageH.GetUsage)
 			}
 		})
 

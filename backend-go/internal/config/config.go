@@ -111,6 +111,14 @@ type Config struct {
 	UploadDir       string `envconfig:"UPLOAD_DIR" default:"./data/uploads"`
 	UploadMaxMB     int    `envconfig:"UPLOAD_MAX_MB" default:"5"`
 	UploadAllowMIME string `envconfig:"UPLOAD_ALLOW_MIME" default:"image/png,image/jpeg,image/gif,image/webp"`
+
+	// Phase 15-C: AI 节点填充工人池
+	// AiWorkerN AI 任务并发 worker 数量。
+	AiWorkerN int `envconfig:"AI_WORKER_N" default:"3"`
+
+	// Phase 15-D: Stub 支付开关
+	// StubPaymentEnabled=true 时允许不经真实支付直接订阅套餐（生产默认 false）。
+	StubPaymentEnabled bool `envconfig:"STUB_PAYMENT" default:"false"`
 }
 
 // Load 从环境变量加载配置。

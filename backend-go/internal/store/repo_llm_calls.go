@@ -2,12 +2,86 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
+	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// LLMCallsAnalyticsRepository 提供 llm_calls 表的分析查询（Phase 15-D）。
+type LLMCallsAnalyticsRepository interface {
+	// SumByProvider 返回指定 org 在 since 之后各 provider 的调用汇总。
+	SumByProvider(ctx context.Context, orgID string, since time.Time) ([]domain.ProviderUsage, error)
+	// SumByDay 返回按天的调用量汇总。
+	SumByDay(ctx context.Context, orgID string, since time.Time) ([]domain.DayUsage, error)
+}
+
+type llmCallsAnalyticsPG struct{ pool *pgxpool.Pool }
+
+// NewLLMCallsAnalyticsRepository 构造。
+func NewLLMCallsAnalyticsRepository(pool *pgxpool.Pool) LLMCallsAnalyticsRepository {
+	return &llmCallsAnalyticsPG{pool: pool}
+}
+
+const sqlLLMCallsByProvider = `
+SELECT provider,
+       COUNT(*) AS calls,
+       COALESCE(AVG(latency_ms)::int, 0) AS avg_duration_ms
+FROM llm_calls
+WHERE org_id = $1
+  AND created_at >= $2
+GROUP BY provider
+ORDER BY calls DESC
+`
+
+func (r *llmCallsAnalyticsPG) SumByProvider(ctx context.Context, orgID string, since time.Time) ([]domain.ProviderUsage, error) {
+	rows, err := r.pool.Query(ctx, sqlLLMCallsByProvider, orgID, since)
+	if err != nil {
+		return nil, fmt.Errorf("llm_calls sum by provider: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.ProviderUsage
+	for rows.Next() {
+		var p domain.ProviderUsage
+		if err := rows.Scan(&p.Provider, &p.Calls, &p.AvgDurationMS); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+const sqlLLMCallsByDay = `
+SELECT TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+       COUNT(*) AS calls
+FROM llm_calls
+WHERE org_id = $1
+  AND created_at >= $2
+GROUP BY day
+ORDER BY day ASC
+`
+
+func (r *llmCallsAnalyticsPG) SumByDay(ctx context.Context, orgID string, since time.Time) ([]domain.DayUsage, error) {
+	rows, err := r.pool.Query(ctx, sqlLLMCallsByDay, orgID, since)
+	if err != nil {
+		return nil, fmt.Errorf("llm_calls sum by day: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.DayUsage
+	for rows.Next() {
+		var d domain.DayUsage
+		if err := rows.Scan(&d.Date, &d.Calls); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
 
 // PGCallRecorder 把 llm.CallRecord 异步写入 llm_calls 表。
 //
