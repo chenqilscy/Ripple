@@ -12,7 +12,13 @@
   [switch]$SkipBackend,
   [switch]$SkipFrontend,
   [switch]$SkipE2E,
-  [switch]$SkipStaging
+  [switch]$SkipStaging,
+
+  # staging 数据清理（可选；默认仅 dry-run；需先 export RIPPLE_STAGING_SSH_HOST/USER 与 RIPPLE_STAGING_NEO4J_PASSWORD）
+  [switch]$IncludeStagingCleanup,
+  [switch]$StagingCleanupApply,
+  [string]$StagingPgContainer = 'ripple-staging-postgres',
+  [string]$StagingNeo4jContainer = 'ripple-staging-neo4j'
 )
 
 $ErrorActionPreference = "Stop"
@@ -105,6 +111,17 @@ try {
     Write-Host "[skip staging] RIPPLE_STAGING_BASE not provided"
   }
 
+  if ($IncludeStagingCleanup) {
+    Invoke-Step "staging: cleanup smoke data" {
+      $cleanupScript = Join-Path $PSScriptRoot 'staging-cleanup-smoke.ps1'
+      if (-not (Test-Path $cleanupScript)) { throw "cleanup script missing: $cleanupScript" }
+      $cleanupArgs = @('-PgContainer', $StagingPgContainer, '-Neo4jContainer', $StagingNeo4jContainer)
+      if ($StagingCleanupApply) { $cleanupArgs += '-Apply' }
+      & powershell -ExecutionPolicy Bypass -File $cleanupScript @cleanupArgs
+      if ($LASTEXITCODE -ne 0) { throw "cleanup failed (exit=$LASTEXITCODE)" }
+    }
+  }
+
 } finally {
   Pop-Location
 }
@@ -112,7 +129,7 @@ try {
 Write-Host "`n=== Phase 14.6 acceptance summary ==="
 $results | Format-Table -AutoSize | Out-String | Write-Host
 
-$failed = $results | Where-Object { $_.Status -ne "PASS" }
+$failed = @($results | Where-Object { $_.Status -ne "PASS" })
 if ($failed.Count -gt 0) {
   Write-Host "FAILED steps: $($failed.Count)"
   exit 1
