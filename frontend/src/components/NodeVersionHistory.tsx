@@ -2,10 +2,13 @@
  * P17-A: Node version history timeline.
  * Displays revisions in reverse-chronological order with content preview,
  * expand-on-click full view, and one-click rollback.
+ * P27: Added "版本对比" button to open side-by-side diff.
  */
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { api } from '../api/client'
 import type { NodeItem, NodeRevision } from '../api/types'
+
+const NodeVersionDiff = lazy(() => import('./NodeVersionDiff'))
 
 interface Props {
   node: NodeItem
@@ -19,6 +22,7 @@ export default function NodeVersionHistory({ node, revisions, onClose, onRolledB
   const [expanded, setExpanded] = useState<number | null>(null)
   const [rolling, setRolling] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [diffOpen, setDiffOpen] = useState(false)
 
   async function handleRollback(rev: NodeRevision) {
     if (!window.confirm(`确认回滚到 rev ${rev.rev_number}？当前内容将被替换。`)) return
@@ -36,6 +40,7 @@ export default function NodeVersionHistory({ node, revisions, onClose, onRolledB
   }
 
   return (
+    <>
     <div style={{
       position: 'fixed', inset: 0, zIndex: 2000,
       background: 'rgba(0,0,0,0.7)',
@@ -52,10 +57,23 @@ export default function NodeVersionHistory({ node, revisions, onClose, onRolledB
           <span style={{ fontWeight: 600, fontSize: 14, color: '#c8d8e8' }}>
             版本历史 — {node.id.slice(0, 8)}
           </span>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#9ec5ee',
-            fontSize: 20, cursor: 'pointer', lineHeight: 1,
-          }}>✕</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {revisions.length >= 2 && (
+              <button
+                onClick={() => setDiffOpen(true)}
+                style={{
+                  background: 'rgba(74,144,226,0.15)', border: '1px solid #2a4a7e',
+                  color: '#89b4fa', borderRadius: 4, padding: '3px 10px',
+                  fontSize: 11, cursor: 'pointer',
+                }}
+                title="左右版本对比"
+              >⇄ 版本对比</button>
+            )}
+            <button onClick={onClose} style={{
+              background: 'none', border: 'none', color: '#9ec5ee',
+              fontSize: 20, cursor: 'pointer', lineHeight: 1,
+            }}>✕</button>
+          </div>
         </div>
 
         {err && (
@@ -161,5 +179,11 @@ export default function NodeVersionHistory({ node, revisions, onClose, onRolledB
         </div>
       </div>
     </div>
+    {diffOpen && revisions.length >= 2 && (
+      <Suspense fallback={null}>
+        <NodeVersionDiff revisions={revisions} onClose={() => setDiffOpen(false)} />
+      </Suspense>
+    )}
+    </>
   )
 }
