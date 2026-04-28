@@ -3,9 +3,19 @@
  *
  * 流程：粘贴文本 → 设置最大节点数 → LLM 解析 → 展示结果 → 回调刷新视图
  */
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { api } from '../api/client'
 import type { ImportTextResult } from '../api/types'
+
+// 注入 spin keyframe（全局一次）
+let spinStyleInjected = false
+function ensureSpinStyle() {
+  if (spinStyleInjected) return
+  spinStyleInjected = true
+  const s = document.createElement('style')
+  s.textContent = '@keyframes spin { to { transform: rotate(360deg); } }'
+  document.head.appendChild(s)
+}
 
 interface Props {
   lakeId: string
@@ -91,6 +101,7 @@ const MAX_NODES_MAX = 50
 const MAX_TEXT_CHARS = 4000
 
 export default function ImportTextModal({ lakeId, onClose, onImported }: Props) {
+  useEffect(() => { ensureSpinStyle() }, [])
   const [text, setText] = useState('')
   const [maxNodes, setMaxNodes] = useState(20)
   const [loading, setLoading] = useState(false)
@@ -149,10 +160,11 @@ export default function ImportTextModal({ lakeId, onClose, onImported }: Props) 
               </label>
               <textarea
                 ref={textareaRef}
-                style={{ ...textareaStyle, borderColor: overLimit ? '#f38ba8' : '#1e3050' }}
+                style={{ ...textareaStyle, borderColor: overLimit ? '#f38ba8' : '#1e3050', opacity: loading ? 0.6 : 1 }}
                 value={text}
                 onChange={e => setText(e.target.value)}
                 placeholder="粘贴文本内容（支持中英文，最多 4000 字）..."
+                disabled={loading}
                 autoFocus
               />
             </div>
@@ -179,22 +191,28 @@ export default function ImportTextModal({ lakeId, onClose, onImported }: Props) 
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button style={btnSecondary} onClick={onClose} disabled={loading}>取消</button>
-              <button
-                style={{ ...btnPrimary, opacity: loading || !text.trim() ? 0.6 : 1 }}
+            <button
+                style={{ ...btnPrimary, opacity: loading || !text.trim() ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
                 onClick={handleSubmit}
                 disabled={loading || !text.trim()}
               >
-                {loading ? '解析中…' : '🚀 生成图谱'}
+                {loading ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #0d1526', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                    解析中…
+                  </span>
+                ) : '🚀 生成图谱'}
               </button>
             </div>
           </>
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 20 }}>✅</span>
-              <span style={{ fontSize: 14, color: '#a6e3a1' }}>
-                成功导入 <strong>{result.imported}</strong> 个节点、
-                <strong>{result.edges.length}</strong> 条边
+              <span style={{ fontSize: 20 }}>{result.imported > 0 ? '✅' : '⚠️'}</span>
+              <span style={{ fontSize: 14, color: result.imported > 0 ? '#a6e3a1' : '#f9e2af' }}>
+                {result.imported > 0
+                  ? <>成功导入 <strong>{result.imported}</strong> 个节点、<strong>{result.edges.length}</strong> 条边</>
+                  : 'LLM 未提取到有效节点，请尝试换一段更明确的文本'}
               </span>
             </div>
 
@@ -236,7 +254,7 @@ export default function ImportTextModal({ lakeId, onClose, onImported }: Props) 
             )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button style={btnSecondary} onClick={() => { setResult(null); setText('') }}>继续导入</button>
+              <button style={btnSecondary} onClick={() => setResult(null)}>继续导入</button>
               <button style={btnPrimary} onClick={onClose}>完成</button>
             </div>
           </>
