@@ -456,6 +456,39 @@ export const api = {
         });
         return () => ctrl.abort();
     },
+    // ---- Phase 15-A：Prompt 模板 ----
+    listPromptTemplates() {
+        return request('GET', '/api/v1/prompt_templates');
+    },
+    createPromptTemplate(name, template, scope = 'private') {
+        return request('POST', '/api/v1/prompt_templates', { name, template, scope });
+    },
+    getPromptTemplate(id) {
+        return request('GET', `/api/v1/prompt_templates/${id}`);
+    },
+    updatePromptTemplate(id, patch) {
+        return request('PATCH', `/api/v1/prompt_templates/${id}`, patch);
+    },
+    deletePromptTemplate(id) {
+        return request('DELETE', `/api/v1/prompt_templates/${id}`);
+    },
+    // ---- Phase 15-B：订阅套餐 ----
+    listSubscriptionPlans() {
+        return request('GET', '/api/v1/subscriptions/plans');
+    },
+    getOrgSubscription(orgId) {
+        return request('GET', `/api/v1/organizations/${orgId}/subscription`);
+    },
+    createOrgSubscription(orgId, plan_id, billing_cycle, stub_confirm = false) {
+        return request('POST', `/api/v1/organizations/${orgId}/subscription`, { plan_id, billing_cycle, stub_confirm });
+    },
+    // ---- Phase 15-C：AI Job 触发 ----
+    aiTrigger(lakeId, nodeId, opts) {
+        return request('POST', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_trigger`, opts ?? {});
+    },
+    aiStatus(lakeId, nodeId) {
+        return request('GET', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_status`);
+    },
 };
 // 重新导出 types
 export * from './types';

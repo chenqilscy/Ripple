@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import AuditLogViewer from './AuditLogViewer'
+import SubscriptionPanel from './SubscriptionPanel'
 import type { Lake, OrgMember, OrgOverview, OrgQuota, OrgQuotaPatch, OrgRole, Organization } from '../api/types'
 
 const ROLE_COLOR: Record<OrgRole, string> = {
@@ -30,7 +31,7 @@ interface MemberListProps {
 }
 
 function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
-  const [tab, setTab] = useState<'members' | 'lakes' | 'quota'>('members')
+  const [tab, setTab] = useState<'members' | 'lakes' | 'quota' | 'subscription'>('members')
   const [members, setMembers] = useState<OrgMember[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -254,6 +255,12 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
         >
           Quota
         </button>
+        <button
+          onClick={() => setTab('subscription')}
+          style={{ ...btnStyle, ...(tab === 'subscription' ? { background: 'rgba(74,142,255,0.15)', color: '#4a8eff' } : {}) }}
+        >
+          订阅
+        </button>
       </div>
 
       {tab === 'members' && (
@@ -444,6 +451,13 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
             </div>
           )}
         </>
+      )}
+
+      {tab === 'subscription' && (
+        <SubscriptionPanel
+          orgId={org.id}
+          isOwner={currentMember?.role === 'OWNER'}
+        />
       )}
     </div>
   )

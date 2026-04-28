@@ -326,3 +326,61 @@ export interface NodeShare {
   created_by: string
   created_at: string
 }
+
+// ---- Phase 15-A：Prompt 模板 ----
+export type PromptScope = 'private' | 'org'
+
+export interface PromptTemplate {
+  id: string
+  name: string
+  template: string
+  scope: PromptScope
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+// ---- Phase 15-B：订阅套餐 ----
+export type BillingCycle = 'monthly' | 'yearly'
+export type SubscriptionStatus = 'active' | 'cancelled' | 'expired' | 'trial'
+
+export interface PlanQuotas {
+  max_members: number
+  max_lakes: number
+  max_nodes: number
+  max_storage_mb: number
+}
+
+export interface SubscriptionPlan {
+  id: string
+  name: string
+  description: string
+  price_cny_monthly: number
+  price_cny_yearly: number
+  quotas: PlanQuotas
+}
+
+export interface OrgSubscription {
+  id: string
+  org_id: string
+  plan_id: string
+  status: SubscriptionStatus
+  billing_cycle: BillingCycle
+  current_period_start: string
+  current_period_end: string
+  created_at: string
+}
+
+// ---- Phase 15-C：AI Job ----
+export type AiJobStatus = 'pending' | 'processing' | 'done' | 'failed'
+
+export interface AiJob {
+  job_id: string
+  node_id: string
+  status: AiJobStatus
+  progress_pct: number
+  error?: string
+  started_at?: string | null
+  finished_at?: string | null
+}
+

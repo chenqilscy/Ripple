@@ -488,7 +488,44 @@ export const api = {
     })
     return () => ctrl.abort()
   },
+
+  // ---- Phase 15-A：Prompt 模板 ----
+  listPromptTemplates(): Promise<{ items: import('./types').PromptTemplate[]; total: number }> {
+    return request('GET', '/api/v1/prompt_templates')
+  },
+  createPromptTemplate(name: string, template: string, scope: import('./types').PromptScope = 'private'): Promise<import('./types').PromptTemplate> {
+    return request('POST', '/api/v1/prompt_templates', { name, template, scope })
+  },
+  getPromptTemplate(id: string): Promise<import('./types').PromptTemplate> {
+    return request('GET', `/api/v1/prompt_templates/${id}`)
+  },
+  updatePromptTemplate(id: string, patch: { name?: string; template?: string; scope?: import('./types').PromptScope }): Promise<import('./types').PromptTemplate> {
+    return request('PATCH', `/api/v1/prompt_templates/${id}`, patch)
+  },
+  deletePromptTemplate(id: string): Promise<void> {
+    return request('DELETE', `/api/v1/prompt_templates/${id}`)
+  },
+
+  // ---- Phase 15-B：订阅套餐 ----
+  listSubscriptionPlans(): Promise<{ plans: import('./types').SubscriptionPlan[] }> {
+    return request('GET', '/api/v1/subscriptions/plans')
+  },
+  getOrgSubscription(orgId: string): Promise<{ subscription: import('./types').OrgSubscription }> {
+    return request('GET', `/api/v1/organizations/${orgId}/subscription`)
+  },
+  createOrgSubscription(orgId: string, plan_id: string, billing_cycle: import('./types').BillingCycle, stub_confirm = false): Promise<{ subscription: import('./types').OrgSubscription }> {
+    return request('POST', `/api/v1/organizations/${orgId}/subscription`, { plan_id, billing_cycle, stub_confirm })
+  },
+
+  // ---- Phase 15-C：AI Job 触发 ----
+  aiTrigger(lakeId: string, nodeId: string, opts?: { prompt_template_id?: string; input_node_ids?: string[] }): Promise<import('./types').AiJob> {
+    return request('POST', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_trigger`, opts ?? {})
+  },
+  aiStatus(lakeId: string, nodeId: string): Promise<import('./types').AiJob> {
+    return request('GET', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_status`)
+  },
 }
 
 // 重新导出 types
 export * from './types'
+
