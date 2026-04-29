@@ -83,6 +83,7 @@ export interface EdgeItem {
   kind: EdgeKind
   label?: string
   owner_id: string
+  strength?: number
   created_at: string
   deleted_at?: string | null
 }

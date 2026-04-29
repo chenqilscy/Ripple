@@ -31,6 +31,7 @@ type edgeResp struct {
 	Kind      string     `json:"kind"`
 	Label     string     `json:"label,omitempty"`
 	OwnerID   string     `json:"owner_id"`
+	Strength  float64    `json:"strength,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
@@ -44,6 +45,7 @@ func toEdgeResp(e *domain.Edge) edgeResp {
 		Kind:      string(e.Kind),
 		Label:     e.Label,
 		OwnerID:   e.OwnerID,
+		Strength:  e.Strength,
 		CreatedAt: e.CreatedAt,
 		DeletedAt: e.DeletedAt,
 	}

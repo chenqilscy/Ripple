@@ -86,7 +86,7 @@ func (r *edgeRepoNeo) Create(ctx context.Context, e *domain.Edge) error {
 const cypherGetEdge = `
 MATCH ()-[e:EDGE {id: $id}]->()
 RETURN e.id, e.lake_id, startNode(e).id, endNode(e).id,
-       e.kind, e.label, e.owner_id, e.created_at, e.deleted_at
+       e.kind, e.label, e.owner_id, e.created_at, e.deleted_at, coalesce(e.strength, 0.0)
 `
 
 func (r *edgeRepoNeo) GetByID(ctx context.Context, id string) (*domain.Edge, error) {
@@ -111,13 +111,13 @@ func (r *edgeRepoNeo) GetByID(ctx context.Context, id string) (*domain.Edge, err
 const cypherListEdgesAlive = `
 MATCH (s:Node)-[e:EDGE {lake_id: $lake_id}]->(d:Node)
 WHERE e.deleted_at IS NULL
-RETURN e.id, e.lake_id, s.id, d.id, e.kind, e.label, e.owner_id, e.created_at, e.deleted_at
+RETURN e.id, e.lake_id, s.id, d.id, e.kind, e.label, e.owner_id, e.created_at, e.deleted_at, coalesce(e.strength, 0.0)
 ORDER BY e.created_at ASC
 `
 
 const cypherListEdgesAll = `
 MATCH (s:Node)-[e:EDGE {lake_id: $lake_id}]->(d:Node)
-RETURN e.id, e.lake_id, s.id, d.id, e.kind, e.label, e.owner_id, e.created_at, e.deleted_at
+RETURN e.id, e.lake_id, s.id, d.id, e.kind, e.label, e.owner_id, e.created_at, e.deleted_at, coalesce(e.strength, 0.0)
 ORDER BY e.created_at ASC
 `
 
@@ -246,6 +246,14 @@ func scanEdge(vals []any) *domain.Edge {
 			if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
 				e.DeletedAt = &t
 			}
+		}
+	}
+	if len(vals) > 9 && vals[9] != nil {
+		switch v := vals[9].(type) {
+		case float64:
+			e.Strength = v
+		case float32:
+			e.Strength = float64(v)
 		}
 	}
 	return e

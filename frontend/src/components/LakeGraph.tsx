@@ -42,6 +42,8 @@ interface SimNode extends SimulationNodeDatum {
 
 interface SimLink extends SimulationLinkDatum<SimNode> {
   edgeId: string
+  strength?: number
+  kind?: string
 }
 
 function finiteNumber(v: unknown): v is number {
@@ -297,11 +299,79 @@ function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew,
 // ---------------------------------------------------------------------------
 interface SpringEdgesProps {
   simLinks: SimLink[]
+  onEdgeHover?: (info: { x: number; y: number; strength: number; kind: string } | null) => void
 }
 
-function SpringEdges({ simLinks }: SpringEdgesProps) {
+function SpringEdges({ simLinks, onEdgeHover }: SpringEdgesProps) {
   const geoRef = useRef<THREE.BufferGeometry>(null)
   const edgeKey = useMemo(() => simLinks.map(l => l.edgeId).join('|'), [simLinks])
+  const { camera, gl } = useThree()
+
+  // Edge hover detection via canvas mousemove -> world coords -> nearest edge midpoint
+  useEffect(() => {
+    if (!onEdgeHover) return
+    const canvas = gl.domElement
+    const handleMove = (ev: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      const ndcX = ((ev.clientX - rect.left) / rect.width) * 2 - 1
+      const ndcY = -((ev.clientY - rect.top) / rect.height) * 2 + 1
+      // Unproject to world Z=0 plane
+      const near = new THREE.Vector3(ndcX, ndcY, -1).unproject(camera)
+      const far = new THREE.Vector3(ndcX, ndcY, 1).unproject(camera)
+      const t = -near.z / (far.z - near.z)
+      const worldX = near.x + t * (far.x - near.x)
+      const worldY = near.y + t * (far.y - near.y)
+
+      let bestDist = Infinity
+      let bestLink: SimLink | null = null
+      for (const lk of simLinks) {
+        const src = lk.source as SimNode
+        const dst = lk.target as SimNode
+        const mx = ((src.x ?? 0) + (dst.x ?? 0)) / 2
+        const my = ((src.y ?? 0) + (dst.y ?? 0)) / 2
+        // Point-to-segment distance
+        const ax = src.x ?? 0, ay = src.y ?? 0
+        const bx = dst.x ?? 0, by = dst.y ?? 0
+        const dx = bx - ax, dy = by - ay
+        const lenSq = dx * dx + dy * dy
+        let segDist: number
+        if (lenSq < 0.0001) {
+          segDist = Math.hypot(worldX - mx, worldY - my)
+        } else {
+          const tt = Math.max(0, Math.min(1, ((worldX - ax) * dx + (worldY - ay) * dy) / lenSq))
+          segDist = Math.hypot(worldX - (ax + tt * dx), worldY - (ay + tt * dy))
+        }
+        if (segDist < bestDist) { bestDist = segDist; bestLink = lk }
+      }
+      // Project world threshold to screen: ~12px in world units
+      const camZ = (camera as THREE.PerspectiveCamera).position?.z ?? 600
+      const fov = ((camera as THREE.PerspectiveCamera).fov ?? 50) * (Math.PI / 180)
+      const worldPerPx = (2 * Math.tan(fov / 2) * camZ) / rect.height
+      const threshold = 12 * worldPerPx
+      if (bestLink && bestDist < threshold) {
+        const src = bestLink.source as SimNode
+        const dst = bestLink.target as SimNode
+        const mid3 = new THREE.Vector3(
+          ((src.x ?? 0) + (dst.x ?? 0)) / 2,
+          ((src.y ?? 0) + (dst.y ?? 0)) / 2,
+          0,
+        ).project(camera)
+        const sx = (mid3.x * 0.5 + 0.5) * rect.width
+        const sy = (-mid3.y * 0.5 + 0.5) * rect.height
+        onEdgeHover({ x: sx, y: sy, strength: bestLink.strength ?? 0, kind: bestLink.kind ?? 'relates' })
+      } else {
+        onEdgeHover(null)
+      }
+    }
+    const handleLeave = () => onEdgeHover(null)
+    canvas.addEventListener('mousemove', handleMove)
+    canvas.addEventListener('mouseleave', handleLeave)
+    return () => {
+      canvas.removeEventListener('mousemove', handleMove)
+      canvas.removeEventListener('mouseleave', handleLeave)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simLinks, camera, gl, onEdgeHover])
 
   useFrame(() => {
     if (!geoRef.current || simLinks.length === 0) return
@@ -387,9 +457,10 @@ interface SceneProps {
   resetToken?: number
   searchQuery?: string
   snapshotLayout?: Record<string, { x: number; y: number }>
+  onEdgeHover?: (info: { x: number; y: number; strength: number; kind: string } | null) => void
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
@@ -409,6 +480,8 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
         edgeId: e.id,
         source: e.src_node_id,
         target: e.dst_node_id,
+        strength: e.strength,
+        kind: e.kind,
       }))
 
     const sim = forceSimulation<SimNode>(simNodes)
@@ -492,7 +565,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       <pointLight position={[0, -200, -100]} intensity={0.4} color="#4a8eff" />
 
       <SimTicker sim={sim} />
-      <SpringEdges simLinks={simLinks} />
+      <SpringEdges simLinks={simLinks} onEdgeHover={onEdgeHover} />
       <EdgeParticles simLinks={simLinks} />
 
       {displayNodes.map(node => {
@@ -614,6 +687,8 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
 
   // P15-C: reset layout token — incrementing re-randomizes force simulation
   const [resetToken, setResetToken] = useState(0)
+  // P2-03: edge hover tooltip
+  const [edgeHoverInfo, setEdgeHoverInfo] = useState<{ x: number; y: number; strength: number; kind: string } | null>(null)
 
   // Track newly added node IDs for weave animation
   const prevNodeIdsRef = useRef(new Set<string>())
@@ -720,6 +795,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
             resetToken={resetToken}
             searchQuery={searchQuery}
             snapshotLayout={snapshotLayout}
+            onEdgeHover={setEdgeHoverInfo}
           />
         </React.Suspense>
         <CameraController onZoomIn={zoomInRef} onZoomOut={zoomOutRef} onFit={fitRef} />
@@ -769,6 +845,28 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
               </div>
             )
           })}
+        </div>
+      )}
+      {/* P2-03: edge hover tooltip */}
+      {edgeHoverInfo && (
+        <div style={{
+          position: 'absolute',
+          left: edgeHoverInfo.x + 12,
+          top: edgeHoverInfo.y - 8,
+          zIndex: 30,
+          pointerEvents: 'none',
+          background: 'rgba(6,13,26,0.92)',
+          border: '1px solid #2e8b90',
+          borderRadius: 5,
+          padding: '4px 8px',
+          fontSize: 11,
+          color: '#9ec5ee',
+          whiteSpace: 'nowrap',
+        }}>
+          <span style={{ color: '#2e8b90', marginRight: 4 }}>{edgeHoverInfo.kind}</span>
+          {edgeHoverInfo.strength > 0 && (
+            <span>相似度 {Math.round(edgeHoverInfo.strength * 100)}%</span>
+          )}
         </div>
       )}
     </div>

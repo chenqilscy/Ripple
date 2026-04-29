@@ -41,6 +41,7 @@ type Edge struct {
 	Kind      EdgeKind
 	Label     string // kind=custom 时必填；其他 kind 可选展示文本
 	OwnerID   string
+	Strength  float64    // AI 相似度强度（0=未知/人工边，0-1 为 AI 计算值）
 	CreatedAt time.Time
 	DeletedAt *time.Time
 }
