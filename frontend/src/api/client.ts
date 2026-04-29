@@ -26,12 +26,12 @@ export function setToken(tok: string | null) {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, opts?: { signal?: AbortSignal }): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const tok = getToken()
   if (tok) headers.Authorization = `Bearer ${tok}`
   const res = await fetch(`${BASE}${path}`, {
-    method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
+    method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: opts?.signal,
   })
   if (res.status === 401) {
     setToken(null)
@@ -121,8 +121,8 @@ export const api = {
   getLake(id: string): Promise<Lake> {
     return request('GET', `/api/v1/lakes/${id}`)
   },
-  listNodes(lakeId: string, includeVapor = false): Promise<{ nodes: NodeItem[] }> {
-    return request('GET', `/api/v1/lakes/${lakeId}/nodes?include_vapor=${includeVapor}`)
+  listNodes(lakeId: string, includeVapor = false, signal?: AbortSignal): Promise<{ nodes: NodeItem[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/nodes?include_vapor=${includeVapor}`, undefined, { signal })
   },
 
   // ---- Nodes ----
@@ -154,11 +154,11 @@ export const api = {
   },
 
   // ---- Edges ----
-  listEdges(lakeId: string, includeDeleted = false): Promise<{ edges: EdgeItem[] }> {
-    return request('GET', `/api/v1/lakes/${lakeId}/edges?include_deleted=${includeDeleted}`)
+  listEdges(lakeId: string, includeDeleted = false, signal?: AbortSignal): Promise<{ edges: EdgeItem[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/edges?include_deleted=${includeDeleted}`, undefined, { signal })
   },
-  createEdge(src_node_id: string, dst_node_id: string, kind: EdgeKind, label?: string): Promise<EdgeItem> {
-    return request('POST', '/api/v1/edges', { src_node_id, dst_node_id, kind, label })
+  createEdge(src_node_id: string, dst_node_id: string, kind: EdgeKind, label?: string, signal?: AbortSignal): Promise<EdgeItem> {
+    return request('POST', '/api/v1/edges', { src_node_id, dst_node_id, kind, label }, { signal })
   },
   deleteEdge(id: string): Promise<void> {
     return request('DELETE', `/api/v1/edges/${id}`)
@@ -455,8 +455,8 @@ export const api = {
   // ---- Weave Stream (SSE / M3 T4) ----
   // onEvent(eventName, payload) 回调；返回 abort 函数。
   // ---- P18-A：节点关联推荐 ----
-  getRelatedNodes(nodeId: string, limit = 5): Promise<{ related: import('./types').NodeSearchResult[] }> {
-    return request('GET', `/api/v1/nodes/${nodeId}/related?limit=${limit}`)
+  getRelatedNodes(nodeId: string, limit = 5, signal?: AbortSignal): Promise<{ related: import('./types').NodeSearchResult[] }> {
+    return request('GET', `/api/v1/nodes/${nodeId}/related?limit=${limit}`, undefined, { signal })
   },
 
   // ---- P18-C：节点模板库 ----

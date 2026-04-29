@@ -30,6 +30,7 @@ import AttachmentBar from '../components/AttachmentBar'
 import CollabDemo from '../components/CollabDemo'
 import OfflineBar from '../components/OfflineBar'
 import NotificationBell from '../components/NotificationBell'
+import { buildRelationshipCandidates, type RelatedNodeBatch } from '../utils/relationshipAnalysis'
 
 type SettingsTabKey = 'overview' | 'rbac' | 'apiKeys' | 'graylist' | 'templates' | 'audit'
 
@@ -131,6 +132,11 @@ export function Home({ onLogout }: Props) {
   // P18-A：节点关联推荐
   const [relatedPanel, setRelatedPanel] = useState<{ nodeId: string; results: NodeSearchResult[] } | null>(null)
   const [relatedLoading, setRelatedLoading] = useState<string | null>(null)
+  const [relationshipBusy, setRelationshipBusy] = useState(false)
+  const [relationshipMessage, setRelationshipMessage] = useState<string | null>(null)
+  const activeLakeIdRef = useRef<string | null>(null)
+  const relationshipBusyLakesRef = useRef<Set<string>>(new Set())
+  const relationshipAbortControllersRef = useRef<Map<string, AbortController>>(new Map())
   // P18-C：节点模板库
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
   const [templates, setTemplates] = useState<NodeTemplate[]>([])
@@ -159,6 +165,17 @@ export function Home({ onLogout }: Props) {
   useEffect(() => {
     api.me().then(u => { meIdRef.current = u.id; setMeId(u.id) }).catch(() => { /* 静默 */ })
   }, [])
+
+  useEffect(() => {
+    activeLakeIdRef.current = active?.id ?? null
+    for (const [lakeId, controller] of relationshipAbortControllersRef.current) {
+      if (lakeId !== active?.id) controller.abort()
+    }
+    setRelatedPanel(null)
+    setRelatedLoading(null)
+    setRelationshipMessage(null)
+    setRelationshipBusy(active?.id ? relationshipBusyLakesRef.current.has(active.id) : false)
+  }, [active?.id])
 
   // P12-E：PWA shortcut 处理 — ?action=search|import（需等 active 湖加载完毕）
   useEffect(() => {
@@ -235,7 +252,9 @@ export function Home({ onLogout }: Props) {
     setGraphLayout(undefined)
     setRemoteCursors(new Map())
     // P13-C：加载湖标签列表
-    api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => setLakeTags([]))
+    api.getLakeTags(active.id)
+      .then(r => { if (activeLakeIdRef.current === active.id) setLakeTags(r.tags) })
+      .catch(() => { if (activeLakeIdRef.current === active.id) setLakeTags([]) })
 
     const token = localStorage.getItem('ripple.token') ?? ''
     if (!token) return
@@ -347,15 +366,28 @@ export function Home({ onLogout }: Props) {
   }
 
   async function loadNodes(lakeId: string) {
-    try { setNodes((await api.listNodes(lakeId)).nodes) } catch (e) { setErr((e as Error).message) }
+    try {
+      const r = await api.listNodes(lakeId)
+      if (activeLakeIdRef.current === lakeId) setNodes(r.nodes)
+    } catch (e) {
+      if (activeLakeIdRef.current === lakeId) setErr((e as Error).message)
+    }
   }
 
   async function loadEdges(lakeId: string) {
-    try { setEdges((await api.listEdges(lakeId)).edges) } catch (e) { setErr((e as Error).message) }
+    try {
+      const r = await api.listEdges(lakeId)
+      if (activeLakeIdRef.current === lakeId) setEdges(r.edges)
+    } catch (e) {
+      if (activeLakeIdRef.current === lakeId) setErr((e as Error).message)
+    }
   }
 
   async function loadPresence(lakeId: string) {
-    try { setOnlineUsers((await api.listPresence(lakeId)).users) } catch { /* 非关键：静默 */ }
+    try {
+      const r = await api.listPresence(lakeId)
+      if (activeLakeIdRef.current === lakeId) setOnlineUsers(r.users)
+    } catch { /* 非关键：静默 */ }
   }
 
   // 进入连线：点第一个节点设为 source；点第二个节点询问 kind 后创建。
@@ -577,13 +609,14 @@ export function Home({ onLogout }: Props) {
       const t = await api.generateCloud(active.id, prompt.trim(), n, 'TEXT')
       setTasks([t, ...tasks])
       setPrompt('')
-      void poll(t.id)
+      void poll(t.id, active.id)
     } catch (e) { setErr((e as Error).message) }
     finally { setBusy(false) }
   }
 
   async function createManualNode() {
     if (!active) return
+    const lakeId = active.id
     const content = await modalPrompt({
       title: '添加节点',
       label: '输入节点内容；Ctrl+Enter 提交，Esc 取消',
@@ -594,11 +627,13 @@ export function Home({ onLogout }: Props) {
     if (content === null) return
     setBusy(true); setErr(null)
     try {
-      const created = await api.createNode(active.id, content.trim(), 'TEXT')
-      setNodes(prev => [created, ...prev.filter(n => n.id !== created.id)])
-      setSelectedNode(created)
-      setViewMode('list')
-      void loadNodes(active.id)
+      const created = await api.createNode(lakeId, content.trim(), 'TEXT')
+      if (activeLakeIdRef.current === lakeId) {
+        setNodes(prev => [created, ...prev.filter(n => n.id !== created.id)])
+        setSelectedNode(created)
+        setViewMode('list')
+      }
+      void loadNodes(lakeId)
     } catch (e) { setErr((e as Error).message) }
     finally { setBusy(false) }
   }
@@ -629,14 +664,18 @@ export function Home({ onLogout }: Props) {
     setStreaming(false)
   }
 
-  async function poll(taskId: string) {
+  async function poll(taskId: string, lakeId: string) {
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 1500))
       try {
         const t = await api.getCloud(taskId)
         setTasks(prev => prev.map(x => x.id === taskId ? t : x))
         if (t.status === 'done' || t.status === 'failed') {
-          if (active) await loadNodes(active.id)
+          const taskLakeId = t.lake_id || lakeId
+          if (activeLakeIdRef.current === taskLakeId) await loadNodes(taskLakeId)
+          if (activeLakeIdRef.current === taskLakeId && t.status === 'done' && t.result_node_ids?.length) {
+            void analyzeRelationships(t.result_node_ids, { silent: true, lakeId: taskLakeId })
+          }
           return
         }
       } catch { /* ignore */ }
@@ -694,12 +733,117 @@ export function Home({ onLogout }: Props) {
 
   // P18-A：加载关联推荐
   async function loadRelated(nodeId: string) {
+    const lakeId = activeLakeIdRef.current
     setRelatedLoading(nodeId)
     try {
       const r = await api.getRelatedNodes(nodeId, 5)
-      setRelatedPanel({ nodeId, results: r.related })
-    } catch (e) { setErr((e as Error).message) }
-    finally { setRelatedLoading(null) }
+      if (activeLakeIdRef.current === lakeId) setRelatedPanel({ nodeId, results: r.related })
+    } catch (e) {
+      if (activeLakeIdRef.current === lakeId) setErr((e as Error).message)
+    }
+    finally {
+      if (activeLakeIdRef.current === lakeId) setRelatedLoading(null)
+    }
+  }
+
+  async function analyzeRelationships(seedNodeIds?: string[], opts?: { silent?: boolean; lakeId?: string }) {
+    const lakeId = opts?.lakeId ?? active?.id
+    const currentLakeIdAtStart = activeLakeIdRef.current ?? active?.id ?? null
+    if (!lakeId || currentLakeIdAtStart !== lakeId || relationshipBusyLakesRef.current.has(lakeId)) return
+    const isCurrentLake = () => activeLakeIdRef.current === lakeId
+    const abortController = new AbortController()
+    relationshipBusyLakesRef.current.add(lakeId)
+    relationshipAbortControllersRef.current.set(lakeId, abortController)
+    if (isCurrentLake()) {
+      setRelationshipBusy(true)
+      setRelationshipMessage(seedNodeIds?.length ? '正在分析新增节点关系…' : '正在分析全湖节点关系…')
+    }
+    setErr(null)
+    try {
+      const [{ nodes: latestNodes }, { edges: latestEdges }] = await Promise.all([
+        api.listNodes(lakeId, false, abortController.signal),
+        api.listEdges(lakeId, false, abortController.signal),
+      ])
+      if (!isCurrentLake()) return
+      if (isCurrentLake()) {
+        setNodes(latestNodes)
+        setEdges(latestEdges)
+      }
+
+      const visibleNodes = latestNodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST')
+      const nodeIds = new Set(visibleNodes.map(n => n.id))
+      const seeds = (seedNodeIds?.length ? seedNodeIds : visibleNodes.map(n => n.id))
+        .filter(id => nodeIds.has(id))
+        .slice(0, 30)
+
+      if (seeds.length < 1 || visibleNodes.length < 2) {
+        const msg = '至少需要 2 个节点才能分析关系。'
+        if (isCurrentLake()) {
+          setRelationshipMessage(msg)
+          if (!opts?.silent) await modalAlert(msg, { title: '关系分析' })
+        }
+        return
+      }
+
+      const batches: RelatedNodeBatch[] = []
+
+      for (const seedId of seeds) {
+        if (!isCurrentLake()) return
+        const r = await api.getRelatedNodes(seedId, 5, abortController.signal)
+        if (!isCurrentLake()) return
+        batches.push({ sourceNodeId: seedId, related: r.related })
+      }
+
+      const candidates = buildRelationshipCandidates(lakeId, visibleNodes, latestEdges, batches)
+      if (!isCurrentLake()) return
+      const limit = seedNodeIds?.length ? 12 : 24
+      let created = 0
+      let skipped = 0
+      for (const c of candidates.slice(0, limit)) {
+        if (!isCurrentLake()) return
+        try {
+          await api.createEdge(c.src, c.dst, 'relates', `自动关联 ${c.score.toFixed(2)}`, abortController.signal)
+          created += 1
+        } catch (e) {
+          if ((e as { status?: number }).status === 409) {
+            skipped += 1
+            continue
+          }
+          throw e
+        }
+      }
+
+      const refreshedEdges = (await api.listEdges(lakeId, false, abortController.signal)).edges
+      if (!isCurrentLake()) return
+      const msg = created > 0
+        ? `关系分析完成：新增 ${created} 条关联${skipped > 0 ? `，${skipped} 条重复关系已跳过` : ''}。`
+        : candidates.length > 0 && skipped > 0
+          ? `关系分析完成：候选关系都已存在，已跳过 ${skipped} 条重复关系。`
+          : '关系分析完成：暂未发现新的自动关联，可用节点卡片上的“🔗”手动连线。'
+      if (isCurrentLake()) {
+        setEdges(refreshedEdges)
+        setViewMode('graph')
+        setRelationshipMessage(msg)
+        if (!opts?.silent) await modalAlert(msg, { title: '关系分析' })
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (isCurrentLake()) {
+        try {
+          const fallbackEdges = (await api.listEdges(lakeId, false, abortController.signal)).edges
+          if (isCurrentLake()) setEdges(fallbackEdges)
+        } catch { /* 保留原始失败信息 */ }
+      }
+      if (isCurrentLake()) {
+        setErr(msg)
+        setRelationshipMessage(`关系分析失败：${msg}`)
+        if (!opts?.silent) await modalAlert(`关系分析失败：${msg}`, { title: '关系分析' })
+      }
+    } finally {
+      relationshipBusyLakesRef.current.delete(lakeId)
+      relationshipAbortControllersRef.current.delete(lakeId)
+      if (isCurrentLake()) setRelationshipBusy(false)
+    }
   }
 
   // P18-C：加载模板列表
@@ -829,10 +973,12 @@ export function Home({ onLogout }: Props) {
   // P13-C：懒加载节点标签（节点列表变化时批量获取）
   useEffect(() => {
     if (!active || nodes.length === 0) return
-    const unloaded = nodes.filter(n => nodeTags[n.id] === undefined).map(n => n.id)
+    const lakeId = active.id
+    const unloaded = nodes.filter(n => n.lake_id === lakeId && nodeTags[n.id] === undefined).map(n => n.id)
     if (unloaded.length === 0) return
     Promise.all(unloaded.map(id => api.getNodeTags(id).then(r => ({ id, tags: r.tags })).catch(() => ({ id, tags: [] as string[] }))))
       .then(results => {
+        if (activeLakeIdRef.current !== lakeId) return
         setNodeTags(prev => {
           const next = { ...prev }
           for (const { id, tags } of results) next[id] = tags
@@ -1131,6 +1277,12 @@ export function Home({ onLogout }: Props) {
                     style={{ ...miniBtn, color: '#cba6f7' }}
                     title="打开节点模板库，从预设模板快速创建节点"
                   >📋 模板库</button>
+                  <button
+                    onClick={() => void analyzeRelationships()}
+                    disabled={relationshipBusy || nodes.length < 2}
+                    style={{ ...miniBtn, color: relationshipBusy ? '#6c7086' : '#a6e3a1' }}
+                    title="分析湖中节点的潜在关联，并自动创建 relates 关系"
+                  >{relationshipBusy ? '分析中…' : '🔎 分析关系'}</button>
                 </div>
                 {crystalSel.size > 0 && (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1142,6 +1294,11 @@ export function Home({ onLogout }: Props) {
                   </div>
                 )}
               </div>
+              {relationshipMessage && (
+                <div style={{ marginTop: 8, fontSize: 12, color: relationshipMessage.includes('失败') ? '#f38ba8' : '#94e2d5' }}>
+                  {relationshipMessage}
+                </div>
+              )}
 
               {viewMode === 'graph' ? (
                 <div style={{ marginTop: 12 }}>
@@ -1350,9 +1507,13 @@ export function Home({ onLogout }: Props) {
                         nodeId={n.id}
                         tags={tags}
                         onChanged={newTags => {
+                          const lakeId = n.lake_id
+                          if (activeLakeIdRef.current !== lakeId) return
                           setNodeTags(prev => ({ ...prev, [n.id]: newTags }))
                           // 刷新湖标签
-                          if (active) api.getLakeTags(active.id).then(r => setLakeTags(r.tags)).catch(() => undefined)
+                          api.getLakeTags(lakeId)
+                            .then(r => { if (activeLakeIdRef.current === lakeId) setLakeTags(r.tags) })
+                            .catch(() => undefined)
                         }}
                       />
                       <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1543,7 +1704,7 @@ export function Home({ onLogout }: Props) {
             lakeId={active.id}
             lakeName={active.name}
             onClose={() => setImportOpen(false)}
-            onImported={() => api.listNodes(active.id).then(r => setNodes(r.nodes))}
+            onImported={() => { void loadNodes(active.id) }}
           />
         </React.Suspense>
       )}
@@ -1552,7 +1713,7 @@ export function Home({ onLogout }: Props) {
           <ImportTextModal
             lakeId={active.id}
             onClose={() => setImportTextOpen(false)}
-            onImported={() => api.listNodes(active.id).then(r => setNodes(r.nodes))}
+            onImported={() => { void loadNodes(active.id) }}
           />
         </React.Suspense>
       )}
@@ -1568,8 +1729,8 @@ export function Home({ onLogout }: Props) {
             }}
             onSuccess={() => {
               if (active) {
-                api.listNodes(active.id).then(r => setNodes(r.nodes))
-                api.listEdges(active.id).then(r => setEdges(r.edges))
+                void loadNodes(active.id)
+                void loadEdges(active.id)
               }
             }}
           />
@@ -1616,6 +1777,7 @@ export function Home({ onLogout }: Props) {
           revisions={historyModal.revisions}
           onClose={() => setHistoryModal(null)}
           onRolledBack={updatedNode => {
+            if (activeLakeIdRef.current !== updatedNode.lake_id) return
             setNodes(prev => prev.map(n => n.id === updatedNode.id ? updatedNode : n))
             setHistoryModal(null)
           }}
@@ -1817,7 +1979,9 @@ export function Home({ onLogout }: Props) {
             onClose={() => setSelectedNode(null)}
             onAiDone={async nodeId => {
               if (!active) return
-              const refreshed = (await api.listNodes(active.id)).nodes
+              const lakeId = active.id
+              const refreshed = (await api.listNodes(lakeId)).nodes
+              if (activeLakeIdRef.current !== lakeId) return
               setNodes(refreshed)
               const nextSelected = refreshed.find(n => n.id === nodeId)
               if (nextSelected) setSelectedNode(nextSelected)

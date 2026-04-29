@@ -78,6 +78,7 @@ function EdgeParticles({ simLinks, speed = 0.4 }: ParticleProps) {
     Float32Array.from({ length: simLinks.length }, () => Math.random()),
   )
   const meshRef = useRef<THREE.InstancedMesh>(null)
+  const edgeKey = useMemo(() => simLinks.map(l => l.edgeId).join('|'), [simLinks])
 
   // Resize progress buffer when edge count changes
   useEffect(() => {
@@ -115,7 +116,7 @@ function EdgeParticles({ simLinks, speed = 0.4 }: ParticleProps) {
   if (simLinks.length === 0) return null
 
   return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, simLinks.length]}>
+    <instancedMesh key={edgeKey} ref={meshRef} args={[undefined, undefined, simLinks.length]}>
       <sphereGeometry args={[2.5, 6, 6]} />
       <meshBasicMaterial color="#89dceb" transparent opacity={0.9} />
     </instancedMesh>
@@ -298,6 +299,7 @@ interface SpringEdgesProps {
 
 function SpringEdges({ simLinks }: SpringEdgesProps) {
   const geoRef = useRef<THREE.BufferGeometry>(null)
+  const edgeKey = useMemo(() => simLinks.map(l => l.edgeId).join('|'), [simLinks])
 
   useFrame(() => {
     if (!geoRef.current || simLinks.length === 0) return
@@ -339,7 +341,7 @@ function SpringEdges({ simLinks }: SpringEdgesProps) {
   if (simLinks.length === 0) return null
 
   return (
-    <lineSegments>
+    <lineSegments key={edgeKey}>
       <bufferGeometry ref={geoRef}>
         <bufferAttribute
           attach="attributes-position"
