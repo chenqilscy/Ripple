@@ -233,6 +233,40 @@ export function Home({ onLogout }: Props) {
   const [recos, setRecos] = useState<{ target_id: string; score: number }[]>([])
   const wsRef = useRef<LakeWS | null>(null)
 
+  const lakeHealth = useMemo(() => {
+    const totalNodes = nodes.length
+    const stateCounts = {
+      DROP: 0,
+      MIST: 0,
+      CLOUD: 0,
+      PERMA: 0,
+      VAPOR: 0,
+      ERASED: 0,
+      FROZEN: 0,
+    }
+    for (const node of nodes) {
+      const state = node.state as keyof typeof stateCounts
+      if (stateCounts[state] !== undefined) stateCounts[state] += 1
+    }
+    const activeNodes = totalNodes - stateCounts.VAPOR - stateCounts.ERASED
+    const density = totalNodes > 1 ? edges.length / ((totalNodes * (totalNodes - 1)) / 2) : 0
+    const permaRatio = totalNodes > 0 ? stateCounts.PERMA / totalNodes : 0
+    const collaboration = Math.min(onlineUsers.length / 5, 1)
+    const healthScore = Math.round(Math.min(100, 45 * permaRatio + 35 * Math.min(density / 0.35, 1) + 20 * collaboration))
+    const grade = healthScore >= 80 ? '优秀' : healthScore >= 60 ? '健康' : healthScore >= 40 ? '一般' : '偏弱'
+    return {
+      totalNodes,
+      activeNodes,
+      edgeCount: edges.length,
+      density,
+      permaRatio,
+      collaboration: onlineUsers.length,
+      healthScore,
+      grade,
+      stateCounts,
+    }
+  }, [nodes, edges, onlineUsers.length])
+
   useEffect(() => { void refresh() }, [currentSpaceId])
 
   // P12-D：Cmd+K / Ctrl+K 打开搜索浮层；N 快速添加节点（避开输入框）。
@@ -1261,6 +1295,46 @@ export function Home({ onLogout }: Props) {
                 {onlineUsers.length > 8 && <span>+{onlineUsers.length - 8}</span>}
               </div>
             )}
+
+            <section style={card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <strong style={{ letterSpacing: 2, fontSize: 13 }}>湖健康度仪表盘</strong>
+                <span style={{
+                  fontSize: 12,
+                  color: lakeHealth.healthScore >= 80 ? '#a6e3a1' : lakeHealth.healthScore >= 60 ? '#89b4fa' : lakeHealth.healthScore >= 40 ? '#f9e2af' : '#f38ba8',
+                }}>
+                  {lakeHealth.grade} · {lakeHealth.healthScore}
+                </span>
+              </div>
+              <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 10 }}>
+                <div style={{
+                  width: `${lakeHealth.healthScore}%`,
+                  height: '100%',
+                  background: lakeHealth.healthScore >= 80
+                    ? 'linear-gradient(90deg,#7bd88f,#a6e3a1)'
+                    : lakeHealth.healthScore >= 60
+                      ? 'linear-gradient(90deg,#6ea8fe,#89b4fa)'
+                      : lakeHealth.healthScore >= 40
+                        ? 'linear-gradient(90deg,#f7c66a,#f9e2af)'
+                        : 'linear-gradient(90deg,#ef6b73,#f38ba8)',
+                }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8 }}>
+                <div style={healthCell}><div style={healthLabel}>节点总数</div><div style={healthValue}>{lakeHealth.totalNodes}</div></div>
+                <div style={healthCell}><div style={healthLabel}>活跃节点</div><div style={healthValue}>{lakeHealth.activeNodes}</div></div>
+                <div style={healthCell}><div style={healthLabel}>边数量</div><div style={healthValue}>{lakeHealth.edgeCount}</div></div>
+                <div style={healthCell}><div style={healthLabel}>边密度</div><div style={healthValue}>{(lakeHealth.density * 100).toFixed(1)}%</div></div>
+                <div style={healthCell}><div style={healthLabel}>PERMA占比</div><div style={healthValue}>{(lakeHealth.permaRatio * 100).toFixed(1)}%</div></div>
+                <div style={healthCell}><div style={healthLabel}>在线协作</div><div style={healthValue}>{lakeHealth.collaboration}</div></div>
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, color: '#9eb6cc' }}>
+                <span>DROP {lakeHealth.stateCounts.DROP}</span>
+                <span>MIST {lakeHealth.stateCounts.MIST}</span>
+                <span>CLOUD {lakeHealth.stateCounts.CLOUD}</span>
+                <span>PERMA {lakeHealth.stateCounts.PERMA}</span>
+                <span>VAPOR {lakeHealth.stateCounts.VAPOR}</span>
+              </div>
+            </section>
 
             <section style={card}>
               <strong style={{ letterSpacing: 2, fontSize: 13 }}>造云 · AI 发散</strong>
@@ -2331,6 +2405,22 @@ const presenceDot: React.CSSProperties = {
   background: 'rgba(127,219,182,0.22)',
   border: '1px solid rgba(127,219,182,0.5)',
   color: '#7fdbb6', fontSize: 9, letterSpacing: 0,
+}
+const healthCell: React.CSSProperties = {
+  border: '1px solid #2b3748',
+  borderRadius: 8,
+  padding: '8px 10px',
+  background: 'rgba(15, 23, 35, 0.6)',
+}
+const healthLabel: React.CSSProperties = {
+  fontSize: 11,
+  color: '#7e9bb8',
+}
+const healthValue: React.CSSProperties = {
+  marginTop: 4,
+  fontSize: 16,
+  fontWeight: 700,
+  color: '#dbeeff',
 }
 const errBanner: React.CSSProperties = {
   position: 'fixed', bottom: 16, right: 16,
