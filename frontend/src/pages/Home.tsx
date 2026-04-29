@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
 import type { LakeRole, NodeRevision, NodeSearchResult, NodeTemplate } from '../api/types'
 import { NodeDiffViewer } from '../components/NodeDiffViewer'
@@ -163,11 +163,21 @@ export function Home({ onLogout }: Props) {
   // P1-03：关系列表筛选和排序
   const [edgeKindFilter, setEdgeKindFilter] = useState<string>('')
   const [edgeSortOrder, setEdgeSortOrder] = useState<'asc' | 'desc'>('desc')
+  // P0-02：节点卡片"更多"菜单
+  const [openMoreId, setOpenMoreId] = useState<string | null>(null)
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
     api.me().then(u => { meIdRef.current = u.id; setMeId(u.id) }).catch(() => { /* 静默 */ })
   }, [])
+
+  // P0-02：点击空白处关闭"更多"菜单
+  useEffect(() => {
+    if (!openMoreId) return
+    const handler = () => setOpenMoreId(null)
+    document.addEventListener('click', handler)
+    return () => document.removeEventListener('click', handler)
+  }, [openMoreId])
 
   useEffect(() => {
     activeLakeIdRef.current = active?.id ?? null
@@ -1435,7 +1445,16 @@ export function Home({ onLogout }: Props) {
                       连线模式：已选起点 {linkSrc.slice(0, 8)}…，点击另一节点完成。再次点同一节点取消。
                     </div>
                   )}
-                  {nodes.length === 0 && <div style={{ opacity: 0.55, fontSize: 12 }}>此处还没有节点。先手工添加一个节点，或使用上方“造云 · AI 发散 / 📋 模板库”生成内容。</div>}
+                  {nodes.length === 0 && (
+                    <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                      <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>🌊</div>
+                      <div style={{ fontSize: 14, color: '#9ec5ee', marginBottom: 4 }}>此处风平浪静</div>
+                      <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12, lineHeight: 1.7 }}>
+                        投下第一颗石子，激起知识的涟漪<br />
+                        可以手工添加节点，或使用「造云 · AI 发散」一键生成
+                      </div>
+                    </div>
+                  )}
                   {nodes.length === 0 && (
                     <button
                       onClick={() => void createManualNode()}
@@ -1519,62 +1538,78 @@ export function Home({ onLogout }: Props) {
                             .catch(() => undefined)
                         }}
                       />
-                      <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                        {/* P0-02: 主要操作（始终可见） */}
                         <button
                           onClick={() => setSelectedNode(n)}
                           style={{ ...miniBtn, color: '#cba6f7' }}
                           title="打开节点详情：选择 Prompt 模板并触发 AI Workflow"
                         >详情 / AI</button>
-                        {n.state === 'MIST' && (
-                          <button onClick={() => condense(n.id)} style={miniBtn} title="凝露：将节点从雾态降为水滴">凝露 ↓</button>
-                        )}
-                        {(n.state === 'DROP' || n.state === 'FROZEN') && (
-                          <button onClick={() => evaporate(n.id)} style={miniBtn} title="蒸发：将节点上升为蒸发态">蒸发 ↑</button>
-                        )}
-                        <button onClick={() => handleNodeClickForLink(n.id)} style={miniBtn}
-                          title={isLinkSrc ? '取消连线' : '连线（先选起点再选终点）'}>
-                          {isLinkSrc ? '✕' : '🔗'}
-                        </button>
                         <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容（固形前的雕琢）">✎</button>
-                        <button onClick={() => showHistory(n)} style={miniBtn} title="历史版本（溯源：回望节点的演变轨迹）">⟲</button>
-                        <button onClick={() => void showDiff(n)} style={miniBtn} title="版本对比 diff">⇄</button>
-                        {/* P17-D 节点导出 */}
-                        <button
-                          onClick={() => {
-                            const fmt = window.confirm('确认导出格式？\n确定 = Markdown，取消 = JSON') ? 'md' : 'json'
-                            exportNode(n, fmt)
-                          }}
-                          style={miniBtn}
-                          title="导出节点（析出：将节点内容提取为文件）"
-                        >⬇</button>
-                        {/* P16-B AI 摘要 */}
-                        <button
-                          onClick={() => void requestAiSummary(n)}
-                          disabled={aiSummaryBusy.has(n.id)}
-                          style={miniBtn}
-                          title="为当前节点生成 AI 摘要"
-                        >{aiSummaryBusy.has(n.id) ? '…' : 'AI摘要'}</button>
-                        {/* P18-A 关联推荐 */}
-                        <button
-                          onClick={() => void loadRelated(n.id)}
-                          disabled={relatedLoading === n.id}
-                          style={{ ...miniBtn, color: '#89dceb' }}
-                          title="查找关联节点"
-                        >{relatedLoading === n.id ? '…' : '⚡关联'}</button>
-                        {/* P18-B 节点分享 */}
-                        <button
-                          onClick={() => setShareNode(n)}
-                          disabled={false}
-                          style={{ ...miniBtn, color: '#f9e2af' }}
-                          title="分享节点：生成外链分享给他人"
-                        >🔗分享</button>
-                        {canCrystal && (
+                        {/* P0-02: 更多菜单按钮 */}
+                        <div style={{ position: 'relative' }}>
                           <button
-                            onClick={() => toggleCrystalSel(n.id)}
-                            style={{ ...miniBtn, background: isSelected ? '#4a8eff' : undefined, color: isSelected ? '#fff' : undefined }}
-                            title="凝结：选入节点并提炼为永久知识卡片"
-                          >❄</button>
-                        )}
+                            onClick={e => { e.stopPropagation(); setOpenMoreId(openMoreId === n.id ? null : n.id) }}
+                            style={{ ...miniBtn }}
+                            title="更多操作"
+                          >⋯</button>
+                          {openMoreId === n.id && (
+                            <div
+                              onClick={e => e.stopPropagation()}
+                              style={{
+                                position: 'absolute', bottom: '100%', left: 0, zIndex: 100,
+                                background: '#0e1218', border: '1px solid #2a3a4a', borderRadius: 6,
+                                padding: '4px 0', minWidth: 140, boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                              }}
+                            >
+                              {n.state === 'MIST' && (
+                                <button onClick={() => { condense(n.id); setOpenMoreId(null) }} style={moreMenuItemStyle} title="凝露：将节点从雾态降为水滴">凝露 ↓</button>
+                              )}
+                              {(n.state === 'DROP' || n.state === 'FROZEN') && (
+                                <button onClick={() => { evaporate(n.id); setOpenMoreId(null) }} style={moreMenuItemStyle} title="蒸发：将节点上升为蒸发态">蒸发 ↑</button>
+                              )}
+                              <button onClick={() => { handleNodeClickForLink(n.id); setOpenMoreId(null) }} style={moreMenuItemStyle}
+                                title={isLinkSrc ? '取消连线' : '连线（先选起点再选终点）'}>
+                                {isLinkSrc ? '✕ 取消连线' : '🔗 连线'}
+                              </button>
+                              <button onClick={() => { showHistory(n); setOpenMoreId(null) }} style={moreMenuItemStyle} title="历史版本（溯源：回望节点的演变轨迹）">⟲ 历史版本</button>
+                              <button onClick={() => { void showDiff(n); setOpenMoreId(null) }} style={moreMenuItemStyle} title="版本对比 diff">⇄ 版本对比</button>
+                              <button
+                                onClick={() => {
+                                  setOpenMoreId(null)
+                                  const fmt = window.confirm('确认导出格式？\n确定 = Markdown，取消 = JSON') ? 'md' : 'json'
+                                  exportNode(n, fmt)
+                                }}
+                                style={moreMenuItemStyle}
+                                title="导出节点（析出：将节点内容提取为文件）"
+                              >⬇ 导出节点</button>
+                              <button
+                                onClick={() => { void requestAiSummary(n); setOpenMoreId(null) }}
+                                disabled={aiSummaryBusy.has(n.id)}
+                                style={moreMenuItemStyle}
+                                title="为当前节点生成 AI 摘要"
+                              >{aiSummaryBusy.has(n.id) ? '… AI摘要' : 'AI摘要'}</button>
+                              <button
+                                onClick={() => { void loadRelated(n.id); setOpenMoreId(null) }}
+                                disabled={relatedLoading === n.id}
+                                style={{ ...moreMenuItemStyle, color: '#89dceb' }}
+                                title="查找关联节点"
+                              >{relatedLoading === n.id ? '… 关联推荐' : '⚡ 关联推荐'}</button>
+                              <button
+                                onClick={() => { setShareNode(n); setOpenMoreId(null) }}
+                                style={{ ...moreMenuItemStyle, color: '#f9e2af' }}
+                                title="分享节点：生成外链分享给他人"
+                              >🔗 分享节点</button>
+                              {canCrystal && (
+                                <button
+                                  onClick={() => { toggleCrystalSel(n.id); setOpenMoreId(null) }}
+                                  style={{ ...moreMenuItemStyle, background: isSelected ? '#4a8eff' : undefined, color: isSelected ? '#fff' : undefined }}
+                                  title="凝结：选入节点并提炼为永久知识卡片"
+                                >❄ 凝结</button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )
@@ -2209,4 +2244,10 @@ const errBanner: React.CSSProperties = {
   border: '1px solid rgba(255,80,80,0.4)',
   borderRadius: 4, color: '#ffb0b0', fontSize: 13,
   maxWidth: 400,
+}
+const moreMenuItemStyle: React.CSSProperties = {
+  display: 'block', width: '100%', background: 'transparent',
+  border: 'none', color: '#cde', padding: '6px 14px',
+  textAlign: 'left', fontSize: 12, cursor: 'pointer',
+  borderRadius: 0,
 }
