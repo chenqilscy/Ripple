@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
-import type { NodeRevision, NodeSearchResult, NodeTemplate } from '../api/types'
+import type { LakeRole, NodeRevision, NodeSearchResult, NodeTemplate } from '../api/types'
 import { NodeDiffViewer } from '../components/NodeDiffViewer'
 import NodeVersionHistory from '../components/NodeVersionHistory'
 
@@ -73,6 +73,7 @@ export function Home({ onLogout }: Props) {
   const [currentSpaceId, setCurrentSpaceId] = useState<string>('')
   // 成员管理抽屉
   const [membersDrawer, setMembersDrawer] = useState<Space | null>(null)
+  const [lakeMembersOpen, setLakeMembersOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [importTextOpen, setImportTextOpen] = useState(false)
@@ -172,17 +173,24 @@ export function Home({ onLogout }: Props) {
 
   useEffect(() => { void refresh() }, [currentSpaceId])
 
-  // P12-D：Cmd+K / Ctrl+K 打开搜索浮层
+  // P12-D：Cmd+K / Ctrl+K 打开搜索浮层；N 快速添加节点（避开输入框）。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const tagName = target?.tagName?.toLowerCase()
+      const isTyping = tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target?.isContentEditable
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         if (active) setSearchOpen(o => !o)
       }
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'n' && !isTyping) {
+        e.preventDefault()
+        if (active && !busy) void createManualNode()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [active])
+  }, [active, busy])
 
   // M3-S3：拉取推荐位（异步，失败静默）
   useEffect(() => {
@@ -832,7 +840,7 @@ export function Home({ onLogout }: Props) {
           {active && (
             <button
               onClick={() => setImportOpen(true)}
-              title="批量导入节点"
+              title="批量导入结构化 JSON / Markdown 节点"
               style={ghostBtn}
             >📥</button>
           )}
@@ -845,6 +853,7 @@ export function Home({ onLogout }: Props) {
           )}
           <button
             onClick={() => setMainTab(t => t === 'settings' ? 'lakes' : 'settings')}
+            title="系统设置"
             style={{ ...ghostBtn, color: mainTab === 'settings' ? '#89b4fa' : undefined }}
           >⚙</button>
           <button
@@ -859,7 +868,7 @@ export function Home({ onLogout }: Props) {
             value={newLakeName} onChange={e => setNewLakeName(e.target.value)}
             placeholder="新湖名…" style={inputSmall}
           />
-          <button onClick={createLake} disabled={busy} style={primaryBtnSmall}>+</button>
+          <button onClick={createLake} disabled={busy} style={primaryBtnSmall} title="创建新湖">+</button>
         </div>
         <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 0' }}>
           {lakes.map(l => (
@@ -875,8 +884,10 @@ export function Home({ onLogout }: Props) {
                 {active?.id === l.id && l.role === 'OWNER' && (
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button onClick={e => { e.stopPropagation(); void moveLakeUI(l) }}
+                      title="移动湖到空间"
                       style={{ ...miniBtn, padding: '2px 6px', fontSize: 10 }}>移</button>
                     <button onClick={e => { e.stopPropagation(); void manageInvites() }}
+                      title="创建或管理邀请链接"
                       style={{ ...miniBtn, padding: '2px 6px', fontSize: 10 }}>邀请</button>
                   </div>
                 )}
@@ -933,9 +944,15 @@ export function Home({ onLogout }: Props) {
                 onClick={() => importInputRef.current?.click()}
                 disabled={importBusy}
                 style={miniBtn}
+                title="从本地 JSON / Markdown 文件导入到当前湖"
               >
                 {importBusy ? '…' : '📂 文件'}
               </button>
+              <button
+                onClick={() => setLakeMembersOpen(true)}
+                style={{ ...miniBtn, color: '#89dceb' }}
+                title="查看成员、管理角色与邀请协作"
+              >👥 成员</button>
               <input
                 ref={importInputRef}
                 type="file"
@@ -1048,7 +1065,7 @@ export function Home({ onLogout }: Props) {
                       onClick={() => void createManualNode()}
                       disabled={busy}
                       style={{ ...miniBtn, background: 'rgba(74,144,226,0.28)', color: '#9ec5ee', fontWeight: 700 }}
-                      title="手工添加一个普通文本节点"
+                      title="手工添加一个普通文本节点（快捷键 N）"
                     >+ 节点</button>
                     {(['list', 'graph'] as const).map(mode => (
                       <button
@@ -1069,8 +1086,8 @@ export function Home({ onLogout }: Props) {
                   <button
                     onClick={() => { void loadTemplates(); setTemplateModalOpen(true) }}
                     style={{ ...miniBtn, color: '#cba6f7' }}
-                    title="从模板创建节点"
-                  >📋 模板</button>
+                    title="打开节点模板库，从预设模板快速创建节点"
+                  >📋 模板库</button>
                 </div>
                 {crystalSel.size > 0 && (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1215,12 +1232,13 @@ export function Home({ onLogout }: Props) {
                       连线模式：已选起点 {linkSrc.slice(0, 8)}…，点击另一节点完成。再次点同一节点取消。
                     </div>
                   )}
-                  {nodes.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>此处风平浪静</div>}
+                  {nodes.length === 0 && <div style={{ opacity: 0.55, fontSize: 12 }}>此处还没有节点。先手工添加一个节点，或使用上方“造云 · AI 发散 / 📋 模板库”生成内容。</div>}
                   {nodes.length === 0 && (
                     <button
                       onClick={() => void createManualNode()}
                       disabled={busy}
                       style={{ ...primaryBtnSmall, margin: '8px 0 12px' }}
+                      title="创建当前湖里的第一个文本节点"
                     >添加第一个节点</button>
                   )}
                   {/* P14-C：批量操作工具栏 */}
@@ -1295,6 +1313,11 @@ export function Home({ onLogout }: Props) {
                         }}
                       />
                       <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => setSelectedNode(n)}
+                          style={{ ...miniBtn, color: '#cba6f7' }}
+                          title="打开节点详情：选择 Prompt 模板并触发 AI Workflow"
+                        >详情 / AI</button>
                         {n.state === 'MIST' && (
                           <button onClick={() => condense(n.id)} style={miniBtn}>凝露 ↓</button>
                         )}
@@ -1322,8 +1345,8 @@ export function Home({ onLogout }: Props) {
                           onClick={() => void requestAiSummary(n)}
                           disabled={aiSummaryBusy.has(n.id)}
                           style={miniBtn}
-                          title="AI 摘要"
-                        >{aiSummaryBusy.has(n.id) ? '…' : '✦'}</button>
+                          title="为当前节点生成 AI 摘要"
+                        >{aiSummaryBusy.has(n.id) ? '…' : 'AI摘要'}</button>
                         {/* P18-A 关联推荐 */}
                         <button
                           onClick={() => void loadRelated(n.id)}
@@ -1383,13 +1406,16 @@ export function Home({ onLogout }: Props) {
 
             {active?.role === 'OWNER' && (
               <section style={card}>
-                <React.Suspense fallback={<div style={{ color: '#6c7086', fontSize: 12 }}>Loading members...</div>}>
-                  <LakeMemberManager
-                    lakeId={active.id}
-                    currentUserId={active.owner_id}
-                    currentRole="OWNER"
-                  />
-                </React.Suspense>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>👥 协作与成员</div>
+                    <div style={{ marginTop: 4, fontSize: 13, color: '#c8d8e8' }}>邀请协作者、查看成员并调整角色。</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setLakeMembersOpen(true)} style={{ ...miniBtn, color: '#89dceb' }}>成员管理</button>
+                    <button onClick={() => void manageInvites()} style={{ ...miniBtn, color: '#a6e3a1' }}>邀请成员</button>
+                  </div>
+                </div>
               </section>
             )}
 
@@ -1513,6 +1539,23 @@ export function Home({ onLogout }: Props) {
           <React.Suspense fallback={null}>
             <OrgPanel currentUserId={meId} onClose={() => setOrgOpen(false)} />
           </React.Suspense>
+        </div>
+      )}
+      {lakeMembersOpen && active && (
+        <div style={modalOverlay} onClick={() => setLakeMembersOpen(false)}>
+          <div style={{ ...modalBox, minWidth: 360 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <strong style={{ color: '#89dceb' }}>👥 {active.name} 成员</strong>
+              <button onClick={() => setLakeMembersOpen(false)} style={miniBtn}>✕</button>
+            </div>
+            <React.Suspense fallback={<div style={{ color: '#6c7086', fontSize: 12 }}>Loading members...</div>}>
+              <LakeMemberManager
+                lakeId={active.id}
+                currentUserId={meId || active.owner_id}
+                currentRole={(active.role ?? 'OBSERVER') as LakeRole}
+              />
+            </React.Suspense>
+          </div>
         </div>
       )}
       {/* P15-B：版本 diff 对比视图 */}
