@@ -68,6 +68,70 @@ function initialNodePosition(node: NodeItem, index: number, forced?: { x: number
 }
 
 // ---------------------------------------------------------------------------
+// Crystallize burst effect -- particles fly from source nodes toward centroid
+// ---------------------------------------------------------------------------
+interface CrystallizeEffectProps {
+  sourcePositions: THREE.Vector3[]
+  duration?: number // seconds, default 0.9
+}
+
+function CrystallizeEffect({ sourcePositions, duration = 0.9 }: CrystallizeEffectProps) {
+  const PARTICLES_PER_SRC = 8
+  const count = sourcePositions.length * PARTICLES_PER_SRC
+  const meshRef = useRef<THREE.InstancedMesh>(null)
+  const progressRef = useRef<Float32Array>(Float32Array.from({ length: count }, (_, i) => (i % PARTICLES_PER_SRC) / PARTICLES_PER_SRC))
+  const centroid = useMemo(() => {
+    if (sourcePositions.length === 0) return new THREE.Vector3()
+    const c = new THREE.Vector3()
+    for (const p of sourcePositions) c.add(p)
+    c.divideScalar(sourcePositions.length)
+    return c
+  }, [sourcePositions])
+  const tmpMat = useMemo(() => new THREE.Matrix4(), [])
+  const tmpVec = useMemo(() => new THREE.Vector3(), [])
+  const { invalidate } = useThree()
+
+  useFrame((_s, delta) => {
+    if (!meshRef.current) return
+    const speed = 1 / duration
+    let anyActive = false
+    for (let i = 0; i < count; i++) {
+      const t = progressRef.current[i]
+      if (t >= 1) {
+        meshRef.current.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0))
+        continue
+      }
+      progressRef.current[i] = Math.min(1, t + delta * speed)
+      const srcIdx = Math.floor(i / PARTICLES_PER_SRC)
+      const src = sourcePositions[srcIdx]
+      // random offset per particle (stable via index)
+      const angle = (i % PARTICLES_PER_SRC) * ((Math.PI * 2) / PARTICLES_PER_SRC)
+      const off = 12
+      const sx = src.x + Math.cos(angle) * off
+      const sy = src.y + Math.sin(angle) * off
+      const px = sx + (centroid.x - sx) * progressRef.current[i]
+      const py = sy + (centroid.y - sy) * progressRef.current[i]
+      const scale = (1 - progressRef.current[i]) * 2.5
+      tmpVec.set(px, py, 2)
+      tmpMat.makeTranslation(px, py, 2)
+      tmpMat.scale(tmpVec.set(scale, scale, scale))
+      meshRef.current.setMatrixAt(i, tmpMat)
+      anyActive = true
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true
+    if (anyActive) invalidate()
+  })
+
+  if (count === 0) return null
+  return (
+    <instancedMesh key={`cryst-${count}`} ref={meshRef} args={[undefined, undefined, count]}>
+      <sphereGeometry args={[1, 6, 6]} />
+      <meshBasicMaterial color="#a0d8ef" transparent opacity={0.8} />
+    </instancedMesh>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Particle flow -- one particle per edge
 // ---------------------------------------------------------------------------
 interface ParticleProps {
@@ -137,10 +201,11 @@ interface AnimNodeProps {
   multiSelected: boolean
   onClick: (isMulti: boolean) => void
   isNew: boolean
-  onDragStart: (nodeId: string) => void
-  onDragEnd: (nodeId: string, x: number, y: number) => void
+  onDragStart: (nodeId: string, initialX: number, initialY: number, evt: any) => void
   simNode: SimNode
   highlighted?: boolean
+  isDragging: boolean
+  meshRef: React.MutableRefObject<THREE.Mesh | null>
 }
 
 const STATE_LABEL: Record<NodeState, string> = {
@@ -159,65 +224,51 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
-function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, onDragEnd, simNode, highlighted }: AnimNodeProps) {
-  const meshRef = useRef<THREE.Mesh>(null)
+function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, simNode, highlighted, isDragging, meshRef }: AnimNodeProps) {
+  const meshRefInternal = useRef<THREE.Mesh>(null)
   const scaleRef = useRef(isNew ? 0 : 1)
   const color = STATE_COLOR[node.state] ?? '#888888'
-  const isDraggingRef = useRef(false)
-  const dragOffsetRef = useRef({ x: 0, y: 0 })
   const [hovered, setHovered] = useState(false)
 
+  // 同步 meshRef 到内部 ref
   useEffect(() => {
-    if (!meshRef.current) return
+    if (meshRef) meshRef.current = meshRefInternal.current
+  })
+
+  useEffect(() => {
+    if (!meshRefInternal.current) return
     if (isNew) {
       scaleRef.current = 0
-      meshRef.current.scale.setScalar(0)
+      meshRefInternal.current.scale.setScalar(0)
       return
     }
-    if (scaleRef.current >= 1) meshRef.current.scale.setScalar(1)
+    if (scaleRef.current >= 1) meshRefInternal.current.scale.setScalar(1)
   }, [isNew])
 
   useFrame((_state, delta) => {
-    if (!meshRef.current) return
+    if (!meshRefInternal.current) return
     if (scaleRef.current < 1.0) {
       scaleRef.current = Math.min(1.0, scaleRef.current + delta * 3.5)
       const s = easeOutBack(scaleRef.current)
-      meshRef.current.scale.setScalar(Math.max(0, s))
+      meshRefInternal.current.scale.setScalar(Math.max(0, s))
     }
-    // Follow live simulation position during non-drag
-    if (!isDraggingRef.current) {
-      meshRef.current.position.set(simNode.x ?? 0, simNode.y ?? 0, 0)
+    // 拖动中的位置由 GraphScene 的 useEffect + 全局事件统一更新
+    if (!isDragging) {
+      meshRefInternal.current.position.set(simNode.x ?? 0, simNode.y ?? 0, 0)
     }
   })
 
   return (
     <mesh
-      ref={meshRef}
+      ref={meshRefInternal}
       position={position}
       scale={isNew ? 0 : 1}
-      onClick={e => { if (!isDraggingRef.current) { e.stopPropagation(); onClick(e.nativeEvent.ctrlKey || e.nativeEvent.metaKey) } }}
+      onClick={e => { e.stopPropagation(); onClick(e.nativeEvent.ctrlKey || e.nativeEvent.metaKey) }}
       onPointerDown={e => {
         e.stopPropagation()
-        isDraggingRef.current = true
-        dragOffsetRef.current = { x: e.point.x - (simNode.x ?? 0), y: e.point.y - (simNode.y ?? 0) }
-        onDragStart(node.id)
+        onDragStart(node.id, simNode.x ?? 0, simNode.y ?? 0, e)
       }}
-      onPointerMove={e => {
-        if (!isDraggingRef.current || !meshRef.current) return
-        const nx = e.point.x - dragOffsetRef.current.x
-        const ny = e.point.y - dragOffsetRef.current.y
-        simNode.x = nx; simNode.y = ny
-        simNode.fx = nx; simNode.fy = ny
-        meshRef.current.position.set(nx, ny, 0)
-      }}
-      onPointerUp={e => {
-        if (!isDraggingRef.current) return
-        isDraggingRef.current = false
-        const nx = e.point.x - dragOffsetRef.current.x
-        const ny = e.point.y - dragOffsetRef.current.y
-        onDragEnd(node.id, nx, ny)
-      }}
-      onPointerEnter={e => { e.stopPropagation(); if (!isDraggingRef.current) setHovered(true) }}
+      onPointerEnter={e => { e.stopPropagation(); setHovered(true) }}
       onPointerLeave={() => setHovered(false)}
     >
       <sphereGeometry args={(selected || multiSelected) ? [7, 14, 14] : [5, 12, 12]} />
@@ -458,9 +509,11 @@ interface SceneProps {
   searchQuery?: string
   snapshotLayout?: Record<string, { x: number; y: number }>
   onEdgeHover?: (info: { x: number; y: number; strength: number; kind: string } | null) => void
+  /** 3-P1-02: 凝结动画 — 当前正在凝结的节点 IDs */
+  crystallizeIds?: Set<string>
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover, crystallizeIds }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
@@ -521,7 +574,6 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
   const handleNodeClick = useCallback(
     (node: NodeItem, isMulti: boolean) => {
       if (isMulti) {
-        // Ctrl/Cmd+Click: toggle in multi-select
         setMultiSelectedIds(prev => {
           const next = new Set(prev)
           if (next.has(node.id)) next.delete(node.id)
@@ -530,7 +582,6 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
           return next
         })
       } else {
-        // Normal click: single select, clear multi-select
         const nextId = selectedIdRef.current === node.id ? null : node.id
         setSelectedId(nextId)
         setMultiSelectedIds(new Set())
@@ -541,15 +592,77 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
     [onNodeSelect, onMultiSelectChange],
   )
 
-  const handleDragStart = useCallback((nodeId: string) => {
+  // P0-04 fix: 拖动状态统一管理 — 由 GraphScene 的 useFrame + raycaster 处理
+  const draggingNodeIdRef = useRef<string | null>(null)
+  const dragOffsetRef = useRef({ x: 0, y: 0 })
+  const controlsRef = useRef<any>(null)
+  const meshRefsMap = useRef<Map<string, THREE.Mesh | null>>(new Map())
+
+  const handleDragStart = useCallback((nodeId: string, nodeX: number, nodeY: number, e: any) => {
+    // 记录拖动偏移
+    dragOffsetRef.current = { x: e.point.x - nodeX, y: e.point.y - nodeY }
+    draggingNodeIdRef.current = nodeId
+
+    // 通知 D3 simulation 开始拖动
     const sn = simNodeMap.get(nodeId)
     if (sn) { sn.fx = sn.x; sn.fy = sn.y }
     sim.alphaTarget(0.1)
+
+    // 禁用 OrbitControls 防止拖动时误触画布
+    if (controlsRef.current) {
+      controlsRef.current.enabled = false
+    }
   }, [sim, simNodeMap])
 
-  const handleDragEnd = useCallback((nodeId: string, x: number, y: number) => {
-    const sn = simNodeMap.get(nodeId)
-    if (sn) { sn.x = x; sn.y = y; sn.fx = x; sn.fy = y }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error handleDragEnd may be used in future pointerup handlers
+  const handleDragEnd = useCallback(() => {
+    if (!draggingNodeIdRef.current) return
+    const sn = simNodeMap.get(draggingNodeIdRef.current)
+    if (sn) { sn.fx = sn.x; sn.fy = sn.y }
+    draggingNodeIdRef.current = null
+
+    // 恢复 OrbitControls
+    if (controlsRef.current) {
+      controlsRef.current.enabled = true
+    }
+  }, [simNodeMap])
+
+  // 全局 pointermove / pointerup 处理拖动（解决鼠标移出节点边界时事件丢失的问题）
+  useEffect(() => {
+    const canvas = document.querySelector('canvas')
+    if (!canvas) return
+
+    const onMove = (e: MouseEvent) => {
+      if (!draggingNodeIdRef.current) return
+      const sn = simNodeMap.get(draggingNodeIdRef.current)
+      const mesh = meshRefsMap.current.get(draggingNodeIdRef.current)
+      if (!sn || !mesh) return
+
+      const rect = canvas.getBoundingClientRect()
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1
+      const nx = ndcX * 300 - dragOffsetRef.current.x
+      const ny = ndcY * 300 - dragOffsetRef.current.y
+      sn.x = nx; sn.y = ny; sn.fx = nx; sn.fy = ny
+      mesh.position.set(nx, ny, 0)
+    }
+
+    const onUp = () => {
+      if (draggingNodeIdRef.current) {
+        const sn = simNodeMap.get(draggingNodeIdRef.current)
+        if (sn) { sn.fx = sn.x; sn.fy = sn.y }
+        draggingNodeIdRef.current = null
+        if (controlsRef.current) controlsRef.current.enabled = true
+      }
+    }
+
+    canvas.addEventListener('pointermove', onMove)
+    canvas.addEventListener('pointerup', onUp)
+    return () => {
+      canvas.removeEventListener('pointermove', onMove)
+      canvas.removeEventListener('pointerup', onUp)
+    }
   }, [simNodeMap])
 
   const highlightedIds = useMemo(() => {
@@ -568,9 +681,24 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       <SpringEdges simLinks={simLinks} onEdgeHover={onEdgeHover} />
       <EdgeParticles simLinks={simLinks} />
 
+      {/* 3-P1-02: Crystallize burst animation */}
+      {crystallizeIds && crystallizeIds.size > 0 && (() => {
+        const srcPositions = [...crystallizeIds]
+          .map(id => simNodeMap.get(id))
+          .filter(Boolean)
+          .map(sn => new THREE.Vector3(sn!.x ?? 0, sn!.y ?? 0, 0))
+        return srcPositions.length > 0 ? <CrystallizeEffect key={`cryst-${[...crystallizeIds].join(',')}`} sourcePositions={srcPositions} /> : null
+      })()}
+
       {displayNodes.map(node => {
         const pos3 = positions.get(node.id) ?? new THREE.Vector3()
         const sn = simNodeMap.get(node.id)!
+        // 每个节点一个 meshRef，useRef 只在初始化时创建一次
+        const meshRef = useMemo(() => ({ current: null as THREE.Mesh | null }), [node.id])
+        useEffect(() => {
+          meshRefsMap.current.set(node.id, meshRef.current)
+          return () => { meshRefsMap.current.delete(node.id) }
+        }) // eslint-disable-line
         return (
           <AnimatedNode
             key={node.id}
@@ -581,14 +709,16 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
             onClick={(isMulti) => handleNodeClick(node, isMulti)}
             isNew={newNodeIds?.has(node.id) ?? false}
             onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
             simNode={sn}
             highlighted={highlightedIds.has(node.id)}
+            isDragging={draggingNodeIdRef.current === node.id}
+            meshRef={meshRef}
           />
         )
       })}
 
       <OrbitControls
+        ref={controlsRef}
         makeDefault
         enableRotate={false}
         enablePan={true}
@@ -653,6 +783,8 @@ export interface LakeGraphProps {
   /** P19-C：协作光标 */
   remoteCursors?: Map<string, RemoteCursor> // user_id → 归一化坐标
   onSendCursor?: (x: number, y: number) => void
+  /** 3-P1-02: 凝结动画节点 IDs */
+  crystallizeIds?: Set<string>
 }
 
 // P19-C：协作光标颜色（按 user_id hash 分配）
@@ -663,7 +795,7 @@ function cursorColor(userId: string): string {
   return CURSOR_COLORS[h % CURSOR_COLORS.length]
 }
 
-export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectChange, searchQuery, snapshotLayout, remoteCursors, onSendCursor }: LakeGraphProps) {
+export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectChange, searchQuery, snapshotLayout, remoteCursors, onSendCursor, crystallizeIds }: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
     [nodes],
@@ -796,6 +928,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
             searchQuery={searchQuery}
             snapshotLayout={snapshotLayout}
             onEdgeHover={setEdgeHoverInfo}
+            crystallizeIds={crystallizeIds}
           />
         </React.Suspense>
         <CameraController onZoomIn={zoomInRef} onZoomOut={zoomOutRef} onFit={fitRef} />

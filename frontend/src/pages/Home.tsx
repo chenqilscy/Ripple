@@ -216,6 +216,8 @@ export function Home({ onLogout }: Props) {
   }, [pendingAction, active, inviteFlowActive])
   // M3-S2：凝结多选（DROP/FROZEN 节点 id 集合）
   const [crystalSel, setCrystalSel] = useState<Set<string>>(new Set())
+  /** 3-P1-02: 凝结动画节点 IDs（非空时触发粒子汇聚，1s后自动清空） */
+  const [crystallizeIds, setCrystallizeIds] = useState<Set<string>>(new Set())
   // 凝结结果（最近一次）
   const [recentPerma, setRecentPerma] = useState<PermaNode | null>(null)
   // M3-T4：SSE 流式预览
@@ -740,6 +742,9 @@ export function Home({ onLogout }: Props) {
     try {
       const p = await api.crystallize(active.id, ids, hint || '')
       setRecentPerma(p)
+      // 3-P1-02: 触发粒子汇聚动画，1s 后清空
+      setCrystallizeIds(new Set(ids))
+      setTimeout(() => setCrystallizeIds(new Set()), 1000)
       setCrystalSel(new Set())
     } catch (e) { setErr((e as Error).message) }
   }
@@ -1467,6 +1472,7 @@ export function Home({ onLogout }: Props) {
                       onSendCursor={(x, y) => wsRef.current?.send({ type: 'cursor.move', payload: { x, y } })}
                       onMultiSelectChange={ids => setMultiSelectedNodeIds(new Set(ids))}
                       onNodeSelect={node => setSelectedNode(node)}
+                      crystallizeIds={crystallizeIds}
                     />
                     {multiSelectedNodeIds.size >= 2 && (
                       <div style={{ textAlign: 'center', marginTop: 8 }}>
