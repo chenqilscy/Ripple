@@ -13,6 +13,8 @@ interface Props {
   edges: EdgeItem[]
   onClose: () => void
   onAiDone?: (nodeId: string) => void | Promise<void>
+  onlineUsers?: string[]
+  meId?: string
 }
 
 const STATE_LABEL: Record<string, string> = {
@@ -23,7 +25,7 @@ const KIND_LABEL: Record<string, string> = {
   relates: '关联', derives: '派生', opposes: '对立', refines: '细化', groups: '分组', summarizes: '摘要', custom: '自定义',
 }
 
-export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDone }: Props) {
+export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDone, onlineUsers, meId }: Props) {
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
   const [promptTemplateId, setPromptTemplateId] = useState('')
   const [promptLoadError, setPromptLoadError] = useState('')
@@ -68,7 +70,14 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
         background: '#0d1b2a',
       }}>
         <span style={{ fontWeight: 600, fontSize: 14, color: '#9ec5ee' }}>节点详情</span>
-        <button
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* P2-02: 在线协作者提示 */}
+          {onlineUsers && onlineUsers.filter(u => u !== meId).length > 0 && (
+            <span title={`同湖在线协作者：${onlineUsers.filter(u => u !== meId).join(', ')}`} style={{ fontSize: 11, color: '#7fdbb6', background: 'rgba(127,219,182,0.12)', borderRadius: 10, padding: '1px 7px' }}>
+              ● {onlineUsers.filter(u => u !== meId).length} 人同在
+            </span>
+          )}
+          <button
           onClick={onClose}
           style={{
             background: 'none', border: 'none', color: '#6a8aaa', cursor: 'pointer',
@@ -79,6 +88,7 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
         >
           ×
         </button>
+        </div>
       </div>
 
       {/* 内容区 */}

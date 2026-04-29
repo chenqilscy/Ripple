@@ -1104,6 +1104,12 @@ export function Home({ onLogout }: Props) {
           <button onClick={createLake} disabled={busy} style={primaryBtnSmall} title="创建新湖">+</button>
         </div>
         <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 0' }}>
+          {/* P2-05：湖泊概念说明 */}
+          {lakes.length > 0 && (
+            <li style={{ fontSize: 10, color: '#4a6a8e', padding: '0 4px 10px', lineHeight: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: 8 }}>
+              湖泊是知识的容器，每个湖泊独立管理节点和关联
+            </li>
+          )}
           {lakes.map(l => (
             <li key={l.id}
               onClick={() => { setActive(l); if (isMobile) setSidebarOpen(false) }}
@@ -2092,6 +2098,8 @@ export function Home({ onLogout }: Props) {
             allNodes={nodes}
             edges={edges}
             onClose={() => setSelectedNode(null)}
+            onlineUsers={onlineUsers}
+            meId={meId}
             onAiDone={async nodeId => {
               if (!active) return
               const lakeId = active.id
