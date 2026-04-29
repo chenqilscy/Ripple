@@ -22,7 +22,11 @@ import {
   type SimulationNodeDatum,
   type SimulationLinkDatum,
 } from 'd3-force'
-import type { EdgeItem, NodeItem, NodeState } from '../api/types'
+import type { EdgeItem, NodeItem, NodeState, Recommendation, PathResult, Cluster, PlanningSuggestion } from '../api/types'
+import DiscoveryPanel from './graph/DiscoveryPanel'
+import PathTracePanel from './graph/PathTracePanel'
+import ClusterView from './graph/ClusterView'
+import PlanningPanel from './graph/PlanningPanel'
 
 const MAX_NODES = 200
 
@@ -205,7 +209,8 @@ interface AnimNodeProps {
   simNode: SimNode
   highlighted?: boolean
   isDragging: boolean
-  meshRef: React.MutableRefObject<THREE.Mesh | null>
+  recCount?: number
+  dimmed?: boolean
 }
 
 const STATE_LABEL: Record<NodeState, string> = {
@@ -224,43 +229,44 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
-function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, simNode, highlighted, isDragging, meshRef }: AnimNodeProps) {
-  const meshRefInternal = useRef<THREE.Mesh>(null)
+function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, simNode, highlighted, isDragging, recCount = 0, dimmed = false }: AnimNodeProps) {
+  const meshRef = useRef<THREE.Mesh>(null)
   const scaleRef = useRef(isNew ? 0 : 1)
   const color = STATE_COLOR[node.state] ?? '#888888'
   const [hovered, setHovered] = useState(false)
 
-  // 同步 meshRef 到内部 ref
+  // P0-04 fix: 将 mesh ref 附加到 simNode 上，供 GraphScene 全局拖动事件使用
   useEffect(() => {
-    if (meshRef) meshRef.current = meshRefInternal.current
+    (simNode as any)._mesh = meshRef.current
+    return () => { if ((simNode as any)._mesh === meshRef.current) (simNode as any)._mesh = null }
   })
 
   useEffect(() => {
-    if (!meshRefInternal.current) return
+    if (!meshRef.current) return
     if (isNew) {
       scaleRef.current = 0
-      meshRefInternal.current.scale.setScalar(0)
+      meshRef.current.scale.setScalar(0)
       return
     }
-    if (scaleRef.current >= 1) meshRefInternal.current.scale.setScalar(1)
+    if (scaleRef.current >= 1) meshRef.current.scale.setScalar(1)
   }, [isNew])
 
   useFrame((_state, delta) => {
-    if (!meshRefInternal.current) return
+    if (!meshRef.current) return
     if (scaleRef.current < 1.0) {
       scaleRef.current = Math.min(1.0, scaleRef.current + delta * 3.5)
       const s = easeOutBack(scaleRef.current)
-      meshRefInternal.current.scale.setScalar(Math.max(0, s))
+      meshRef.current.scale.setScalar(Math.max(0, s))
     }
-    // 拖动中的位置由 GraphScene 的 useEffect + 全局事件统一更新
+    // 拖动中的位置由 GraphScene 全局事件处理器更新
     if (!isDragging) {
-      meshRefInternal.current.position.set(simNode.x ?? 0, simNode.y ?? 0, 0)
+      meshRef.current.position.set(simNode.x ?? 0, simNode.y ?? 0, 0)
     }
   })
 
   return (
     <mesh
-      ref={meshRefInternal}
+      ref={meshRef}
       position={position}
       scale={isNew ? 0 : 1}
       onClick={e => { e.stopPropagation(); onClick(e.nativeEvent.ctrlKey || e.nativeEvent.metaKey) }}
@@ -276,6 +282,8 @@ function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew,
         color={multiSelected ? '#4ecdc4' : color}
         emissive={multiSelected ? '#4ecdc4' : (selected ? color : (highlighted ? '#ffd700' : (hovered ? color : '#000000')))}
         emissiveIntensity={multiSelected ? 0.7 : (selected ? 0.6 : (highlighted ? 0.8 : (hovered ? 0.25 : 0)))}
+        transparent={dimmed}
+        opacity={dimmed ? 0.3 : 1}
         roughness={0.4}
         metalness={(selected || multiSelected) ? 0.3 : 0.1}
       />
@@ -291,6 +299,13 @@ function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew,
         <mesh scale={1.6}>
           <torusGeometry args={[5, 0.8, 8, 24]} />
           <meshBasicMaterial color="#ffd700" transparent opacity={0.55} />
+        </mesh>
+      )}
+      {/* 图谱价值增强：推荐徽章 */}
+      {recCount > 0 && !selected && (
+        <mesh position={[6, 6, 0]}>
+          <sphereGeometry args={[2.5, 6, 6]} />
+          <meshBasicMaterial color="#faad14" />
         </mesh>
       )}
       {/* P16-A: 悬停详情 tooltip */}
@@ -511,9 +526,14 @@ interface SceneProps {
   onEdgeHover?: (info: { x: number; y: number; strength: number; kind: string } | null) => void
   /** 3-P1-02: 凝结动画 — 当前正在凝结的节点 IDs */
   crystallizeIds?: Set<string>
+  /** 图谱价值增强：推荐徽章 */
+  recCountByNode?: Map<string, number>
+  /** 图谱价值增强：聚类高亮 */
+  clusters?: Cluster[]
+  focusedClusterId?: string | null
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover, crystallizeIds }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover, crystallizeIds, recCountByNode, clusters, focusedClusterId }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
@@ -592,11 +612,10 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
     [onNodeSelect, onMultiSelectChange],
   )
 
-  // P0-04 fix: 拖动状态统一管理 — 由 GraphScene 的 useFrame + raycaster 处理
+  // P0-04 fix: 拖动状态统一管理 — 由 GraphScene 的全局事件处理
   const draggingNodeIdRef = useRef<string | null>(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const controlsRef = useRef<any>(null)
-  const meshRefsMap = useRef<Map<string, THREE.Mesh | null>>(new Map())
 
   const handleDragStart = useCallback((nodeId: string, nodeX: number, nodeY: number, e: any) => {
     // 记录拖动偏移
@@ -636,8 +655,9 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
     const onMove = (e: MouseEvent) => {
       if (!draggingNodeIdRef.current) return
       const sn = simNodeMap.get(draggingNodeIdRef.current)
-      const mesh = meshRefsMap.current.get(draggingNodeIdRef.current)
-      if (!sn || !mesh) return
+      if (!sn) return
+      const mesh = (sn as any)._mesh as THREE.Mesh | null
+      if (!mesh) return
 
       const rect = canvas.getBoundingClientRect()
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
@@ -671,6 +691,22 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
     return new Set(displayNodes.filter(n => n.content.toLowerCase().includes(q)).map(n => n.id))
   }, [searchQuery, displayNodes])
 
+  // 图谱价值增强：聚类高亮
+  const clusterHighlightedIds = useMemo(() => {
+    if (!clusters || clusters.length === 0 || !focusedClusterId) return new Set<string>()
+    const cluster = clusters.find(c => c.id === focusedClusterId)
+    if (!cluster) return new Set<string>()
+    return new Set(cluster.node_ids)
+  }, [clusters, focusedClusterId])
+
+  const dimmedIds = useMemo(() => {
+    if (!focusedClusterId) return new Set<string>()
+    const allNodeIds = new Set(displayNodes.map(n => n.id))
+    const dimmed = new Set<string>()
+    for (const id of allNodeIds) if (!clusterHighlightedIds.has(id)) dimmed.add(id)
+    return dimmed
+  }, [displayNodes, clusterHighlightedIds, focusedClusterId])
+
   return (
     <>
       <ambientLight intensity={0.5} />
@@ -693,12 +729,6 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       {displayNodes.map(node => {
         const pos3 = positions.get(node.id) ?? new THREE.Vector3()
         const sn = simNodeMap.get(node.id)!
-        // 每个节点一个 meshRef，useRef 只在初始化时创建一次
-        const meshRef = useMemo(() => ({ current: null as THREE.Mesh | null }), [node.id])
-        useEffect(() => {
-          meshRefsMap.current.set(node.id, meshRef.current)
-          return () => { meshRefsMap.current.delete(node.id) }
-        }) // eslint-disable-line
         return (
           <AnimatedNode
             key={node.id}
@@ -712,7 +742,8 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
             simNode={sn}
             highlighted={highlightedIds.has(node.id)}
             isDragging={draggingNodeIdRef.current === node.id}
-            meshRef={meshRef}
+            recCount={recCountByNode?.get(node.id) ?? 0}
+            dimmed={dimmedIds.has(node.id)}
           />
         )
       })}
@@ -785,6 +816,33 @@ export interface LakeGraphProps {
   onSendCursor?: (x: number, y: number) => void
   /** 3-P1-02: 凝结动画节点 IDs */
   crystallizeIds?: Set<string>
+  /** 图谱价值增强：发现面板 */
+  showDiscovery?: boolean
+  recommendations?: Recommendation[]
+  loadingRecommendations?: boolean
+  activePath?: PathResult | null
+  loadingPath?: boolean
+  recCountByNode?: Map<string, number>
+  onToggleDiscovery?: () => void  // 切换发现面板
+  onAcceptRec?: (rec: Recommendation) => void
+  onIgnoreRec?: (id: string) => void
+  onTracePath?: (src: string, dst: string) => void
+  onClosePath?: () => void
+  /** 图谱价值增强：聚类 */
+  showCluster?: boolean
+  clusters?: Cluster[]
+  focusedClusterId?: string | null
+  loadingClusters?: boolean
+  onFocusCluster?: (id: string | null) => void
+  onRefreshClusters?: () => void
+  onCloseCluster?: () => void
+  /** 图谱价值增强：规划 */
+  showPlanning?: boolean
+  planningSuggestions?: PlanningSuggestion[]
+  loadingPlanning?: boolean
+  onAcceptPlanning?: (s: PlanningSuggestion) => void
+  onRefreshPlanning?: () => void
+  onClosePlanning?: () => void
 }
 
 // P19-C：协作光标颜色（按 user_id hash 分配）
@@ -795,7 +853,14 @@ function cursorColor(userId: string): string {
   return CURSOR_COLORS[h % CURSOR_COLORS.length]
 }
 
-export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectChange, searchQuery, snapshotLayout, remoteCursors, onSendCursor, crystallizeIds }: LakeGraphProps) {
+export default function LakeGraph({
+  nodes, edges, onNodeSelect, onMultiSelectChange, searchQuery, snapshotLayout,
+  remoteCursors, onSendCursor, crystallizeIds,
+  showDiscovery, recommendations, loadingRecommendations, activePath, loadingPath,
+  recCountByNode, onToggleDiscovery, onAcceptRec, onIgnoreRec, onTracePath, onClosePath,
+  showCluster, clusters, focusedClusterId, loadingClusters, onFocusCluster, onRefreshClusters, onCloseCluster,
+  showPlanning, planningSuggestions, loadingPlanning, onAcceptPlanning, onRefreshPlanning, onClosePlanning,
+}: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
     [nodes],
@@ -929,10 +994,85 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
             snapshotLayout={snapshotLayout}
             onEdgeHover={setEdgeHoverInfo}
             crystallizeIds={crystallizeIds}
+            recCountByNode={recCountByNode}
+            clusters={clusters}
+            focusedClusterId={focusedClusterId}
           />
         </React.Suspense>
         <CameraController onZoomIn={zoomInRef} onZoomOut={zoomOutRef} onFit={fitRef} />
       </Canvas>
+
+      {/* 图谱价值增强：面板切换按钮 */}
+      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, display: 'flex', gap: 4 }}>
+        <button onClick={onToggleDiscovery ?? (() => {})} style={{
+          background: showDiscovery ? 'rgba(46,139,144,0.3)' : 'rgba(0,0,0,0.6)',
+          border: '1px solid #2e8b90', color: '#9ec5ee', borderRadius: 4,
+          padding: '3px 8px', fontSize: 11, cursor: 'pointer',
+        }}>
+          💡 发现
+        </button>
+        <button onClick={onCloseCluster ?? (() => {})} style={{
+          background: showCluster ? 'rgba(46,74,126,0.3)' : 'rgba(0,0,0,0.6)',
+          border: '1px solid #2a4a7e', color: '#9ec5ee', borderRadius: 4,
+          padding: '3px 8px', fontSize: 11, cursor: 'pointer',
+        }}>
+          🗂 领域
+        </button>
+        <button onClick={onClosePlanning ?? (() => {})} style={{
+          background: showPlanning ? 'rgba(46,74,126,0.3)' : 'rgba(0,0,0,0.6)',
+          border: '1px solid #2a4a7e', color: '#9ec5ee', borderRadius: 4,
+          padding: '3px 8px', fontSize: 11, cursor: 'pointer',
+        }}>
+          📋 规划
+        </button>
+      </div>
+
+      {/* === 发现面板 === */}
+      {showDiscovery && (
+        <DiscoveryPanel
+          recommendations={recommendations ?? []}
+          loading={loadingRecommendations ?? false}
+          activePath={activePath ?? null}
+          loadingPath={loadingPath ?? false}
+          onAccept={onAcceptRec ?? (() => {})}
+          onIgnore={onIgnoreRec ?? (() => {})}
+          onTracePath={onTracePath ?? (() => {})}
+          onClosePath={onClosePath ?? (() => {})}
+          onClose={onToggleDiscovery ?? (() => {})}
+        />
+      )}
+
+      {/* === 路径追溯面板 === */}
+      {!showDiscovery && activePath && (
+        <PathTracePanel
+          path={activePath}
+          loading={loadingPath ?? false}
+          onClose={onClosePath ?? (() => {})}
+        />
+      )}
+
+      {/* === 聚类视图 === */}
+      {showCluster && (
+        <ClusterView
+          clusters={clusters ?? []}
+          focusedClusterId={focusedClusterId ?? null}
+          loading={loadingClusters ?? false}
+          onFocus={onFocusCluster ?? (() => {})}
+          onRefresh={onRefreshClusters ?? (() => {})}
+          onClose={onCloseCluster ?? (() => {})}
+        />
+      )}
+
+      {/* === 规划面板 === */}
+      {showPlanning && (
+        <PlanningPanel
+          suggestions={planningSuggestions ?? []}
+          loading={loadingPlanning ?? false}
+          onAccept={onAcceptPlanning ?? (() => {})}
+          onRefresh={onRefreshPlanning ?? (() => {})}
+          onClose={onClosePlanning ?? (() => {})}
+        />
+      )}
       {/* P19-C / P28: 协作光标 DOM overlay（百分比定位，避免 SVG preserveAspectRatio 字体变形） */}
       {remoteCursors && remoteCursors.size > 0 && (
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 20, overflow: 'hidden' }}>
