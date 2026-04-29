@@ -298,6 +298,41 @@ func TestEdge_Delete_ConcurrentRaceIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestEdge_Strength_PersistedAndReturned 验证 domain.Edge.Strength 通过 memEdgeRepo 存读正确。
+func TestEdge_Strength_PersistedAndReturned(t *testing.T) {
+	ctx := context.Background()
+	svc, lakes, memberships, nodes, edges := newEdgeSvc(t)
+	actor, src, dst := setupEdgeFixture(t, svc, lakes, memberships, nodes)
+
+	// 通过 service Create（Strength 默认 0）
+	e, err := svc.Create(ctx, actor, CreateEdgeInput{
+		SrcNodeID: src, DstNodeID: dst, Kind: domain.EdgeKindRelates,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Strength != 0 {
+		t.Fatalf("new edge should have Strength=0, got %v", e.Strength)
+	}
+
+	// 模拟 AI weaver 写入 strength（直接操作 repo）
+	edges.mu.Lock()
+	edges.data[e.ID].Strength = 0.87
+	edges.mu.Unlock()
+
+	// 通过 service ListByLake 读回，验证 Strength 能返回
+	list, err := svc.ListByLake(ctx, actor, "lake-1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(list))
+	}
+	if list[0].Strength != 0.87 {
+		t.Fatalf("expected Strength=0.87, got %v", list[0].Strength)
+	}
+}
+
 func TestEdge_List_RequiresReadable(t *testing.T) {
 	ctx := context.Background()
 	svc, lakes, _, _, _ := newEdgeSvc(t)
