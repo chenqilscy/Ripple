@@ -42,6 +42,7 @@ type nodeResp struct {
 	UpdatedAt time.Time        `json:"updated_at"`
 	DeletedAt *time.Time       `json:"deleted_at,omitempty"`
 	TTLAt     *time.Time       `json:"ttl_at,omitempty"`
+	Version   int64            `json:"version"` // 乐观锁版本号（3-P1-01）
 }
 
 func toNodeResp(n *domain.Node) nodeResp {
@@ -50,6 +51,7 @@ func toNodeResp(n *domain.Node) nodeResp {
 		Content: n.Content, Type: string(n.Type), State: string(n.State),
 		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
 		DeletedAt: n.DeletedAt, TTLAt: n.TTLAt,
+		Version: n.Version,
 	}
 	if n.Position != nil {
 		resp.Position = &positionPayload{X: n.Position.X, Y: n.Position.Y, Z: n.Position.Z}
