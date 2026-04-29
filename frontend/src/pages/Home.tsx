@@ -142,9 +142,11 @@ export function Home({ onLogout }: Props) {
 
   // P12-E：PWA shortcut 处理 — ?action=search|import（需等 active 湖加载完毕）
   useEffect(() => {
-    const action = new URLSearchParams(window.location.search).get('action')
+    const url = new URL(window.location.href)
+    const action = url.searchParams.get('action')
     if (!action) return
-    window.history.replaceState({}, '', window.location.pathname)
+    url.searchParams.delete('action')
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
     setPendingAction(action)
   }, [])
 
@@ -923,7 +925,16 @@ export function Home({ onLogout }: Props) {
           </React.Suspense>
         ) : (
           <>
-            {!active && <div style={{ opacity: 0.5 }}>选择一个湖，或新建一个</div>}
+            {!active && (
+              <div style={{ opacity: 0.7, lineHeight: 1.6 }}>
+                选择一个湖，或新建一个。
+                {pendingAction && (
+                  <div style={{ marginTop: 8, color: '#9ec5ee', fontSize: 13 }}>
+                    已收到快捷入口「{pendingAction}」，选择湖后会自动打开对应面板。
+                  </div>
+                )}
+              </div>
+            )}
         {active && (
           <>
             <h2 style={{ margin: '0 0 8px', fontWeight: 300 }}>{active.name}</h2>
