@@ -157,8 +157,8 @@ export const api = {
   listEdges(lakeId: string, includeDeleted = false, signal?: AbortSignal): Promise<{ edges: EdgeItem[] }> {
     return request('GET', `/api/v1/lakes/${lakeId}/edges?include_deleted=${includeDeleted}`, undefined, { signal })
   },
-  createEdge(src_node_id: string, dst_node_id: string, kind: EdgeKind, label?: string, signal?: AbortSignal): Promise<EdgeItem> {
-    return request('POST', '/api/v1/edges', { src_node_id, dst_node_id, kind, label }, { signal })
+  createEdge(src_node_id: string, dst_node_id: string, kind: EdgeKind, label?: string, signal?: AbortSignal, strength?: number): Promise<EdgeItem> {
+    return request('POST', '/api/v1/edges', { src_node_id, dst_node_id, kind, label, strength }, { signal })
   },
   deleteEdge(id: string): Promise<void> {
     return request('DELETE', `/api/v1/edges/${id}`)

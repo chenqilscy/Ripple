@@ -48,7 +48,8 @@ type CreateEdgeInput struct {
 	SrcNodeID string
 	DstNodeID string
 	Kind      domain.EdgeKind
-	Label     string // kind=custom 时必填
+	Label     string  // kind=custom 时必填
+	Strength  float64 // AI 相似度（0=人工边）
 }
 
 // Create 在两个节点之间建一条有向边。
@@ -102,6 +103,7 @@ func (s *EdgeService) Create(ctx context.Context, actor *domain.User, in CreateE
 		Kind:      in.Kind,
 		Label:     in.Label,
 		OwnerID:   actor.ID,
+		Strength:  in.Strength,
 		CreatedAt: now,
 	}
 	if err := s.edges.Create(ctx, e); err != nil {

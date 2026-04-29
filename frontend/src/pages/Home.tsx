@@ -825,7 +825,7 @@ export function Home({ onLogout }: Props) {
       for (const c of candidates.slice(0, limit)) {
         if (!isCurrentLake()) return
         try {
-          await api.createEdge(c.src, c.dst, 'relates', `自动关联 ${c.score.toFixed(2)}`, abortController.signal)
+          await api.createEdge(c.src, c.dst, 'relates', `自动关联 ${c.score.toFixed(2)}`, abortController.signal, c.score)
           created += 1
         } catch (e) {
           if ((e as { status?: number }).status === 409) {

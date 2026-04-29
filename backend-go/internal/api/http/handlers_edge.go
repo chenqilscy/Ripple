@@ -17,10 +17,11 @@ type EdgeHandlers struct {
 }
 
 type createEdgeReq struct {
-	SrcNodeID string `json:"src_node_id"`
-	DstNodeID string `json:"dst_node_id"`
-	Kind      string `json:"kind"`
-	Label     string `json:"label,omitempty"`
+	SrcNodeID string  `json:"src_node_id"`
+	DstNodeID string  `json:"dst_node_id"`
+	Kind      string  `json:"kind"`
+	Label     string  `json:"label,omitempty"`
+	Strength  float64 `json:"strength,omitempty"`
 }
 
 type edgeResp struct {
@@ -64,6 +65,7 @@ func (h *EdgeHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		DstNodeID: in.DstNodeID,
 		Kind:      domain.EdgeKind(in.Kind),
 		Label:     in.Label,
+		Strength:  in.Strength,
 	})
 	if err != nil {
 		writeError(w, mapDomainError(err), err.Error())

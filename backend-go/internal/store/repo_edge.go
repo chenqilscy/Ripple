@@ -45,6 +45,7 @@ WHERE dup IS NULL
 CREATE (s)-[e:EDGE {
   id: $id, lake_id: $lake_id,
   kind: $kind, label: $label, owner_id: $owner_id,
+  strength: $strength,
   created_at: $created_at
 }]->(d)
 RETURN e.id
@@ -61,8 +62,7 @@ func (r *edgeRepoNeo) Create(ctx context.Context, e *domain.Edge) error {
 			"lake_id":    e.LakeID,
 			"kind":       string(e.Kind),
 			"label":      e.Label,
-			"owner_id":   e.OwnerID,
-			"created_at": e.CreatedAt.UTC().Format(time.RFC3339Nano),
+			"owner_id":   e.OwnerID,			"strength":   e.Strength,			"created_at": e.CreatedAt.UTC().Format(time.RFC3339Nano),
 		})
 		if err != nil {
 			return nil, err
