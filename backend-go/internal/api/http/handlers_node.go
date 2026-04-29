@@ -198,6 +198,11 @@ func (h *NodeHandlers) UpdateContent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	// 内容长度校验（最大 256KB）
+	if len([]byte(body.Content)) > 256*1024 {
+		writeError(w, http.StatusBadRequest, "content too large (max 256KB)")
+		return
+	}
 	n, err := h.Nodes.UpdateContent(r.Context(), u, service.UpdateContentInput{
 		NodeID:     id,
 		Content:    body.Content,
