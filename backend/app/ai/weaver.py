@@ -10,6 +10,7 @@ from typing import Any
 from app.ai.embeddings import cosine, embed
 from app.core.db import get_neo4j
 from app.core.logging import logger
+from app.services.recommendation_service import add_recommendation
 
 THRESHOLD = 0.78
 TOP_K = 5
@@ -31,11 +32,16 @@ async def weave_for_node(node_id: str, content: str, lake_id: str) -> list[dict[
         rows = [(r["id"], r["content"]) async for r in q]
 
     scored: list[tuple[str, float]] = []
+    recommendations_candidates: list[tuple[str, float]] = []
+
     for nid, c in rows:
         sc = cosine(src_vec, embed(c))
         if sc >= THRESHOLD:
             scored.append((nid, sc))
+        elif sc >= 0.60:
+            recommendations_candidates.append((nid, sc))
     scored.sort(key=lambda x: x[1], reverse=True)
+    recommendations_candidates.sort(key=lambda x: x[1], reverse=True)
     chosen = scored[:TOP_K]
 
     if not chosen:
@@ -52,4 +58,28 @@ async def weave_for_node(node_id: str, content: str, lake_id: str) -> list[dict[
             edges=[{"target": nid, "strength": sc} for nid, sc in chosen],
         )
     logger.info("weaver_related", node_id=node_id, count=len(chosen))
+
+    # Phase 2: Medium-similarity candidates → recommendations (0.6 <= sc < 0.78)
+    # Note: We need the source node's lake_id and title for recommendations
+    async with driver.session() as s:
+        src_q = await s.run(
+            """MATCH (n:Node {id:$id}) RETURN n.lake_id AS lake_id, n.title AS title LIMIT 1""",
+            id=node_id,
+        )
+        src_rows = [r async for r in src_q]
+        if src_rows:
+            src_lake_id = src_rows[0]["lake_id"]
+            src_title = src_rows[0]["title"]
+            for nid, sc in recommendations_candidates:
+                await add_recommendation(
+                    lake_id=src_lake_id,
+                    source_node_id=node_id,
+                    target_node_id=nid,
+                    reason=f"与「{src_title}」存在语义关联",
+                    confidence=sc,
+                    created_by="weaver",
+                )
+            if recommendations_candidates:
+                logger.info("weaver_recommendations_created", node_id=node_id, count=len(recommendations_candidates))
+
     return [{"target": nid, "strength": sc} for nid, sc in chosen]
