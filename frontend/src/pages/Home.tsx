@@ -165,6 +165,9 @@ export function Home({ onLogout }: Props) {
   const [edgeSortOrder, setEdgeSortOrder] = useState<'asc' | 'desc'>('desc')
   // P0-02：节点卡片"更多"菜单
   const [openMoreId, setOpenMoreId] = useState<string | null>(null)
+  // P1-05：移动端抽屉导航
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -178,6 +181,13 @@ export function Home({ onLogout }: Props) {
     document.addEventListener('click', handler)
     return () => document.removeEventListener('click', handler)
   }, [openMoreId])
+
+  // P1-05：监听窗口宽度变化
+  useEffect(() => {
+    const handler = () => { setIsMobile(window.innerWidth < 768) }
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
 
   useEffect(() => {
     activeLakeIdRef.current = active?.id ?? null
@@ -921,6 +931,22 @@ export function Home({ onLogout }: Props) {
     finally { setBatchBusy(false) }
   }
 
+  // P1-02：批量导出选中节点为 JSON
+  function batchExportNodes() {
+    if (batchSel.size === 0) return
+    const selected = nodes.filter(n => batchSel.has(n.id))
+    const data = JSON.stringify({ lake_id: active?.id, exported_at: new Date().toISOString(), nodes: selected }, null, 2)
+    const blob = new Blob([data], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `nodes-${active?.id ?? 'export'}-${Date.now()}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
   // M3 T7：移动湖到其他空间
   async function moveLakeUI(lake: Lake) {
     try {
@@ -1003,7 +1029,25 @@ export function Home({ onLogout }: Props) {
   return (
     <div style={layout}>
       <OfflineBar />
-      <aside style={sidebar}>
+      {/* P1-05：移动端遮罩 */}
+      {isMobile && sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }}
+        />
+      )}
+      {/* P1-05：移动端汉堡按钮 */}
+      {isMobile && !sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          title="打开导航"
+          style={{ position: 'fixed', top: 14, left: 14, zIndex: 101, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: '#9ec5ee', padding: '6px 10px', fontSize: 18, cursor: 'pointer' }}
+        >☰</button>
+      )}
+      <aside style={isMobile ? { ...sidebar, position: 'fixed', top: 0, left: 0, height: '100%', zIndex: 100, transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.25s ease', background: '#0e1e30' } : sidebar}>
+        {isMobile && (
+          <button onClick={() => setSidebarOpen(false)} title="关闭导航" style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#9ec5ee', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        )}
         <SpaceSwitcher
           currentSpaceId={currentSpaceId}
           onChange={setCurrentSpaceId}
@@ -1062,7 +1106,7 @@ export function Home({ onLogout }: Props) {
         <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 0' }}>
           {lakes.map(l => (
             <li key={l.id}
-              onClick={() => setActive(l)}
+              onClick={() => { setActive(l); if (isMobile) setSidebarOpen(false) }}
               style={{
                 ...lakeItem,
                 background: active?.id === l.id ? 'rgba(74,144,226,0.25)' : 'transparent',
@@ -1470,6 +1514,7 @@ export function Home({ onLogout }: Props) {
                       <button onClick={() => setBatchSel(new Set(filteredNodes.map(n => n.id)))} style={{ ...miniBtn, opacity: 0.7 }}>全选</button>
                       <button onClick={() => void batchOperate('condense')} disabled={batchBusy} style={miniBtn}>凝露 ↓</button>
                       <button onClick={() => void batchOperate('evaporate')} disabled={batchBusy} style={miniBtn}>蒸发 ↑</button>
+                      <button onClick={() => batchExportNodes()} disabled={batchBusy} style={{ ...miniBtn, background: 'rgba(74,144,226,0.15)', color: '#9ec5ee' }} title="将选中节点导出为 JSON 文件">导出 ↓ JSON</button>
                       <button onClick={() => { if (window.confirm(`确认彻底删除已选 ${batchSel.size} 个节点？此操作不可恢复。`)) { void batchOperate('erase') } }} disabled={batchBusy} style={{ ...miniBtn, background: 'rgba(220,53,69,0.15)', color: '#ff6b7a' }}>删除 ✕</button>
                       <button onClick={() => setBatchSel(new Set())} style={{ ...miniBtn, opacity: 0.6 }}>取消选择</button>
                     </div>
