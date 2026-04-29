@@ -38,6 +38,7 @@ yarn-debug.log*
 # Build artifacts
 *.log
 *.tmp
+frontend/staging-deploy-*.tar
 
 # Local data
 data/
