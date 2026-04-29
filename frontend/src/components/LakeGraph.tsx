@@ -93,6 +93,7 @@ function EdgeParticles({ simLinks, speed = 0.4 }: ParticleProps) {
   const tmpMat = useMemo(() => new THREE.Matrix4(), [])
   const tmpVec = useMemo(() => new THREE.Vector3(), [])
 
+  const { invalidate } = useThree()
   useFrame((_state, delta) => {
     if (!meshRef.current) return
     const prog = progressRef.current
@@ -111,6 +112,7 @@ function EdgeParticles({ simLinks, speed = 0.4 }: ParticleProps) {
       meshRef.current.setMatrixAt(i, tmpMat)
     }
     meshRef.current.instanceMatrix.needsUpdate = true
+    if (simLinks.length > 0) invalidate()
   })
 
   if (simLinks.length === 0) return null
@@ -513,7 +515,26 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
         )
       })}
 
-      <OrbitControls makeDefault />
+      <OrbitControls
+        makeDefault
+        enableRotate={false}
+        enablePan={true}
+        mouseButtons={{
+          LEFT: THREE.MOUSE.PAN,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN,
+        }}
+        touches={{
+          ONE: THREE.TOUCH.PAN,
+          TWO: THREE.TOUCH.DOLLY_PAN,
+        }}
+        minDistance={50}
+        maxDistance={2000}
+        zoomSpeed={1.2}
+        panSpeed={1.0}
+        enableDamping={true}
+        dampingFactor={0.05}
+      />
     </>
   )
 }
@@ -688,7 +709,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
         <button onClick={() => zoomOutRef.current()} title="缩小" style={zoomBtnStyle}>−</button>
         <button onClick={() => fitRef.current()} title="适配画布：恢复默认视角" style={zoomBtnStyle}>⊡</button>
       </div>
-      <Canvas camera={{ position: [0, 0, 600], fov: 50 }} gl={{ antialias: true }} frameloop="demand">
+      <Canvas camera={{ position: [0, 0, 600], fov: 50 }} gl={{ antialias: true }} frameloop="always">
         <React.Suspense fallback={null}>
           <GraphScene
             displayNodes={displayNodes}
