@@ -28,6 +28,7 @@ NEO4J_CONSTRAINTS = [
     "CREATE CONSTRAINT node_id IF NOT EXISTS FOR (n:Node) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT iceberg_id IF NOT EXISTS FOR (i:Iceberg) REQUIRE i.id IS UNIQUE",
     "CREATE INDEX node_lake_state IF NOT EXISTS FOR (n:Node) ON (n.lake_id, n.state)",
+    "CREATE INDEX node_lake_id IF NOT EXISTS FOR (n:Node) ON (n.lake_id)",
     "CREATE INDEX node_ttl IF NOT EXISTS FOR (n:Node) ON (n.ttl_at)",
 ]
 
