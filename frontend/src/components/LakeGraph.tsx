@@ -16,6 +16,8 @@ import {
   forceManyBody,
   forceCollide,
   forceCenter,
+  forceX,
+  forceY,
   type Simulation,
   type SimulationNodeDatum,
   type SimulationLinkDatum,
@@ -40,6 +42,27 @@ interface SimNode extends SimulationNodeDatum {
 
 interface SimLink extends SimulationLinkDatum<SimNode> {
   edgeId: string
+}
+
+function finiteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
+function initialNodePosition(node: NodeItem, index: number, forced?: { x: number; y: number }): { x: number; y: number; fx?: number; fy?: number } {
+  if (forced && finiteNumber(forced.x) && finiteNumber(forced.y)) {
+    return { x: forced.x, y: forced.y, fx: forced.x, fy: forced.y }
+  }
+  const persisted = node.position
+  if (
+    persisted && finiteNumber(persisted.x) && finiteNumber(persisted.y) &&
+    (Math.abs(persisted.x) > 0.001 || Math.abs(persisted.y) > 0.001) &&
+    Math.abs(persisted.x) <= 1000 && Math.abs(persisted.y) <= 1000
+  ) {
+    return { x: persisted.x, y: persisted.y }
+  }
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5))
+  const radius = Math.min(220, 35 + Math.sqrt(index) * 36)
+  return { x: Math.cos(index * goldenAngle) * radius, y: Math.sin(index * goldenAngle) * radius }
 }
 
 // ---------------------------------------------------------------------------
@@ -365,9 +388,10 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set())
 
   const { sim, simLinks, positions, simNodes } = useMemo(() => {
-    const simNodes: SimNode[] = displayNodes.map(n => {
+    const simNodes: SimNode[] = displayNodes.map((n, index) => {
       const forced = snapshotLayout?.[n.id]
-      return { id: n.id, item: n, x: forced?.x ?? 0, y: forced?.y ?? 0, fx: forced?.x, fy: forced?.y }
+      const pos = initialNodePosition(n, index, forced)
+      return { id: n.id, item: n, x: pos.x, y: pos.y, fx: pos.fx, fy: pos.fy }
     })
     const idSet = new Set(simNodes.map(n => n.id))
 
@@ -382,16 +406,18 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
     const sim = forceSimulation<SimNode>(simNodes)
       .force(
         'link',
-        forceLink<SimNode, SimLink>(simLinks).id(n => n.id).distance(80).strength(0.6),
+        forceLink<SimNode, SimLink>(simLinks).id(n => n.id).distance(90).strength(0.5),
       )
-      .force('charge', forceManyBody<SimNode>().strength(-120))
-      .force('collide', forceCollide<SimNode>(22))
+      .force('charge', forceManyBody<SimNode>().strength(-45))
+      .force('collide', forceCollide<SimNode>(18))
       .force('center', forceCenter(0, 0))
-      .alphaDecay(0.01)
+      .force('x', forceX<SimNode>(0).strength(0.02))
+      .force('y', forceY<SimNode>(0).strength(0.02))
+      .alphaDecay(0.03)
       .stop()
 
-    // Pre-warm 100 ticks for stable initial layout
-    for (let i = 0; i < 100; i++) sim.tick()
+    // Pre-warm for stable initial layout without pushing isolated nodes out of camera bounds.
+    for (let i = 0; i < 80; i++) sim.tick()
 
     const positions = new Map<string, THREE.Vector3>()
     for (const n of simNodes) {
