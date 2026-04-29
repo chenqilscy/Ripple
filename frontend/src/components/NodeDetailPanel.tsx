@@ -1,6 +1,7 @@
 /**
  * P20-D: 节点详情侧边栏
  * 点击图谱节点后在右侧展示节点基本信息和关联边。
+ * 修复：scroll lock + 窄屏 bottom sheet + CSS 变量 + 统一样式
  */
 import { useEffect, useState, type CSSProperties } from 'react'
 import { api } from '../api/client'
@@ -30,7 +31,6 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
   const [promptTemplateId, setPromptTemplateId] = useState('')
   const [promptLoadError, setPromptLoadError] = useState('')
   const [aiMessage, setAiMessage] = useState('')
-  /** 3-P2-01: 反馈状态 */
   const [feedbackSent, setFeedbackSent] = useState<'LIKE' | 'DISLIKE' | null>(null)
   const [feedbackComment, setFeedbackComment] = useState('')
   const [feedbackCommentOpen, setFeedbackCommentOpen] = useState(false)
@@ -40,6 +40,13 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
   const relatedEdges = edges.filter(
     e => e.src_node_id === node.id || e.dst_node_id === node.id
   )
+
+  // Scroll lock
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -86,118 +93,111 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
     }
   }
 
+  // Panel style: bottom sheet on narrow screens, sidebar on wide
+  const isNarrow = typeof window !== 'undefined' && window.innerWidth < 640
+  const panelStyle: CSSProperties = isNarrow
+    ? {
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        height: '65vh', background: 'var(--bg-primary)',
+        borderTop: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        zIndex: 400, boxShadow: '0 -8px 32px rgba(0,0,0,0.5)',
+        borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
+        fontFamily: 'var(--font-body)', color: 'var(--text-primary)',
+      }
+    : {
+        position: 'fixed', top: 0, right: 0, bottom: 0,
+        width: 300, background: 'var(--bg-primary)',
+        borderLeft: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        zIndex: 400, boxShadow: '-4px 0 16px rgba(0,0,0,0.4)',
+        fontFamily: 'var(--font-body)', color: 'var(--text-primary)',
+      }
+
   return (
-    <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0,
-      width: 300, background: '#111827',
-      borderLeft: '1px solid #1e3a5a',
-      display: 'flex', flexDirection: 'column',
-      zIndex: 400, boxShadow: '-4px 0 16px rgba(0,0,0,0.4)',
-      fontFamily: 'system-ui, sans-serif', color: '#c8d8e8',
-    }}>
+    <div style={panelStyle}>
       {/* 标题栏 */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 14px', borderBottom: '1px solid #1e3a5a',
-        background: '#0d1b2a',
+        padding: 'var(--space-lg) var(--space-md)',
+        borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-surface)',
+        flexShrink: 0,
       }}>
-        <span style={{ fontWeight: 600, fontSize: 14, color: '#9ec5ee' }}>节点详情</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* P2-02: 在线协作者提示 */}
+        <span style={{ fontWeight: 600, fontSize: 'var(--font-lg)', color: 'var(--accent)' }}>节点详情</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+          {isNarrow && (
+            <div style={{ width: 32, height: 3, background: 'var(--border)', borderRadius: 2, marginRight: 'var(--space-sm)' }} />
+          )}
           {onlineUsers && onlineUsers.filter(u => u !== meId).length > 0 && (
-            <span title={`同湖在线协作者：${onlineUsers.filter(u => u !== meId).join(', ')}`} style={{ fontSize: 11, color: '#7fdbb6', background: 'rgba(127,219,182,0.12)', borderRadius: 10, padding: '1px 7px' }}>
+            <span
+              title={`同湖在线协作者：${onlineUsers.filter(u => u !== meId).join(', ')}`}
+              style={{ fontSize: 'var(--font-xs)', color: 'var(--status-success)', background: 'var(--accent-subtle)', borderRadius: 'var(--radius-full)', padding: '1px 7px' }}
+            >
               ● {onlineUsers.filter(u => u !== meId).length} 人同在
             </span>
           )}
           <button
-          onClick={onClose}
-          style={{
-            background: 'none', border: 'none', color: '#6a8aaa', cursor: 'pointer',
-            fontSize: 18, lineHeight: 1, padding: '2px 6px', borderRadius: 4,
-          }}
-          title="关闭"
-          aria-label="关闭节点详情"
-        >
-          ×
-        </button>
+            onClick={onClose}
+            aria-label="关闭节点详情"
+            style={{
+              background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer',
+              fontSize: 18, lineHeight: 1, padding: '2px 6px', borderRadius: 'var(--radius-sm)',
+            }}
+          >
+            ×
+          </button>
         </div>
       </div>
 
       {/* 内容区 */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-lg) var(--space-md)' }}>
         {/* 节点内容 */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>内容</div>
-          <div style={{ fontSize: 13, color: '#c8d8e8', lineHeight: 1.5, wordBreak: 'break-word' }}>
-            {node.content || <span style={{ color: '#4a6a8e' }}>（无内容）</span>}
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <Label>内容</Label>
+          <div style={{ fontSize: 'var(--font-base)', color: 'var(--text-primary)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+            {node.content || <span style={{ color: 'var(--text-tertiary)' }}>（无内容）</span>}
           </div>
         </div>
 
         {/* 类型 & 状态 */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>类型</div>
-            <span style={{
-              display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-              background: '#1e3a5a', color: '#9ec5ee', fontSize: 12,
-            }}>
-              {node.type}
-            </span>
+            <Label>类型</Label>
+            <span style={badgeStyle}>{node.type}</span>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>状态</div>
-            <span style={{
-              display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-              background: '#1e3a5a', color: '#9ec5ee', fontSize: 12,
-            }}>
-              {STATE_LABEL[node.state] ?? node.state}
-            </span>
+            <Label>状态</Label>
+            <span style={badgeStyle}>{STATE_LABEL[node.state] ?? node.state}</span>
           </div>
         </div>
 
         {/* 节点 ID */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>ID</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <code style={{ fontSize: 11, color: '#6a8aaa', fontFamily: 'monospace' }}>
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <Label>ID</Label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+            <code style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
               {node.id.slice(0, 8)}…
             </code>
-            <button
-              onClick={() => {
-                void navigator.clipboard.writeText(node.id)
-                  .then(() => {
-                    const el = document.createElement('div')
-                    el.textContent = '已复制'
-                    Object.assign(el.style, {
-                      position: 'fixed', bottom: '24px', right: '24px', zIndex: '9999',
-                      background: '#1e3a5a', color: '#9ec5ee', padding: '6px 14px',
-                      borderRadius: '6px', fontSize: '12px', pointerEvents: 'none',
-                    })
-                    document.body.appendChild(el)
-                    setTimeout(() => document.body.removeChild(el), 1800)
-                  })
-              }}
-              title="复制完整节点 ID 到剪贴板"
-              style={{
-                background: 'transparent', border: '1px solid #2a3a4a',
-                color: '#4a6a8e', borderRadius: 4, padding: '1px 6px',
-                fontSize: 10, cursor: 'pointer', lineHeight: 1.5,
-              }}
-            >复制</button>
+            <CopyButton text={node.id} />
           </div>
         </div>
 
         {/* AI Workflow */}
-        <div style={{ marginBottom: 18, padding: 10, border: '1px solid #1e3a5a', borderRadius: 8, background: '#0d1b2a' }}>
-          <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Workflow</div>
-          <div style={{ color: '#8fb7dc', fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>
+        <div style={{
+          marginBottom: 'var(--space-lg)', padding: 'var(--space-md)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+          background: 'var(--bg-surface)',
+        }}>
+          <Label>AI Workflow</Label>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-md)', lineHeight: 1.5, marginBottom: 'var(--space-sm)' }}>
             选择 Prompt 模板后触发 AI 填充；不选模板时，将直接以当前节点内容作为 Prompt。
           </div>
           <select
             value={promptTemplateId}
             onChange={event => setPromptTemplateId(event.target.value)}
-            style={aiSelectStyle}
             aria-label="选择 Prompt 模板"
+            style={selectStyle}
           >
             <option value="">不使用模板</option>
             {promptTemplates.map(tpl => (
@@ -207,9 +207,11 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
             ))}
           </select>
           {promptLoadError && (
-            <div style={{ color: '#f9e2af', fontSize: 11, margin: '6px 0' }}>模板列表加载失败：{promptLoadError}</div>
+            <div style={{ color: 'var(--status-warning)', fontSize: 'var(--font-sm)', margin: 'var(--space-sm) 0' }}>
+              模板列表加载失败：{promptLoadError}
+            </div>
           )}
-          <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 'var(--space-sm)' }}>
             <AiTriggerButton
               lakeId={node.lake_id}
               nodeId={node.id}
@@ -221,26 +223,27 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
               onFail={job => setAiMessage(`AI 失败：${job.error || job.status}`)}
             />
           </div>
-          {aiMessage && <div style={{ color: '#94e2d5', fontSize: 11, marginTop: 8 }}>{aiMessage}</div>}
+          {aiMessage && <div style={{ color: 'var(--status-success)', fontSize: 'var(--font-sm)', marginTop: 'var(--space-sm)' }}>{aiMessage}</div>}
         </div>
 
         {/* 创建时间 */}
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>创建时间</div>
-          <div style={{ fontSize: 12, color: '#6a8aaa' }}>
+        <div style={{ marginBottom: 'var(--space-lg)' }}>
+          <Label>创建时间</Label>
+          <div style={{ fontSize: 'var(--font-md)', color: 'var(--text-secondary)' }}>
             {new Date(node.created_at).toLocaleString('zh-CN')}
           </div>
         </div>
 
         {/* 关联边 */}
         <div>
-          <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            关联边 ({relatedEdges.length})
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: 'var(--space-sm)' }}>
+            <Label>关联边</Label>
+            <span style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>({relatedEdges.length})</span>
           </div>
           {relatedEdges.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#4a6a8e' }}>无关联边</div>
+            <div style={{ fontSize: 'var(--font-md)', color: 'var(--text-tertiary)' }}>无关联边</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
               {relatedEdges.map(e => {
                 const isSrc = e.src_node_id === node.id
                 const otherId = isSrc ? e.dst_node_id : e.src_node_id
@@ -250,19 +253,17 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
                   : otherId.slice(0, 8) + '…'
                 return (
                   <div key={e.id} style={{
-                    background: '#0d1b2a', borderRadius: 6,
-                    padding: '6px 10px', fontSize: 12,
-                    border: '1px solid #1e3a5a',
+                    background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)',
+                    padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--font-md)',
+                    border: '1px solid var(--border)',
                   }}>
-                    <span style={{ color: '#4a8eff', marginRight: 4 }}>
-                      {isSrc ? '→' : '←'}
-                    </span>
-                    <span style={{ color: '#9ec5ee' }}>{otherLabel}</span>
-                    <span style={{ color: '#4a6a8e', marginLeft: 6 }}>
+                    <span style={{ color: 'var(--accent)', marginRight: 'var(--space-xs)' }}>{isSrc ? '→' : '←'}</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{otherLabel}</span>
+                    <span style={{ color: 'var(--text-tertiary)', marginLeft: 'var(--space-sm)' }}>
                       [{KIND_LABEL[e.kind] ?? e.kind}]
                     </span>
                     {e.label && (
-                      <span style={{ color: '#6a8aaa', marginLeft: 4 }}>"{e.label}"</span>
+                      <span style={{ color: 'var(--text-secondary)', marginLeft: 'var(--space-xs)' }}>"{e.label}"</span>
                     )}
                   </div>
                 )
@@ -271,79 +272,129 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
           )}
         </div>
 
-        {/* 3-P2-01: 节点反馈模块 */}
-        <div style={{ borderTop: '1px solid #1e3a5a', paddingTop: 10, marginTop: 4 }}>
-          <div style={{ fontSize: 11, color: '#6a8aaa', marginBottom: 6 }}>这个节点对你有帮助吗？</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {/* 节点反馈模块 */}
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
+          <div style={{ fontSize: 'var(--font-md)', color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>
+            这个节点对你有帮助吗？
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={() => void sendFeedback('LIKE')}
               disabled={feedbackBusy || feedbackSent === 'LIKE'}
+              aria-label="有帮助"
               style={{
-                background: feedbackSent === 'LIKE' ? '#1a4a2e' : '#0f1f2e',
-                border: `1px solid ${feedbackSent === 'LIKE' ? '#3ddc84' : '#2d5278'}`,
-                borderRadius: 5, padding: '4px 12px', cursor: feedbackSent === 'LIKE' ? 'default' : 'pointer',
-                color: feedbackSent === 'LIKE' ? '#3ddc84' : '#9ec5ee', fontSize: 14,
+                background: feedbackSent === 'LIKE' ? 'rgba(26,74,46,0.3)' : 'var(--bg-secondary)',
+                border: `1px solid ${feedbackSent === 'LIKE' ? 'var(--status-success)' : 'var(--border)'}`,
+                borderRadius: 'var(--radius-sm)', padding: '4px var(--space-md)',
+                cursor: feedbackSent === 'LIKE' ? 'default' : 'pointer',
+                color: feedbackSent === 'LIKE' ? 'var(--status-success)' : 'var(--text-primary)',
+                fontSize: 14, transition: 'background 0.2s, border-color 0.2s',
               }}
-              title="有帮助"
             >👍{feedbackSent === 'LIKE' ? ' 已反馈' : ''}</button>
             <button
               onClick={() => void sendFeedback('DISLIKE')}
               disabled={feedbackBusy || feedbackSent === 'DISLIKE'}
+              aria-label="没帮助"
               style={{
-                background: feedbackSent === 'DISLIKE' ? '#2d1a1a' : '#0f1f2e',
-                border: `1px solid ${feedbackSent === 'DISLIKE' ? '#f38ba8' : '#2d5278'}`,
-                borderRadius: 5, padding: '4px 12px', cursor: feedbackSent === 'DISLIKE' ? 'default' : 'pointer',
-                color: feedbackSent === 'DISLIKE' ? '#f38ba8' : '#9ec5ee', fontSize: 14,
+                background: feedbackSent === 'DISLIKE' ? 'rgba(47,26,26,0.3)' : 'var(--bg-secondary)',
+                border: `1px solid ${feedbackSent === 'DISLIKE' ? 'var(--status-danger)' : 'var(--border)'}`,
+                borderRadius: 'var(--radius-sm)', padding: '4px var(--space-md)',
+                cursor: feedbackSent === 'DISLIKE' ? 'default' : 'pointer',
+                color: feedbackSent === 'DISLIKE' ? 'var(--status-danger)' : 'var(--text-primary)',
+                fontSize: 14, transition: 'background 0.2s, border-color 0.2s',
               }}
-              title="没帮助"
             >👎{feedbackSent === 'DISLIKE' ? ' 已反馈' : ''}</button>
             <button
               onClick={() => setFeedbackCommentOpen(v => !v)}
+              aria-expanded={feedbackCommentOpen}
               style={{
-                background: feedbackCommentOpen ? '#1a2d4a' : '#0f1f2e',
-                border: '1px solid #2d5278', borderRadius: 5, padding: '4px 10px',
-                cursor: 'pointer', color: '#9ec5ee', fontSize: 12,
+                background: feedbackCommentOpen ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px var(--space-md)',
+                cursor: 'pointer', color: 'var(--text-primary)', fontSize: 'var(--font-md)',
               }}
-              title="留下文字反馈"
             >✏ 留言</button>
           </div>
           {feedbackCommentOpen && (
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ marginTop: 'var(--space-sm)', display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
               <textarea
                 value={feedbackComment}
                 onChange={e => setFeedbackComment(e.target.value)}
                 placeholder="写下你的想法..."
                 rows={3}
+                aria-label="反馈留言"
                 style={{
-                  width: '100%', background: '#0a1526', border: '1px solid #2d5278',
-                  borderRadius: 5, color: '#c8d8e8', padding: '6px 8px', fontSize: 12,
-                  resize: 'vertical', boxSizing: 'border-box',
+                  width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border-input)',
+                  borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', padding: 'var(--space-sm) var(--space-md)',
+                  fontSize: 'var(--font-md)', resize: 'vertical', boxSizing: 'border-box',
                 }}
               />
               <button
                 onClick={() => void submitComment()}
                 disabled={feedbackBusy || !feedbackComment.trim()}
                 style={{
-                  alignSelf: 'flex-end', background: '#1e4d9e', border: '1px solid #4a8eff',
-                  borderRadius: 5, padding: '4px 14px', color: '#9ec5ee',
-                  fontSize: 12, cursor: feedbackComment.trim() ? 'pointer' : 'default',
+                  alignSelf: 'flex-end', background: 'var(--accent)', border: 'none',
+                  borderRadius: 'var(--radius-sm)', padding: '4px var(--space-lg)',
+                  color: 'var(--text-inverse)', fontSize: 'var(--font-md)',
+                  cursor: feedbackComment.trim() ? 'pointer' : 'not-allowed',
                 }}
               >提交</button>
             </div>
           )}
         </div>
-
       </div>
     </div>
   )
 }
 
-const aiSelectStyle: CSSProperties = {
-  width: '100%',
-  background: '#111827',
-  border: '1px solid #2d5278',
-  borderRadius: 6,
-  color: '#c8d8e8',
-  padding: '7px 8px',
-  fontSize: 12,
+// ---- Helper sub-components ----
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)',
+      marginBottom: 'var(--space-xs)', textTransform: 'uppercase', letterSpacing: '0.06em',
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function badgeStyle(): CSSProperties {
+  return {
+    display: 'inline-block', padding: '2px var(--space-sm)', borderRadius: 'var(--radius-full)',
+    background: 'var(--bg-secondary)', color: 'var(--accent)', fontSize: 'var(--font-md)',
+  }
+}
+
+function selectStyle(): CSSProperties {
+  return {
+    width: '100%', background: 'var(--bg-secondary)',
+    border: '1px solid var(--border-input)',
+    borderRadius: 'var(--radius-md)', color: 'var(--text-primary)',
+    padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--font-md)',
+  }
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1800)
+        })
+      }}
+      title="复制节点 ID 到剪贴板"
+      aria-label="复制节点 ID"
+      style={{
+        background: 'transparent', border: '1px solid var(--border-subtle)',
+        color: copied ? 'var(--status-success)' : 'var(--text-tertiary)',
+        borderRadius: 'var(--radius-sm)', padding: '1px var(--space-sm)',
+        fontSize: 'var(--font-xs)', cursor: 'pointer', lineHeight: 1.5,
+      }}
+    >
+      {copied ? '已复制' : '复制'}
+    </button>
+  )
 }

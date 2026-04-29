@@ -1,6 +1,7 @@
 /**
  * Phase 15-B: Organization subscription management panel.
  * Shows current subscription status and available plans for upgrade/downgrade.
+ * 修复：scroll lock + CSS 变量（Deep Ocean Dark 主题）
  */
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
@@ -12,15 +13,12 @@ interface Props {
   isOwner: boolean
 }
 
-const PLAN_COLORS: Record<string, string> = {
-  free:  '#6c757d',
-  pro:   '#4a8eff',
-  team:  '#f5a623',
-}
-
 function planColor(planName: string): string {
   const key = planName.toLowerCase()
-  return PLAN_COLORS[key] ?? '#52c41a'
+  if (key === 'free') return 'var(--text-tertiary)'
+  if (key === 'pro') return 'var(--accent)'
+  if (key === 'team') return 'var(--status-warning)'
+  return 'var(--status-success)'
 }
 
 function formatCycle(cycle: BillingCycle) {
@@ -40,19 +38,18 @@ function UsageBar({ label, used, max }: { label: string; used: number; max: numb
   const unlimited = max === -1
   const pct = unlimited ? 0 : Math.min(100, max === 0 ? 100 : Math.round((used / max) * 100))
   const danger = !unlimited && pct >= 90
-  const barColor = danger ? '#f5222d' : '#4a8eff'
   return (
-    <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '10px 16px', marginBottom: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#aaa', marginBottom: 5 }}>
+    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md) var(--space-lg)', marginBottom: 'var(--space-sm)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--font-md)', color: 'var(--text-secondary)', marginBottom: 'var(--space-xs)' }}>
         <span>{label}</span>
-        <span style={{ color: danger ? '#f5222d' : '#ccc' }}>
+        <span style={{ color: danger ? 'var(--status-danger)' : 'var(--text-primary)' }}>
           {used} / {unlimited ? '不限' : max}
-          {!unlimited && <span style={{ color: '#888', marginLeft: 4 }}>({pct}%)</span>}
+          {!unlimited && <span style={{ color: 'var(--text-tertiary)', marginLeft: 'var(--space-xs)' }}>({pct}%)</span>}
         </span>
       </div>
       {!unlimited && (
-        <div style={{ height: 4, background: '#2a2a4a', borderRadius: 2 }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 2, transition: 'width 0.3s' }} />
+        <div style={{ height: 4, background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: danger ? 'var(--status-danger)' : 'var(--accent)', borderRadius: 'var(--radius-sm)', transition: 'width 0.3s' }} />
         </div>
       )}
     </div>
@@ -68,7 +65,14 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
   const [loadingSub, setLoadingSub] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly')
-  const [submitting, setSubmitting] = useState<string | null>(null) // planId being submitted
+  const [submitting, setSubmitting] = useState<string | null>(null)
+
+  // Scroll lock
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
 
   const loadData = useCallback(async () => {
     setError(null)
@@ -121,7 +125,7 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
     setSubmitting(plan.id)
     setError(null)
     try {
-      const res = await api.createOrgSubscription(orgId, plan.id, selectedCycle, /* stub_confirm */ true)
+      const res = await api.createOrgSubscription(orgId, plan.id, selectedCycle, true)
       setCurrent(res.subscription)
     } catch (e) {
       setError('订阅失败: ' + String((e as Error)?.message || e))
@@ -136,22 +140,22 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
   const maxTrendCalls = llmTrend.reduce((max, item) => Math.max(max, item.calls), 0)
 
   return (
-    <div style={{ padding: '16px 0' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h3 style={{ margin: 0, color: '#fff' }}>订阅套餐</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
+    <div style={{ padding: 'var(--space-lg) 0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+        <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 'var(--font-xl)', fontWeight: 600 }}>订阅套餐</h3>
+        <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
           {(['monthly', 'yearly'] as BillingCycle[]).map(c => (
             <button
               key={c}
               onClick={() => setSelectedCycle(c)}
               style={{
-                padding: '4px 12px',
-                borderRadius: 4,
+                padding: 'var(--space-xs) var(--space-md)',
+                borderRadius: 'var(--radius-sm)',
                 border: 'none',
                 cursor: 'pointer',
-                background: selectedCycle === c ? '#4a8eff' : '#2a2a3a',
-                color: '#fff',
-                fontSize: 13,
+                background: selectedCycle === c ? 'var(--accent)' : 'var(--bg-tertiary)',
+                color: selectedCycle === c ? 'var(--text-inverse)' : 'var(--text-secondary)',
+                fontSize: 'var(--font-md)',
               }}
             >
               {c === 'monthly' ? '月付' : '年付'}
@@ -163,35 +167,35 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
       {/* Current subscription summary */}
       {current && (
         <div style={{
-          background: '#1a1a2e',
-          border: '1px solid #2a2a4a',
-          borderRadius: 8,
-          padding: '12px 16px',
-          marginBottom: 16,
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-md) var(--space-lg)',
+          marginBottom: 'var(--space-lg)',
         }}>
-          <div style={{ fontSize: 13, color: '#aaa', marginBottom: 4 }}>当前套餐</div>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ color: planColor(currentPlan?.name ?? ''), fontWeight: 600, fontSize: 15 }}>
+          <div style={{ fontSize: 'var(--font-md)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-xs)' }}>当前套餐</div>
+          <div style={{ display: 'flex', gap: 'var(--space-lg)', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: planColor(currentPlan?.name ?? ''), fontWeight: 600, fontSize: 'var(--font-lg)' }}>
               {currentPlan?.name ?? current.plan_id}
             </span>
-            <span style={{ color: '#aaa', fontSize: 13 }}>{formatCycle(current.billing_cycle)}</span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-md)' }}>{formatCycle(current.billing_cycle)}</span>
             <span style={{
-              padding: '2px 8px',
-              borderRadius: 4,
-              background: current.status === 'active' ? '#1a3a1a' : '#3a1a1a',
-              color: current.status === 'active' ? '#52c41a' : '#f5222d',
-              fontSize: 12,
+              padding: '2px var(--space-sm)',
+              borderRadius: 'var(--radius-sm)',
+              background: current.status === 'active' ? 'var(--status-success-subtle)' : 'var(--status-danger-subtle)',
+              color: current.status === 'active' ? 'var(--status-success)' : 'var(--status-danger)',
+              fontSize: 'var(--font-sm)',
             }}>
               {current.status}
             </span>
-            <span style={{ color: '#888', fontSize: 12 }}>
+            <span style={{ color: 'var(--text-tertiary)', fontSize: 'var(--font-sm)' }}>
               有效期至 {formatDate(current.current_period_end)}
             </span>
           </div>
         </div>
       )}
 
-      {/* Real usage progress bars (Phase 16) */}
+      {/* Real usage progress bars */}
       {usage !== null && currentPlan && (
         <UsageBar label="成员" used={usage.members} max={currentPlan.quotas.max_members} />
       )}
@@ -202,33 +206,33 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
         <UsageBar label="节点" used={usage.nodes} max={currentPlan.quotas.max_nodes} />
       )}
       {usage !== null && !currentPlan && (
-        <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-          <div style={{ fontSize: 13, color: '#aaa', marginBottom: 8 }}>当前用量</div>
-          <div style={{ display: 'flex', gap: 24, fontSize: 13, color: '#ccc' }}>
-            <span>成员 <b style={{ color: '#fff' }}>{usage.members}</b></span>
-            <span>湖 <b style={{ color: '#fff' }}>{usage.lakes}</b></span>
-            <span>节点 <b style={{ color: '#fff' }}>{usage.nodes}</b></span>
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md) var(--space-lg)', marginBottom: 'var(--space-lg)' }}>
+          <div style={{ fontSize: 'var(--font-md)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-sm)' }}>当前用量</div>
+          <div style={{ display: 'flex', gap: 'var(--space-lg)', fontSize: 'var(--font-md)', color: 'var(--text-secondary)' }}>
+            <span>成员 <b style={{ color: 'var(--text-primary)' }}>{usage.members}</b></span>
+            <span>湖 <b style={{ color: 'var(--text-primary)' }}>{usage.lakes}</b></span>
+            <span>节点 <b style={{ color: 'var(--text-primary)' }}>{usage.nodes}</b></span>
           </div>
         </div>
       )}
 
       {llmUsage !== null && (
-        <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-md) var(--space-lg)', marginBottom: 'var(--space-lg)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-md)', flexWrap: 'wrap', marginBottom: 'var(--space-md)' }}>
             <div>
-              <div style={{ fontSize: 13, color: '#aaa', marginBottom: 4 }}>AI 用量账单</div>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#ccc' }}>
-                <span>周期 <b style={{ color: '#fff' }}>近 {llmUsage.period_days} 天</b></span>
-                <span>调用 <b style={{ color: '#fff' }}>{llmUsage.total_calls}</b></span>
-                <span>估算费用 <b style={{ color: '#fff' }}>{formatMoney(llmUsage.total_estimated_cost_cny)}</b></span>
+              <div style={{ fontSize: 'var(--font-md)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-xs)' }}>AI 用量账单</div>
+              <div style={{ display: 'flex', gap: 'var(--space-lg)', flexWrap: 'wrap', fontSize: 'var(--font-md)', color: 'var(--text-secondary)' }}>
+                <span>周期 <b style={{ color: 'var(--text-primary)' }}>近 {llmUsage.period_days} 天</b></span>
+                <span>调用 <b style={{ color: 'var(--text-primary)' }}>{llmUsage.total_calls}</b></span>
+                <span>估算费用 <b style={{ color: 'var(--text-primary)' }}>{formatMoney(llmUsage.total_estimated_cost_cny)}</b></span>
               </div>
             </div>
-            <div style={{ fontSize: 12, color: '#888' }}>按 provider / 按日聚合</div>
+            <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>按 provider / 按日聚合</div>
           </div>
 
           {llmUsage.by_provider.length > 0 ? (
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(84px,1fr) minmax(72px,96px) minmax(96px,120px) minmax(96px,120px)', gap: 8, fontSize: 12, color: '#7f8ea3' }}>
+            <div style={{ display: 'grid', gap: 'var(--space-sm)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(84px,1fr) minmax(72px,96px) minmax(96px,120px) minmax(96px,120px)', gap: 'var(--space-sm)', fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>
                 <span>Provider</span>
                 <span>调用次数</span>
                 <span>平均耗时</span>
@@ -237,7 +241,7 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
               {llmUsage.by_provider.map(item => (
                 <div
                   key={item.provider}
-                  style={{ display: 'grid', gridTemplateColumns: 'minmax(84px,1fr) minmax(72px,96px) minmax(96px,120px) minmax(96px,120px)', gap: 8, fontSize: 13, color: '#d7def0', padding: '10px 12px', borderRadius: 8, background: '#141424', border: '1px solid #23233a' }}
+                  style={{ display: 'grid', gridTemplateColumns: 'minmax(84px,1fr) minmax(72px,96px) minmax(96px,120px) minmax(96px,120px)', gap: 'var(--space-sm)', fontSize: 'var(--font-md)', color: 'var(--text-primary)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
                 >
                   <span style={{ fontWeight: 600 }}>{item.provider}</span>
                   <span>{item.calls}</span>
@@ -247,23 +251,23 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
               ))}
             </div>
           ) : (
-            <div style={{ color: '#888', fontSize: 13 }}>最近 {llmUsage.period_days} 天暂无 AI 调用记录</div>
+            <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--font-md)' }}>最近 {llmUsage.period_days} 天暂无 AI 调用记录</div>
           )}
 
           {llmTrend.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, color: '#7f8ea3', marginBottom: 8 }}>近 7 天趋势</div>
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${llmTrend.length}, minmax(0, 1fr))`, gap: 8, alignItems: 'end', minHeight: 110 }}>
+            <div style={{ marginTop: 'var(--space-lg)' }}>
+              <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-sm)' }}>近 7 天趋势</div>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${llmTrend.length}, minmax(0, 1fr))`, gap: 'var(--space-sm)', alignItems: 'end', minHeight: 110 }}>
                 {llmTrend.map(item => {
                   const heightPct = maxTrendCalls === 0 ? 0 : Math.max(8, Math.round((item.calls / maxTrendCalls) * 100))
                   return (
-                    <div key={item.date} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
+                    <div key={item.date} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', alignItems: 'stretch' }}>
                       <div title={`${item.date} · ${item.calls} 次 · ${formatMoney(item.estimated_cost_cny)}`} style={{ minHeight: 78, display: 'flex', alignItems: 'end' }}>
-                        <div style={{ width: '100%', height: `${heightPct}%`, background: 'linear-gradient(180deg, #71a7ff 0%, #4a8eff 100%)', borderRadius: 6, minHeight: item.calls > 0 ? 8 : 0 }} />
+                        <div style={{ width: '100%', height: `${heightPct}%`, background: 'linear-gradient(180deg, var(--accent-subtle) 0%, var(--accent) 100%)', borderRadius: 'var(--radius-md)', minHeight: item.calls > 0 ? 8 : 0 }} />
                       </div>
                       <div style={{ display: 'grid', gap: 2, textAlign: 'center' }}>
-                        <span style={{ fontSize: 11, color: '#d7def0' }}>{item.calls}</span>
-                        <span style={{ fontSize: 10, color: '#7f8ea3' }}>{item.date.slice(5)}</span>
+                        <span style={{ fontSize: 'var(--font-sm)', color: 'var(--text-primary)' }}>{item.calls}</span>
+                        <span style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>{item.date.slice(5)}</span>
                       </div>
                     </div>
                   )
@@ -275,56 +279,57 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
       )}
 
       {error && (
-        <div style={{ color: '#f5222d', background: '#2a1a1a', borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>
+        <div style={{ color: 'var(--status-danger)', background: 'var(--status-danger-subtle)', borderRadius: 'var(--radius-md)', padding: 'var(--space-sm) var(--space-md)', marginBottom: 'var(--space-md)', fontSize: 'var(--font-md)' }}>
           {error}
         </div>
       )}
 
       {isLoading ? (
-        <div style={{ color: '#888', textAlign: 'center', padding: 32 }}>加载中…</div>
+        <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', padding: 'var(--space-xl)' }}>加载中…</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-md)' }}>
           {plans.map(plan => {
             const price = selectedCycle === 'monthly' ? plan.price_cny_monthly : plan.price_cny_yearly
             const hasExactPrice = typeof price === 'number'
             const isFreePlan = plan.price_cny_monthly === 0 && (!hasExactPrice || price === 0)
             const isCurrent = current?.plan_id === plan.id
             const isSubmitting = submitting === plan.id
+            const planColorVal = planColor(plan.name)
 
             return (
               <div
                 data-testid={`plan-card-${plan.id}`}
                 key={plan.id}
                 style={{
-                  background: '#1a1a2e',
-                  border: `2px solid ${isCurrent ? planColor(plan.name) : '#2a2a4a'}`,
-                  borderRadius: 10,
-                  padding: '16px',
+                  background: 'var(--bg-surface)',
+                  border: `2px solid ${isCurrent ? planColorVal : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-xl)',
+                  padding: 'var(--space-lg)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 10,
+                  gap: 'var(--space-sm)',
                   transition: 'border-color 0.2s',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: planColor(plan.name), fontWeight: 700, fontSize: 16 }}>
+                  <span style={{ color: planColorVal, fontWeight: 700, fontSize: 'var(--font-lg)' }}>
                     {plan.name}
                   </span>
                   {isCurrent && (
-                    <span style={{ fontSize: 11, color: planColor(plan.name), background: '#1a2a1a', padding: '2px 6px', borderRadius: 4 }}>
+                    <span style={{ fontSize: 'var(--font-xs)', color: planColorVal, background: 'var(--status-success-subtle)', padding: '2px var(--space-sm)', borderRadius: 'var(--radius-sm)' }}>
                       当前
                     </span>
                   )}
                 </div>
-                <div style={{ color: '#888', fontSize: 12, minHeight: 32 }}>{plan.description}</div>
-                <div style={{ color: '#fff', fontWeight: 600, fontSize: 20 }}>
+                <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--font-sm)', minHeight: 32 }}>{plan.description}</div>
+                <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 'var(--font-xl)' }}>
                   {isFreePlan ? '免费' : hasExactPrice ? `¥${price}` : '价格待配置'}
-                  {hasExactPrice && !isFreePlan && <span style={{ fontSize: 12, color: '#aaa', fontWeight: 400 }}>/{selectedCycle === 'monthly' ? '月' : '年'}</span>}
+                  {hasExactPrice && !isFreePlan && <span style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', fontWeight: 400 }}>/{selectedCycle === 'monthly' ? '月' : '年'}</span>}
                 </div>
                 {!hasExactPrice && selectedCycle === 'yearly' && !isFreePlan && (
-                  <div style={{ color: '#888', fontSize: 12 }}>年付金额以后端套餐配置为准</div>
+                  <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--font-sm)' }}>年付金额以后端套餐配置为准</div>
                 )}
-                <div style={{ color: '#888', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--font-sm)', display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <div>成员上限：{plan.quotas.max_members === -1 ? '不限' : plan.quotas.max_members}</div>
                   <div>湖上限：{plan.quotas.max_lakes === -1 ? '不限' : plan.quotas.max_lakes}</div>
                   <div>节点上限：{plan.quotas.max_nodes === -1 ? '不限' : plan.quotas.max_nodes}</div>
@@ -336,15 +341,15 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
                     disabled={isSubmitting || (isCurrent && current?.billing_cycle === selectedCycle)}
                     onClick={() => handleSelect(plan)}
                     style={{
-                      marginTop: 4,
-                      padding: '6px 0',
-                      borderRadius: 6,
+                      marginTop: 'var(--space-xs)',
+                      padding: 'var(--space-sm) 0',
+                      borderRadius: 'var(--radius-md)',
                       border: 'none',
                       cursor: isSubmitting || (isCurrent && current?.billing_cycle === selectedCycle) ? 'not-allowed' : 'pointer',
-                      background: isCurrent && current?.billing_cycle === selectedCycle ? '#2a2a3a' : planColor(plan.name),
+                      background: isCurrent && current?.billing_cycle === selectedCycle ? 'var(--bg-tertiary)' : planColorVal,
                       color: '#fff',
                       fontWeight: 600,
-                      fontSize: 13,
+                      fontSize: 'var(--font-md)',
                       opacity: isSubmitting ? 0.7 : 1,
                     }}
                   >
@@ -355,7 +360,7 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
             )
           })}
           {plans.length === 0 && (
-            <div style={{ color: '#888', gridColumn: '1/-1', textAlign: 'center', padding: 32 }}>
+            <div style={{ color: 'var(--text-tertiary)', gridColumn: '1/-1', textAlign: 'center', padding: 'var(--space-xl)' }}>
               暂无可用套餐
             </div>
           )}

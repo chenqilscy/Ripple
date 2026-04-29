@@ -1,6 +1,7 @@
 /**
  * Phase 15-C: AI Trigger button for a node.
  * Sends a trigger request and polls job status until done/failed (60s timeout).
+ * 修复：CSS 变量（Deep Ocean Dark 主题）
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
@@ -22,13 +23,6 @@ const STATUS_LABEL: Record<AiJobStatus, string> = {
   processing: '处理中',
   done:       '完成',
   failed:     '失败',
-}
-
-const STATUS_COLOR: Record<AiJobStatus, string> = {
-  pending:    '#f5a623',
-  processing: '#4a8eff',
-  done:       '#52c41a',
-  failed:     '#f5222d',
 }
 
 const POLL_INTERVAL_MS = 2000
@@ -140,24 +134,31 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
   const isRunning = job?.status === 'pending' || job?.status === 'processing'
   const disabled = triggering || isRunning
 
+  function statusColor(status: AiJobStatus): string {
+    if (status === 'pending') return 'var(--status-warning)'
+    if (status === 'processing') return 'var(--accent)'
+    if (status === 'done') return 'var(--status-success)'
+    return 'var(--status-danger)'
+  }
+
   return (
-    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 'var(--space-sm)', alignItems: 'flex-start' }}>
       <button
-        onClick={handleTrigger}
+        onClick={() => void handleTrigger()}
         disabled={disabled}
         title="触发 AI 处理当前节点"
         style={{
-          padding: '6px 14px',
-          borderRadius: 6,
+          padding: 'var(--space-sm) var(--space-lg)',
+          borderRadius: 'var(--radius-md)',
           border: 'none',
           cursor: disabled ? 'not-allowed' : 'pointer',
-          background: disabled ? '#2a2a3a' : '#4a8eff',
-          color: '#fff',
+          background: disabled ? 'var(--bg-tertiary)' : 'var(--accent)',
+          color: 'var(--text-inverse)',
           fontWeight: 600,
-          fontSize: 13,
+          fontSize: 'var(--font-md)',
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: 'var(--space-sm)',
           opacity: disabled ? 0.7 : 1,
           transition: 'opacity 0.2s, background 0.2s',
         }}
@@ -170,41 +171,41 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          fontSize: 12,
-          color: '#aaa',
+          gap: 'var(--space-sm)',
+          fontSize: 'var(--font-sm)',
+          color: 'var(--text-secondary)',
         }}>
           <span style={{
             width: 8,
             height: 8,
             borderRadius: '50%',
-            background: STATUS_COLOR[job.status],
+            background: statusColor(job.status),
             display: 'inline-block',
             flexShrink: 0,
           }} />
-          <span style={{ color: STATUS_COLOR[job.status] }}>{STATUS_LABEL[job.status]}</span>
+          <span style={{ color: statusColor(job.status) }}>{STATUS_LABEL[job.status]}</span>
           {isRunning && job.progress_pct > 0 && (
-            <span style={{ color: '#888' }}>{job.progress_pct}%</span>
+            <span style={{ color: 'var(--text-tertiary)' }}>{job.progress_pct}%</span>
           )}
           {job.status === 'failed' && job.error && (
-            <span style={{ color: '#f5222d', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ color: 'var(--status-danger)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               — {job.error}
             </span>
           )}
           {isRunning && (
-            <span style={{ color: '#555', fontSize: 11 }}>
+            <span style={{ color: 'var(--text-tertiary)', fontSize: 'var(--font-xs)' }}>
               轮询 {pollCountDisplay}/{POLL_MAX}
             </span>
           )}
           {!isRunning && (
             <button
-              onClick={handleTrigger}
+              onClick={() => void handleTrigger()}
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#4a8eff',
+                color: 'var(--accent)',
                 cursor: 'pointer',
-                fontSize: 11,
+                fontSize: 'var(--font-sm)',
                 padding: '0 2px',
               }}
             >
@@ -215,7 +216,7 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
       )}
 
       {error && (
-        <div style={{ color: '#f5222d', fontSize: 12 }}>{error}</div>
+        <div style={{ color: 'var(--status-danger)', fontSize: 'var(--font-sm)' }}>{error}</div>
       )}
     </div>
   )

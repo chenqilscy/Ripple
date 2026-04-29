@@ -1,8 +1,9 @@
 /**
  * P19-A: AI 图谱探索面板。
  * 支持用户输入查询词，后端基于 TF 打分 + 单次 LLM 摘要返回相关节点列表。
+ * 修复：scroll lock + CSS 变量（Deep Ocean Dark 主题）
  */
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 
 interface ExploreNode {
@@ -27,6 +28,20 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
   const [searched, setSearched] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Scroll lock
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
+  // Escape to close
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   async function handleExplore() {
     const q = query.trim()
     if (!q) return
@@ -46,7 +61,7 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') handleExplore()
+    if (e.key === 'Enter') void handleExplore()
   }
 
   function handleClear() {
@@ -62,18 +77,18 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
   return (
     <div style={{
       position: 'fixed', top: 0, right: 0, bottom: 0,
-      width: 360, background: '#1e1e2e', color: '#cdd6f4',
-      borderLeft: '1px solid #313244', zIndex: 1000,
-      display: 'flex', flexDirection: 'column', padding: '16px',
-      fontFamily: 'system-ui, sans-serif', fontSize: 14,
+      width: 360, background: 'var(--bg-primary)', color: 'var(--text-primary)',
+      borderLeft: '1px solid var(--border)', zIndex: 1000,
+      display: 'flex', flexDirection: 'column', padding: 'var(--space-lg)',
+      fontFamily: 'var(--font-body)', fontSize: 'var(--font-base)',
     }}>
       {/* 标题栏 */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-        <span style={{ fontWeight: 700, fontSize: 16, flex: 1 }}>🔍 AI 图谱探索</span>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+        <span style={{ fontWeight: 700, fontSize: 'var(--font-lg)', flex: 1, color: 'var(--accent)' }}>🔍 AI 图谱探索</span>
         <button
           onClick={onClose}
           style={{
-            background: 'none', border: 'none', color: '#6c7086',
+            background: 'none', border: 'none', color: 'var(--text-secondary)',
             cursor: 'pointer', fontSize: 18, lineHeight: 1,
           }}
           aria-label="关闭"
@@ -81,7 +96,7 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
       </div>
 
       {/* 搜索框 */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)' }}>
         <input
           ref={inputRef}
           value={query}
@@ -89,19 +104,21 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
           onKeyDown={handleKeyDown}
           placeholder="输入探索词，如「产品设计」"
           style={{
-            flex: 1, padding: '7px 10px', borderRadius: 6,
-            border: '1px solid #45475a', background: '#181825',
-            color: '#cdd6f4', outline: 'none', fontSize: 14,
+            flex: 1, padding: 'var(--space-sm) var(--space-md)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-input)', background: 'var(--bg-input)',
+            color: 'var(--text-primary)', outline: 'none', fontSize: 'var(--font-base)',
           }}
         />
         <button
-          onClick={handleExplore}
+          onClick={() => void handleExplore()}
           disabled={loading || !query.trim()}
           style={{
-            padding: '7px 14px', borderRadius: 6,
-            border: 'none', background: loading ? '#45475a' : '#7c3aed',
-            color: '#fff', cursor: loading || !query.trim() ? 'not-allowed' : 'pointer',
-            fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap',
+            padding: 'var(--space-sm) var(--space-lg)', borderRadius: 'var(--radius-md)',
+            border: 'none',
+            background: loading ? 'var(--bg-tertiary)' : 'var(--accent)',
+            color: 'var(--text-inverse)', cursor: loading || !query.trim() ? 'not-allowed' : 'pointer',
+            fontWeight: 600, fontSize: 'var(--font-base)', whiteSpace: 'nowrap',
           }}
         >
           {loading ? '探索中…' : '探索'}
@@ -111,9 +128,11 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
       {/* 错误提示 */}
       {err && (
         <div style={{
-          background: '#45213a', border: '1px solid #f38ba8',
-          borderRadius: 6, padding: '8px 10px', marginBottom: 10,
-          color: '#f38ba8', fontSize: 13,
+          background: 'var(--status-danger-subtle)',
+          border: '1px solid var(--status-danger)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-sm) var(--space-md)', marginBottom: 'var(--space-md)',
+          color: 'var(--status-danger)', fontSize: 'var(--font-md)',
         }}>
           {err}
         </div>
@@ -122,11 +141,14 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
       {/* LLM 摘要 */}
       {summary && (
         <div style={{
-          background: '#181825', border: '1px solid #45475a',
-          borderRadius: 8, padding: '10px 12px', marginBottom: 12,
-          color: '#a6e3a1', fontSize: 13, lineHeight: 1.6,
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-md)',
+          marginBottom: 'var(--space-md)',
+          color: 'var(--status-success)', fontSize: 'var(--font-md)', lineHeight: 1.6,
         }}>
-          <div style={{ fontWeight: 600, marginBottom: 4, color: '#89dceb' }}>AI 摘要</div>
+          <div style={{ fontWeight: 600, marginBottom: 'var(--space-xs)', color: 'var(--accent)' }}>AI 摘要</div>
           {summary}
         </div>
       )}
@@ -134,7 +156,7 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
       {/* 结果列表 */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {searched && results.length === 0 && !loading && (
-          <div style={{ color: '#6c7086', textAlign: 'center', marginTop: 32, fontSize: 13 }}>
+          <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-xl)', fontSize: 'var(--font-md)' }}>
             未找到与「{query}」相关的节点
           </div>
         )}
@@ -143,31 +165,32 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
           <div
             key={node.node_id}
             style={{
-              background: '#181825',
-              border: '1px solid #313244',
-              borderRadius: 8, padding: '10px 12px',
-              marginBottom: 8, cursor: 'pointer',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              padding: 'var(--space-md)',
+              marginBottom: 'var(--space-sm)', cursor: 'pointer',
               transition: 'border-color 0.15s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = '#313244')}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
             onClick={() => onHighlight(new Set([node.node_id]))}
           >
             <div style={{
-              display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4,
+              display: 'flex', alignItems: 'flex-start', gap: 'var(--space-sm)', marginBottom: 'var(--space-xs)',
             }}>
               <span style={{
-                background: '#313244', color: '#89b4fa',
-                borderRadius: 4, padding: '1px 6px', fontSize: 12, flexShrink: 0,
+                background: 'var(--bg-tertiary)', color: 'var(--accent)',
+                borderRadius: 'var(--radius-sm)', padding: '1px var(--space-sm)', fontSize: 'var(--font-sm)', flexShrink: 0,
               }}>#{idx + 1}</span>
               <span style={{
-                fontSize: 11, color: '#6c7086', marginLeft: 'auto', flexShrink: 0,
+                fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)', marginLeft: 'auto', flexShrink: 0,
               }}>
                 相关度 {node.score.toFixed(2)}
               </span>
             </div>
             <p style={{
-              margin: 0, color: '#cdd6f4', fontSize: 13,
+              margin: 0, color: 'var(--text-primary)', fontSize: 'var(--font-md)',
               lineHeight: 1.5, wordBreak: 'break-all',
             }}>
               {node.content}
@@ -179,18 +202,18 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
       {/* 底部操作栏 */}
       {searched && (
         <div style={{
-          paddingTop: 10, borderTop: '1px solid #313244',
+          paddingTop: 'var(--space-md)', borderTop: '1px solid var(--border)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <span style={{ fontSize: 12, color: '#6c7086' }}>
+          <span style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>
             共 {results.length} 个相关节点已高亮
           </span>
           <button
             onClick={handleClear}
             style={{
-              background: 'none', border: '1px solid #45475a',
-              borderRadius: 6, padding: '4px 10px',
-              color: '#6c7086', cursor: 'pointer', fontSize: 12,
+              background: 'none', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)', padding: 'var(--space-xs) var(--space-md)',
+              color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 'var(--font-sm)',
             }}
           >
             清除

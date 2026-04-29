@@ -7,8 +7,7 @@
  *  - 多行输入（textarea）+ 单行输入两种模式
  *  - 取代 window.prompt：可输入长文本、UTF-8 友好、ESC/取消按钮、Enter 提交（多行用 Ctrl+Enter）
  *
- * 替换范围（本轮）：节点内容编辑 + 变更说明。其它 prompt（邀请/边标签/历史回滚）
- * 留 TD-010 后续迭代。
+ * 修复：scroll lock + CSS 变量
  */
 import React, { useEffect, useRef, useState } from 'react'
 
@@ -133,7 +132,6 @@ export function ModalHost(): React.ReactElement | null {
                 return
             }
         }
-        // confirm/alert 用空字符串作为 "已确认" 信号；prompt 返回实际输入
         close((opts.kind ?? 'prompt') === 'prompt' ? val : '')
     }
 
@@ -142,7 +140,6 @@ export function ModalHost(): React.ReactElement | null {
             e.preventDefault()
             close(null)
         } else if (e.key === 'Enter') {
-            // confirm/alert：直接 Enter 提交
             if ((opts.kind ?? 'prompt') !== 'prompt') {
                 e.preventDefault()
                 submit()
@@ -165,18 +162,23 @@ export function ModalHost(): React.ReactElement | null {
             aria-label={opts.title}
             onKeyDown={onKey}
             style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+                position: 'fixed', inset: 0, background: 'var(--bg-overlay)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
             }}
             onClick={(e) => { if (e.target === e.currentTarget) close(null) }}
         >
             <div style={{
-                background: '#1f2330', color: '#e8ecf3', borderRadius: 10,
-                padding: 20, minWidth: 380, maxWidth: '90vw', maxHeight: '90vh',
-                boxShadow: '0 18px 48px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 10,
+                background: 'var(--bg-primary)',
+                color: 'var(--text-primary)',
+                borderRadius: 'var(--radius-xl)',
+                padding: 'var(--space-xl)',
+                minWidth: 380, maxWidth: '90vw', maxHeight: '90vh',
+                boxShadow: 'var(--shadow-overlay)',
+                display: 'flex', flexDirection: 'column', gap: 'var(--space-md)',
+                border: '1px solid var(--border)',
             }}>
-                <div style={{ fontSize: 16, fontWeight: 600 }}>{opts.title}</div>
-                {opts.label ? <div style={{ fontSize: 13, opacity: 0.8, whiteSpace: 'pre-wrap' }}>{opts.label}</div> : null}
+                <div style={{ fontSize: 'var(--font-lg)', fontWeight: 600, color: 'var(--text-primary)' }}>{opts.title}</div>
+                {opts.label ? <div style={{ fontSize: 'var(--font-md)', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{opts.label}</div> : null}
                 {showInput && (opts.multiline ? (
                     <textarea
                         ref={(el) => { inputRef.current = el }}
@@ -186,8 +188,12 @@ export function ModalHost(): React.ReactElement | null {
                         rows={6}
                         style={{
                             resize: 'vertical', minHeight: 96, maxHeight: '50vh',
-                            padding: 10, borderRadius: 6, border: '1px solid #3b4358',
-                            background: '#12141c', color: '#e8ecf3', fontSize: 14, lineHeight: 1.5,
+                            padding: 'var(--space-md)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-input)',
+                            background: 'var(--bg-input)',
+                            color: 'var(--text-primary)',
+                            fontSize: 'var(--font-base)', lineHeight: 1.5,
                         }}
                     />
                 ) : (
@@ -197,13 +203,17 @@ export function ModalHost(): React.ReactElement | null {
                         onChange={e => { setVal(e.target.value); if (err) setErr(null) }}
                         placeholder={opts.placeholder}
                         style={{
-                            padding: '8px 10px', borderRadius: 6, border: '1px solid #3b4358',
-                            background: '#12141c', color: '#e8ecf3', fontSize: 14,
+                            padding: 'var(--space-sm) var(--space-md)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-input)',
+                            background: 'var(--bg-input)',
+                            color: 'var(--text-primary)',
+                            fontSize: 'var(--font-base)',
                         }}
                     />
                 ))}
-                {err ? <div style={{ color: '#ff8a8a', fontSize: 12 }}>{err}</div> : null}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+                {err ? <div style={{ color: 'var(--status-danger)', fontSize: 'var(--font-sm)' }}>{err}</div> : null}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)', marginTop: 'var(--space-xs)' }}>
                     {showCancel && (
                         <button onClick={() => close(null)} style={btnStyle(false, false)}>
                             {opts.cancelText ?? '取消'}
@@ -214,7 +224,7 @@ export function ModalHost(): React.ReactElement | null {
                     </button>
                 </div>
                 {showInput && opts.multiline ? (
-                    <div style={{ fontSize: 11, opacity: 0.5, marginTop: -4 }}>
+                    <div style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)', marginTop: -4 }}>
                         Ctrl+Enter 提交 · Esc 取消
                     </div>
                 ) : null}
@@ -225,8 +235,12 @@ export function ModalHost(): React.ReactElement | null {
 
 function btnStyle(primary: boolean, danger: boolean): React.CSSProperties {
     return {
-        padding: '6px 14px', borderRadius: 6, border: 0, cursor: 'pointer',
-        background: primary ? (danger ? '#d24343' : '#4f7cff') : '#2c3142',
-        color: '#fff', fontSize: 13,
+        padding: 'var(--space-sm) var(--space-lg)',
+        borderRadius: 'var(--radius-md)',
+        border: 0,
+        cursor: 'pointer',
+        background: primary ? (danger ? 'var(--status-danger)' : 'var(--accent)') : 'var(--bg-tertiary)',
+        color: primary ? 'var(--text-inverse)' : 'var(--text-secondary)',
+        fontSize: 'var(--font-md)',
     }
 }

@@ -1,0 +1,133 @@
+/**
+ * Ripple 全局样式 & CSS 变量
+ * 所有组件通过 var(--xxx) 使用，禁止硬编码颜色。
+ *
+ * 命名规范：
+ *   --bg-*        背景
+ *   --border-*    边框
+ *   --accent-*    强调色
+ *   --text-*      文字
+ *   --status-*    状态色
+ *   --space-*     间距
+ *   --radius-*    圆角
+ *   --shadow-*    阴影
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+
+:root {
+  /* 背景 */
+  --bg-primary:    #0d1526;
+  --bg-secondary:  #111827;
+  --bg-tertiary:   #181825;
+  --bg-surface:    #0d1b2a;
+  --bg-overlay:    rgba(0,0,0,0.55);
+  --bg-modal:      #1f2330;
+  --bg-input:      #081020;
+  --bg-card:       #0d1b2a;
+
+  /* 边框 */
+  --border:        #1e3a5a;
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-input:  #1e3050;
+  --border-active: #4a8eff;
+
+  /* 强调色 */
+  --accent:        #4a8eff;
+  --accent-subtle: rgba(74,142,255,0.12);
+  --accent-hover:  #6ba3ff;
+  --accent-dim:    #2d5278;
+
+  /* 文字 */
+  --text-primary:  #c8d8e8;
+  --text-secondary: #6a8aaa;
+  --text-tertiary: #4a6a8e;
+  --text-inverse:  #ffffff;
+
+  /* 状态色 */
+  --status-success: #52c41a;
+  --status-warning: #f5a623;
+  --status-danger:  #f5222d;
+  --status-info:    #4a8eff;
+
+  /* 间距 */
+  --space-xs:  4px;
+  --space-sm:  8px;
+  --space-md:  12px;
+  --space-lg:  16px;
+  --space-xl:  24px;
+  --space-2xl: 32px;
+
+  /* 圆角 */
+  --radius-sm:  4px;
+  --radius-md:  6px;
+  --radius-lg:  10px;
+  --radius-xl:  12px;
+
+  /* 阴影 */
+  --shadow-card:   0 4px 24px rgba(0,0,0,0.5);
+  --shadow-overlay: 0 16px 48px rgba(0,0,0,0.6);
+  --shadow-modal:  0 18px 48px rgba(0,0,0,0.4);
+
+  /* 字体 */
+  --font-body: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-mono: Consolas, 'Fira Code', 'Source Han Mono', 'Noto Sans Mono SC', monospace;
+
+  /* 字号 */
+  --font-xs:   10px;
+  --font-sm:   11px;
+  --font-md:   12px;
+  --font-base: 13px;
+  --font-lg:   14px;
+  --font-xl:   15px;
+  --font-2xl:  16px;
+}
+
+/* 全局重置 */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--font-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
+}
+
+/* 全局过渡 */
+* {
+  transition-timing-function: ease-out;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -1,3 +1,7 @@
+/**
+ * P11-B：审计日志浏览器
+ * 修复：scroll lock + CSS 变量 + table min-height
+ */
 import { useEffect, useState } from 'react'
 import { api, type AuditLogItem } from '../api/client'
 
@@ -8,7 +12,6 @@ interface Props {
   defaultResourceId?: string
 }
 
-/** P11-B：审计日志浏览器 */
 export default function AuditLogViewer({ defaultResourceType = '', defaultResourceId = '' }: Props) {
   const [resourceType, setResourceType] = useState(defaultResourceType)
   const [resourceId, setResourceId] = useState(defaultResourceId)
@@ -31,7 +34,7 @@ export default function AuditLogViewer({ defaultResourceType = '', defaultResour
       setTotal(res.total ?? 0)
       setQueried(true)
     } catch (e: any) {
-      setErr(e?.message ?? 'query failed')
+      setErr(e?.message ?? '查询失败')
     } finally {
       setLoading(false)
     }
@@ -52,7 +55,7 @@ export default function AuditLogViewer({ defaultResourceType = '', defaultResour
         setTotal(res.total ?? 0)
         setQueried(true)
       } catch (e: any) {
-        setErr(e?.message ?? 'query failed')
+        setErr(e?.message ?? '查询失败')
       } finally {
         setLoading(false)
       }
@@ -60,11 +63,11 @@ export default function AuditLogViewer({ defaultResourceType = '', defaultResour
   }, [defaultResourceType, defaultResourceId, limit])
 
   return (
-    <div style={{ padding: '16px', maxWidth: 900 }}>
-      <h3 style={{ margin: '0 0 12px', color: '#cdd6f4' }}>审计日志</h3>
+    <div style={{ padding: 'var(--space-lg)', maxWidth: 900 }}>
+      <h3 style={{ margin: '0 0 var(--space-md)', color: 'var(--text-primary)', fontSize: 'var(--font-xl)', fontWeight: 600 }}>审计日志</h3>
 
       {/* 查询条件 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)', flexWrap: 'wrap' }}>
         <select
           value={resourceType}
           onChange={e => setResourceType(e.target.value)}
@@ -96,7 +99,7 @@ export default function AuditLogViewer({ defaultResourceType = '', defaultResour
           <option value={200}>200 条</option>
         </select>
         <button
-          onClick={handleQuery}
+          onClick={() => void handleQuery()}
           disabled={loading || !resourceType.trim() || !resourceId.trim()}
           style={btnStyle}
         >
@@ -104,48 +107,50 @@ export default function AuditLogViewer({ defaultResourceType = '', defaultResour
         </button>
       </div>
 
-      {err && <p style={{ color: '#f38ba8', margin: '0 0 12px' }}>⚠ {err}</p>}
+      {err && <p style={{ color: 'var(--status-danger)', margin: '0 0 var(--space-md)' }}>⚠ {err}</p>}
 
       {/* 结果 */}
       {queried && !loading && (
-        <p style={{ color: '#6c7086', marginBottom: 8, fontSize: 12 }}>
+        <p style={{ color: 'var(--text-tertiary)', marginBottom: 'var(--space-sm)', fontSize: 'var(--font-sm)' }}>
           共 {total} 条记录（最多显示 {limit} 条）
         </p>
       )}
 
       {loading ? (
-        <p style={{ color: '#6c7086' }}>查询中…</p>
+        <p style={{ color: 'var(--text-tertiary)' }}>查询中…</p>
       ) : queried && logs.length === 0 ? (
-        <p style={{ color: '#6c7086' }}>无记录</p>
+        <p style={{ color: 'var(--text-tertiary)' }}>无记录</p>
       ) : logs.length > 0 ? (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ color: '#6c7086', textAlign: 'left' }}>
-              <th style={thStyle}>时间</th>
-              <th style={thStyle}>操作</th>
-              <th style={thStyle}>操作人</th>
-              <th style={thStyle}>详情</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map(l => (
-              <tr key={l.id} style={{ borderBottom: '1px solid #313244' }}>
-                <td style={{ ...tdStyle, color: '#6c7086', whiteSpace: 'nowrap' }}>
-                  {fmtDate(l.created_at)}
-                </td>
-                <td style={{ ...tdStyle, color: '#89dceb' }}>{l.action}</td>
-                <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 11, color: '#bac2de' }}>
-                  {l.actor_id.slice(0, 8)}…
-                </td>
-                <td style={{ ...tdStyle, color: '#a6adc8' }}>
-                  {Object.keys(l.detail).length > 0
-                    ? <code style={{ fontSize: 11 }}>{JSON.stringify(l.detail)}</code>
-                    : <span style={{ color: '#45475a' }}>—</span>}
-                </td>
+        <div style={{ overflowY: 'auto', maxHeight: '60vh', minHeight: 120 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-sm)' }}>
+            <thead>
+              <tr style={{ color: 'var(--text-tertiary)', textAlign: 'left' }}>
+                <th style={thStyle}>时间</th>
+                <th style={thStyle}>操作</th>
+                <th style={thStyle}>操作人</th>
+                <th style={thStyle}>详情</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {logs.map(l => (
+                <tr key={l.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ ...tdStyle, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                    {fmtDate(l.created_at)}
+                  </td>
+                  <td style={{ ...tdStyle, color: 'var(--accent)' }}>{l.action}</td>
+                  <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>
+                    {l.actor_id.slice(0, 8)}…
+                  </td>
+                  <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>
+                    {Object.keys(l.detail).length > 0
+                      ? <code style={{ fontSize: 'var(--font-xs)' }}>{JSON.stringify(l.detail)}</code>
+                      : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
     </div>
   )
@@ -159,8 +164,8 @@ function fmtDate(s: string) {
 }
 
 const inputStyle: React.CSSProperties = {
-  background: '#1e1e2e', border: '1px solid #45475a', borderRadius: 4,
-  color: '#cdd6f4', padding: '5px 10px', fontSize: 13,
+  background: 'var(--bg-input)', border: '1px solid var(--border-input)', borderRadius: 'var(--radius-md)',
+  color: 'var(--text-primary)', padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--font-md)',
 }
 
 const selectStyle: React.CSSProperties = {
@@ -168,14 +173,15 @@ const selectStyle: React.CSSProperties = {
 }
 
 const btnStyle: React.CSSProperties = {
-  background: 'transparent', border: '1px solid #89b4fa', color: '#89b4fa',
-  borderRadius: 4, padding: '5px 14px', cursor: 'pointer', fontSize: 13,
+  background: 'var(--accent)', border: 'none', color: 'var(--text-inverse)',
+  borderRadius: 'var(--radius-md)', padding: 'var(--space-sm) var(--space-lg)', cursor: 'pointer', fontSize: 'var(--font-md)',
 }
 
 const thStyle: React.CSSProperties = {
-  padding: '6px 8px', fontWeight: 500, borderBottom: '1px solid #313244',
+  padding: 'var(--space-sm) var(--space-md)', fontWeight: 500, borderBottom: '1px solid var(--border)',
+  color: 'var(--text-tertiary)',
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: '7px 8px', color: '#cdd6f4', verticalAlign: 'top',
+  padding: 'var(--space-sm) var(--space-md)', color: 'var(--text-primary)', verticalAlign: 'top',
 }

@@ -1,3 +1,7 @@
+/**
+ * PromptTemplateManager · Prompt 模板库管理
+ * 修复：scroll lock + CSS 变量 + 响应式三列 Grid + Catppuccin 移除
+ */
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import type { Organization, PromptScope, PromptTemplate } from '../api/types'
@@ -29,6 +33,13 @@ export default function PromptTemplateManager() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
 
+  // Scroll lock
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
   async function load() {
     setLoading(true)
     setError(null)
@@ -48,7 +59,7 @@ export default function PromptTemplateManager() {
         setOrganizations([])
       }
     } catch (e: any) {
-      setError(e?.message ?? 'load failed')
+      setError(e?.message ?? '加载失败')
       setTemplates([])
     } finally {
       setLoading(false)
@@ -111,7 +122,7 @@ export default function PromptTemplateManager() {
       }
       resetForm()
     } catch (e: any) {
-      setError(e?.message ?? 'save failed')
+      setError(e?.message ?? '保存失败')
     } finally {
       setSaving(false)
     }
@@ -128,47 +139,63 @@ export default function PromptTemplateManager() {
       if (editingId === template.id) resetForm()
       if (expandedId === template.id) setExpandedId(null)
     } catch (e: any) {
-      setError(e?.message ?? 'delete failed')
+      setError(e?.message ?? '删除失败')
     } finally {
       setDeletingId(null)
     }
   }
 
   return (
-    <div style={{ padding: 16, maxWidth: 960, minWidth: 420, flex: '1 1 620px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <h3 style={{ margin: 0, color: '#cdd6f4', flex: 1 }}>Prompt 模板库</h3>
-        <button onClick={() => void load()} disabled={loading || saving || !!deletingId} style={btnStyle('#89b4fa')}>
+    <div style={{ padding: 'var(--space-xl) var(--space-lg)', maxWidth: 960, minWidth: 420, flex: '1 1 620px', display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+        <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 'var(--font-xl)', fontWeight: 600 }}>Prompt 模板库</h3>
+        <button onClick={() => void load()} disabled={loading || saving || !!deletingId} style={btnStyleVar('var(--accent)')}>
           {loading ? '刷新中…' : '刷新'}
         </button>
       </div>
-      <p style={{ margin: '0 0 12px', color: '#6c7086', fontSize: 12, lineHeight: 1.6 }}>
+      <p style={{ margin: 0, color: 'var(--text-tertiary)', fontSize: 'var(--font-md)', lineHeight: 1.6 }}>
         管理 AI Workflow 使用的 Prompt 模板。private 模板仅创建者可见；org 模板组织成员可读取并用于 AI 触发，创建者或组织管理员可维护。
       </p>
 
-      <div style={{ border: '1px solid #313244', borderRadius: 10, background: '#181825', padding: 14, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <strong style={{ color: '#f5c2e7' }}>{editingId ? '编辑模板' : '新建模板'}</strong>
+      {/* 创建/编辑表单区 */}
+      <div style={{
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
+        background: 'var(--bg-surface)',
+        padding: 'var(--space-lg)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)', alignItems: 'center', marginBottom: 'var(--space-md)', flexWrap: 'wrap' }}>
+          <strong style={{ color: 'var(--accent)', fontSize: 'var(--font-base)', fontWeight: 600 }}>
+            {editingId ? '编辑模板' : '新建模板'}
+          </strong>
           {editingId && (
-            <button onClick={resetForm} disabled={saving} style={btnStyle('#f9e2af', true)}>
+            <button onClick={resetForm} disabled={saving} style={btnStyleVar('var(--status-warning)')}>
               取消编辑
             </button>
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(160px, 180px) minmax(220px, 1fr)', gap: 8, marginBottom: 8 }}>
+        {/* 三列 Grid：名称 / 可见范围 / 组织 */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(180px, 1fr) minmax(160px, 200px) minmax(180px, 1fr)',
+          gap: 'var(--space-sm)',
+          marginBottom: 'var(--space-sm)',
+        }}>
           <input
             value={form.name}
             onChange={event => setForm(prev => ({ ...prev, name: event.target.value }))}
             placeholder="模板名称（必填）"
             disabled={saving || !!deletingId}
             style={inputStyle}
+            aria-label="模板名称"
           />
           <select
             value={form.scope}
             onChange={event => setForm(prev => ({ ...prev, scope: event.target.value as PromptScope, orgId: event.target.value === 'org' ? prev.orgId : '' }))}
             disabled={saving || !!deletingId || !!editingId}
-            style={selectStyle}
+            style={inputStyle}
+            aria-label="可见范围"
           >
             <option value="private">仅自己可用</option>
             <option value="org">组织共享</option>
@@ -177,7 +204,8 @@ export default function PromptTemplateManager() {
             value={form.orgId}
             onChange={event => setForm(prev => ({ ...prev, orgId: event.target.value }))}
             disabled={saving || !!deletingId || form.scope !== 'org' || activeOrgOptions.length === 0 || !!editingId}
-            style={selectStyle}
+            style={inputStyle}
+            aria-label="共享到的组织"
           >
             <option value="">{activeOrgOptions.length === 0 ? '暂无可选组织' : '选择共享组织'}</option>
             {activeOrgOptions.map(org => (
@@ -191,7 +219,8 @@ export default function PromptTemplateManager() {
           onChange={event => setForm(prev => ({ ...prev, description: event.target.value }))}
           placeholder="描述（可选）"
           disabled={saving || !!deletingId}
-          style={{ ...inputStyle, width: '100%', marginBottom: 8 }}
+          style={{ ...inputStyle, width: '100%', marginBottom: 'var(--space-sm)' }}
+          aria-label="模板描述"
         />
 
         <textarea
@@ -200,62 +229,97 @@ export default function PromptTemplateManager() {
           placeholder="模板内容（必填），例如：请根据 {{node_content}} 生成结构化摘要"
           disabled={saving || !!deletingId}
           rows={8}
-          style={{ ...inputStyle, width: '100%', minHeight: 180, resize: 'vertical', marginBottom: 10, fontFamily: 'Consolas, monospace', lineHeight: 1.5 }}
+          style={{ ...inputStyle, width: '100%', minHeight: 180, resize: 'vertical', marginBottom: 'var(--space-md)', fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}
+          aria-label="模板内容"
         />
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 12, color: '#7f849c' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-md)', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>
             常用变量：{'{{node_content}}'}，{'{{lake_name}}'}，{'{{custom_key}}'}
           </div>
           <button
             onClick={() => void handleSubmit()}
             disabled={saving || !!deletingId || !form.name.trim() || !form.template.trim() || (form.scope === 'org' && !form.orgId)}
-            style={btnStyle('#a6e3a1')}
+            style={btnStyleVar('var(--status-success)')}
           >
             {saving ? '保存中…' : editingId ? '保存修改' : '创建模板'}
           </button>
         </div>
       </div>
 
-      {error && <p style={{ color: '#f38ba8', margin: '0 0 12px' }}>⚠ {error}</p>}
+      {error && (
+        <p style={{ color: 'var(--status-danger)', margin: 0 }}>⚠ {error}</p>
+      )}
 
       {loading ? (
-        <p style={{ color: '#6c7086' }}>加载中…</p>
+        <p style={{ color: 'var(--text-tertiary)', margin: 0 }}>加载中…</p>
       ) : templates.length === 0 ? (
-        <p style={{ color: '#6c7086' }}>暂无 Prompt 模板，先创建一个再接入 AI Workflow。</p>
+        <p style={{ color: 'var(--text-tertiary)', margin: 0 }}>暂无 Prompt 模板，先创建一个再接入 AI Workflow。</p>
       ) : (
-        <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           {templates.map(template => {
             const isExpanded = expandedId === template.id
             return (
-              <div key={template.id} style={{ border: '1px solid #313244', borderRadius: 10, background: '#11111b', padding: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div key={template.id} style={{
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-lg)',
+                background: 'var(--bg-card)',
+                padding: 'var(--space-md)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-md)', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div style={{ minWidth: 0, flex: '1 1 360px' }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-                      <button onClick={() => setExpandedId(prev => prev === template.id ? null : template.id)} style={{ ...linkBtnStyle, fontWeight: 600 }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center', flexWrap: 'wrap', marginBottom: 'var(--space-xs)' }}>
+                      <button
+                        onClick={() => setExpandedId(prev => prev === template.id ? null : template.id)}
+                        style={{ ...linkBtnStyle, fontWeight: 600 }}
+                        aria-expanded={isExpanded}
+                      >
                         {template.name}
                       </button>
-                      <span style={badgeStyle(template.scope === 'org' ? '#f9e2af' : '#89b4fa')}>
+                      <span style={badgeStyleVar(template.scope === 'org' ? 'var(--status-warning)' : 'var(--accent)')}>
                         {template.scope === 'org' ? '组织共享' : '私有'}
                       </span>
-                      {template.org_id && <span style={badgeStyle('#94e2d5')}>org</span>}
+                      {template.org_id && (
+                        <span style={badgeStyleVar('var(--text-secondary)')}>org</span>
+                      )}
                     </div>
-                    <div style={{ color: '#7f849c', fontSize: 12, marginBottom: 4 }}>
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--font-xs)', marginBottom: 'var(--space-xs)' }}>
                       更新于 {fmtDateTime(template.updated_at)}
                     </div>
-                    <div style={{ color: '#bac2de', fontSize: 13, lineHeight: 1.5 }}>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-base)', lineHeight: 1.5 }}>
                       {template.description || '无描述'}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button onClick={() => beginEdit(template)} disabled={saving || !!deletingId} style={btnStyle('#89b4fa', true)}>编辑</button>
-                    <button onClick={() => void handleDelete(template)} disabled={saving || deletingId === template.id} style={btnStyle('#f38ba8', true)}>
+                  <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => beginEdit(template)}
+                      disabled={saving || !!deletingId}
+                      style={btnStyleVar('var(--accent)')}
+                    >
+                      编辑
+                    </button>
+                    <button
+                      onClick={() => void handleDelete(template)}
+                      disabled={saving || deletingId === template.id}
+                      style={btnStyleVar('var(--status-danger)')}
+                    >
                       {deletingId === template.id ? '删除中…' : '删除'}
                     </button>
                   </div>
                 </div>
                 {isExpanded && (
-                  <pre style={{ margin: '12px 0 0', whiteSpace: 'pre-wrap', color: '#cdd6f4', background: '#181825', border: '1px solid #23233a', borderRadius: 8, padding: 12, fontSize: 12, lineHeight: 1.6, overflowX: 'auto' }}>
+                  <pre style={{
+                    margin: 'var(--space-md) 0 0',
+                    whiteSpace: 'pre-wrap',
+                    color: 'var(--text-primary)',
+                    background: 'var(--bg-input)',
+                    border: '1px solid var(--border-input)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--space-md)',
+                    fontSize: 'var(--font-sm)',
+                    lineHeight: 1.6,
+                    overflowX: 'auto',
+                  }}>
                     {template.template}
                   </pre>
                 )}
@@ -272,46 +336,41 @@ function fmtDateTime(value: string) {
   return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-function btnStyle(color: string, small = false): React.CSSProperties {
+function btnStyleVar(color: string): React.CSSProperties {
   return {
     background: 'transparent',
     border: `1px solid ${color}`,
     color,
-    borderRadius: 4,
-    padding: small ? '4px 10px' : '5px 12px',
+    borderRadius: 'var(--radius-md)',
+    padding: 'var(--space-xs) var(--space-md)',
     cursor: 'pointer',
-    fontSize: small ? 12 : 13,
+    fontSize: 'var(--font-sm)',
   }
 }
 
-function badgeStyle(color: string): React.CSSProperties {
+function badgeStyleVar(color: string): React.CSSProperties {
   return {
     color,
     border: `1px solid ${color}`,
     borderRadius: 999,
-    padding: '1px 8px',
-    fontSize: 11,
+    padding: '1px var(--space-sm)',
+    fontSize: 'var(--font-xs)',
   }
 }
 
 const inputStyle: React.CSSProperties = {
-  background: '#1e1e2e',
-  border: '1px solid #45475a',
-  borderRadius: 4,
-  color: '#cdd6f4',
-  padding: '8px 10px',
-  fontSize: 13,
-}
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  minWidth: 160,
+  background: 'var(--bg-input)',
+  border: '1px solid var(--border-input)',
+  borderRadius: 'var(--radius-md)',
+  color: 'var(--text-primary)',
+  padding: 'var(--space-sm) var(--space-md)',
+  fontSize: 'var(--font-base)',
 }
 
 const linkBtnStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#cdd6f4',
+  color: 'var(--text-primary)',
   padding: 0,
   cursor: 'pointer',
   textAlign: 'left',
