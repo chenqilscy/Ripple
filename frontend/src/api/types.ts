@@ -482,3 +482,58 @@ export interface ImportTextResult {
   imported: number
 }
 
+// ---- 图谱价值增强：推荐/路径/聚类/规划 ----
+export type RecommendationStatus = 'pending' | 'accepted' | 'rejected' | 'ignored'
+
+export interface Recommendation {
+  id: string
+  source_node_id: string
+  target_node_id: string
+  reason: string       // 推荐理由："两者都涉及系统可用性"
+  confidence: number   // 置信度 0-1
+  created_at: string
+  status: RecommendationStatus
+}
+
+export interface PathNode {
+  id: string
+  title: string
+  reason: string  // 该节点在路径中的作用
+}
+
+export interface PathEdge {
+  from: string
+  to: string
+  similarity: number
+  kind: string
+}
+
+export interface PathResult {
+  source_id: string
+  target_id: string
+  nodes: PathNode[]
+  edges: PathEdge[]
+  total_steps: number
+}
+
+export interface Cluster {
+  id: string
+  label: string           // AI 生成的领域名称
+  node_ids: string[]
+  color: string
+  bridge_node_ids: string[]  // 跨领域桥接节点
+  density: number           // 领域饱满程度
+}
+
+export type PlanningSuggestionType = 'add_node' | 'connect' | 'explore'
+export type PlanningPriority = 'high' | 'medium' | 'low'
+
+export interface PlanningSuggestion {
+  id: string
+  type: PlanningSuggestionType
+  title: string
+  description: string
+  priority: PlanningPriority
+  related_node_ids: string[]
+}
+

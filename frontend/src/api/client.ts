@@ -655,6 +655,38 @@ export const api = {
   importText(lakeId: string, text: string, maxNodes = 20): Promise<import('./types').ImportTextResult> {
     return request('POST', `/api/v1/lakes/${lakeId}/import/text`, { text, max_nodes: maxNodes })
   },
+
+  // ---- 图谱价值增强 ----
+  // 路径追溯
+  getPath(sourceId: string, targetId: string): Promise<import('./types').PathResult> {
+    return request('POST', '/api/v1/graph/path', { source_id: sourceId, target_id: targetId })
+  },
+
+  // 聚类分析
+  getClusters(lakeId: string): Promise<{ clusters: import('./types').Cluster[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/clusters`)
+  },
+
+  // 规划建议
+  getPlanningSuggestions(lakeId: string): Promise<{ suggestions: import('./types').PlanningSuggestion[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/planning`)
+  },
+
+  // 推荐列表
+  getRecommendations(lakeId: string): Promise<{ recommendations: import('./types').Recommendation[] }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/recommendations`)
+  },
+
+  // 推荐操作
+  acceptRecommendation(id: string): Promise<void> {
+    return request('POST', `/api/v1/recommendations/${id}/accept`)
+  },
+  rejectRecommendation(id: string): Promise<void> {
+    return request('POST', `/api/v1/recommendations/${id}/reject`)
+  },
+  ignoreRecommendation(id: string): Promise<void> {
+    return request('POST', `/api/v1/recommendations/${id}/ignore`)
+  },
 }
 
 // 重新导出 types
