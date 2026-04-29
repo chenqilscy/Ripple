@@ -335,6 +335,7 @@ func (s *NodeService) Rollback(ctx context.Context, actor *domain.User, nodeID s
 		NodeID:     nodeID,
 		Content:    target.Content,
 		EditReason: fmt.Sprintf("rollback to rev %d", targetRev),
+		Version:    -1, // 强制覆盖：回滚不需要版本检查
 	})
 }
 

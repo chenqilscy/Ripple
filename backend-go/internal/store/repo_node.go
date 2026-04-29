@@ -292,8 +292,8 @@ RETURN n.id, coalesce(n.version, 0)
 `
 
 // UpdateContent 更新节点 content 与 updated_at。若节点不存在返回 ErrNotFound。
-// n.Version 为期望版本号，-1 表示强制覆盖（管理员/迁移场景）。
-// 若版本号不匹配返回 ErrConflict。
+// n.Version 为期望版本号，-1 表示强制覆盖（回滚/管理员场景）。
+// 若版本号不匹配返回 ErrConflict（节点存在但版本号不符）。
 func (r *nodeRepoNeo) UpdateContent(ctx context.Context, n *domain.Node) error {
 	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
 	defer func() { _ = sess.Close(ctx) }()
@@ -303,21 +303,33 @@ func (r *nodeRepoNeo) UpdateContent(ctx context.Context, n *domain.Node) error {
 			"id":               n.ID,
 			"content":          n.Content,
 			"updated_at":       n.UpdatedAt.UTC().Format(time.RFC3339Nano),
-			"expected_version": n.Version, // -1 = force
+			"expected_version": n.Version, // -1 = force override
 		})
 		if err != nil {
 			return nil, err
 		}
 		if !rec.Next(ctx) {
-			// Node not found OR version mismatch → distinguish by a follow-up read
-			// For simplicity treat as conflict if node was previously versioned
-			return nil, domain.ErrConflict
+			// CAS 无结果：需要区分"节点不存在"vs"版本不匹配"。
+			// 执行一次检查查询判断节点是否存在。
+			checkRec, err := tx.Run(ctx, "MATCH (n:Node {id: $id}) RETURN 1", map[string]any{"id": n.ID})
+			if err != nil {
+				return nil, err
+			}
+			if checkRec.Next(ctx) {
+				// 节点存在，但 WHERE 条件不满足 → 版本不匹配
+				return nil, domain.ErrConflict
+			}
+			// 节点不存在
+			return nil, domain.ErrNotFound
 		}
 		return nil, nil
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrConflict) {
 			return domain.ErrConflict
+		}
+		if errors.Is(err, domain.ErrNotFound) {
+			return domain.ErrNotFound
 		}
 		return fmt.Errorf("node update content: %w", err)
 	}
