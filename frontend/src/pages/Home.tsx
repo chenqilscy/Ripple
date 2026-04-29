@@ -544,6 +544,27 @@ export function Home({ onLogout }: Props) {
     finally { setBusy(false) }
   }
 
+  async function createManualNode() {
+    if (!active) return
+    const content = await modalPrompt({
+      title: '添加节点',
+      label: '输入节点内容；Ctrl+Enter 提交，Esc 取消',
+      placeholder: '例如：用户想把零散想法整理成可执行计划',
+      multiline: true,
+      validate: (v) => (!v.trim() ? '节点内容不能为空' : null),
+    })
+    if (content === null) return
+    setBusy(true); setErr(null)
+    try {
+      const created = await api.createNode(active.id, content.trim(), 'TEXT')
+      setNodes(prev => [created, ...prev.filter(n => n.id !== created.id)])
+      setSelectedNode(created)
+      setViewMode('list')
+      void loadNodes(active.id)
+    } catch (e) { setErr((e as Error).message) }
+    finally { setBusy(false) }
+  }
+
   // M3-T4：SSE 流式预览，把 AI 回复实时增量渲染到面板。
   function startWeaveStream() {
     if (!active || !prompt.trim() || streaming) return
@@ -1022,6 +1043,13 @@ export function Home({ onLogout }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <strong style={{ letterSpacing: 2, fontSize: 13 }}>湖中节点 ({nodes.length})</strong>
                   <div style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      data-testid="create-node-button"
+                      onClick={() => void createManualNode()}
+                      disabled={busy}
+                      style={{ ...miniBtn, background: 'rgba(74,144,226,0.28)', color: '#9ec5ee', fontWeight: 700 }}
+                      title="手工添加一个普通文本节点"
+                    >+ 节点</button>
                     {(['list', 'graph'] as const).map(mode => (
                       <button
                         key={mode}
@@ -1188,6 +1216,13 @@ export function Home({ onLogout }: Props) {
                     </div>
                   )}
                   {nodes.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>此处风平浪静</div>}
+                  {nodes.length === 0 && (
+                    <button
+                      onClick={() => void createManualNode()}
+                      disabled={busy}
+                      style={{ ...primaryBtnSmall, margin: '8px 0 12px' }}
+                    >添加第一个节点</button>
+                  )}
                   {/* P14-C：批量操作工具栏 */}
                   {batchSel.size > 0 && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, padding: '6px 10px', background: 'rgba(74,144,226,0.1)', borderRadius: 6 }}>
