@@ -22,6 +22,9 @@ export class LakeWS {
   private closed = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private deadlineTimer: ReturnType<typeof setTimeout> | null = null
+  private static readonly HEARTBEAT_INTERVAL = 20_000 // 每20s发ping
+  private static readonly DEADLINE_MS = 60_000        // 60s无消息→重连
 
   constructor(
     private lakeId: string,
@@ -42,12 +45,14 @@ export class LakeWS {
     ws.onopen = () => {
       this.retry = 0
       this.onStatusChange?.(true)
-      // 每 30s 发送心跳（后端任意帧都视为 heartbeat，用于续期 presence TTL=60s）。
       this.startHeartbeat()
+      this.resetDeadline()
     }
     ws.onmessage = ev => {
+      this.resetDeadline() // 任意消息都重置超时计时器
       try {
         const msg = JSON.parse(ev.data) as LakeMessage
+        if (msg.type === 'pong') return // pong 仅用于心跳确认，不上传给业务层
         this.onMessage(msg)
       } catch {
         // 忽略非 JSON 帧
@@ -56,6 +61,7 @@ export class LakeWS {
     ws.onclose = () => {
       this.onStatusChange?.(false)
       this.stopHeartbeat()
+      this.stopDeadline()
       this.ws = null
       if (!this.closed) this.scheduleReconnect()
     }
@@ -72,13 +78,32 @@ export class LakeWS {
 
   private startHeartbeat() {
     this.stopHeartbeat()
-    this.heartbeatTimer = setInterval(() => this.send({ type: 'ping' }), 30_000)
+    this.heartbeatTimer = setInterval(() => this.send({ type: 'ping' }), LakeWS.HEARTBEAT_INTERVAL)
   }
 
   private stopHeartbeat() {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer)
       this.heartbeatTimer = null
+    }
+  }
+
+  private resetDeadline() {
+    this.stopDeadline()
+    this.deadlineTimer = setTimeout(() => {
+      // 60s 无任何服务端消息，主动关闭触发重连
+      if (this.ws) {
+        try { this.ws.close(4000, 'heartbeat timeout') } catch { /* ignore */ }
+        this.ws = null
+      }
+      if (!this.closed) this.scheduleReconnect()
+    }, LakeWS.DEADLINE_MS)
+  }
+
+  private stopDeadline() {
+    if (this.deadlineTimer) {
+      clearTimeout(this.deadlineTimer)
+      this.deadlineTimer = null
     }
   }
 
@@ -93,6 +118,7 @@ export class LakeWS {
   close() {
     this.closed = true
     this.stopHeartbeat()
+    this.stopDeadline()
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     if (this.ws) {
       try { this.ws.close() } catch { /* ignore */ }

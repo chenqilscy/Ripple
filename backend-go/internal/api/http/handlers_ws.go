@@ -90,6 +90,8 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 
 	// 合并两个 channel 到一个 send goroutine。
 	merged := make(chan realtime.Message, 32)
+	// pongCh 用于回复客户端 ping，不走 broker 广播，单独通道避免并发写。
+	pongCh := make(chan struct{}, 4)
 	go func() {
 		defer close(merged)
 		for {
@@ -110,21 +112,34 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// 写出 goroutine：从 merged channel 推到客户端。
+	// 写出 goroutine：从 merged channel 或 pongCh 推到客户端。
 	go func() {
-		for msg := range merged {
-			b, err := json.Marshal(msg)
-			if err != nil {
-				continue
-			}
-			wctx, wcancel := context.WithTimeout(ctx, 5*time.Second)
-			err = conn.Write(wctx, websocket.MessageText, b)
-			wcancel()
-			if err != nil {
-				cancel()
+		pongMsg, _ := json.Marshal(realtime.Message{Type: "pong"})
+		for {
+			select {
+			case <-pongCh:
+				wctx, wcancel := context.WithTimeout(ctx, 5*time.Second)
+				_ = conn.Write(wctx, websocket.MessageText, pongMsg)
+				wcancel()
+			case msg, ok := <-merged:
+				if !ok {
+					return
+				}
+				b, err := json.Marshal(msg)
+				if err != nil {
+					continue
+				}
+				wctx, wcancel := context.WithTimeout(ctx, 5*time.Second)
+				err = conn.Write(wctx, websocket.MessageText, b)
+				wcancel()
+				if err != nil {
+					cancel()
+					return
+				}
+				metrics.WSMessagesOut.Inc()
+			case <-ctx.Done():
 				return
 			}
-			metrics.WSMessagesOut.Inc()
 		}
 	}()
 
@@ -162,6 +177,14 @@ func (h *WSHandlers) LakeWS(w http.ResponseWriter, r *http.Request) {
 			Payload map[string]any `json:"payload"`
 		}
 		if json.Unmarshal(raw, &clientMsg) != nil {
+			continue
+		}
+		if clientMsg.Type == "ping" {
+			// 直接回复 pong，不广播。
+			select {
+			case pongCh <- struct{}{}:
+			default: // pongCh 满时丢弃，不阻塞读循环
+			}
 			continue
 		}
 		if clientMsg.Type == "cursor.move" {
