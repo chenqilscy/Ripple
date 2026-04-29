@@ -18,7 +18,8 @@ const STATIC_PRECACHE = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((c) => c.addAll(STATIC_PRECACHE)).then(() => self.skipWaiting())
+    caches.open(STATIC_CACHE).then((c) => c.addAll(STATIC_PRECACHE))
+    // 注意：不调用 skipWaiting()，等待页面主动确认后再激活新版本
   );
 });
 
@@ -28,6 +29,13 @@ self.addEventListener('activate', (event) => {
       Promise.all(keys.filter((k) => !k.startsWith(CACHE_VERSION)).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
+});
+
+// 页面点击"立即刷新"时发 SKIP_WAITING，允许新 SW 立即接管
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 const API_GET_PREFIXES = [
