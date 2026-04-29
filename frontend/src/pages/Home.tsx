@@ -1499,9 +1499,28 @@ export function Home({ onLogout }: Props) {
                     <div style={{ padding: '20px 0', textAlign: 'center' }}>
                       <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>🌊</div>
                       <div style={{ fontSize: 14, color: '#9ec5ee', marginBottom: 4 }}>此处风平浪静</div>
-                      <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12, lineHeight: 1.7 }}>
-                        投下第一颗石子，激起知识的涟漪<br />
-                        可以手工添加节点，或使用「造云 · AI 发散」一键生成
+                      <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 16, lineHeight: 1.7 }}>
+                        投下第一颗石子，激起知识的涟漪
+                      </div>
+                      {/* P1-04：步骤式首次引导 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left', margin: '0 4px 12px' }}>
+                        {[
+                          { step: '①', icon: '✏️', title: '添加节点', desc: '手工输入知识点，或粘贴任意文本内容' },
+                          { step: '②', icon: '✨', title: '造云 · AI 发散', desc: '输入主题让 AI 一键生成相关节点' },
+                          { step: '③', icon: '🔗', title: '建立关联', desc: '点击「连线」在节点间建立知识关系' },
+                        ].map(({ step, icon, title, desc }) => (
+                          <div key={step} style={{
+                            display: 'flex', gap: 10, padding: '8px 10px',
+                            background: 'rgba(46,139,144,0.08)', border: '1px solid rgba(46,139,144,0.2)',
+                            borderRadius: 6, alignItems: 'flex-start',
+                          }}>
+                            <span style={{ fontSize: 16, lineHeight: 1 }}>{icon}</span>
+                            <div>
+                              <div style={{ fontSize: 12, color: '#9ec5ee', fontWeight: 600, marginBottom: 2 }}>{step} {title}</div>
+                              <div style={{ fontSize: 11, opacity: 0.6, lineHeight: 1.5 }}>{desc}</div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
