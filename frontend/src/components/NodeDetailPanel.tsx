@@ -142,7 +142,7 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
             aria-label="关闭节点详情"
             style={{
               background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer',
-              fontSize: 18, lineHeight: 1, padding: '2px 6px', borderRadius: 'var(--radius-sm)',
+              fontSize: 'var(--font-lg)', lineHeight: 1, padding: '2px 6px', borderRadius: 'var(--radius-sm)',
             }}
           >
             ×
@@ -283,12 +283,12 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
               disabled={feedbackBusy || feedbackSent === 'LIKE'}
               aria-label="有帮助"
               style={{
-                background: feedbackSent === 'LIKE' ? 'rgba(26,74,46,0.3)' : 'var(--bg-secondary)',
+                background: feedbackSent === 'LIKE' ? 'var(--feedback-like-bg)' : 'var(--bg-secondary)',
                 border: `1px solid ${feedbackSent === 'LIKE' ? 'var(--status-success)' : 'var(--border)'}`,
                 borderRadius: 'var(--radius-sm)', padding: '4px var(--space-md)',
                 cursor: feedbackSent === 'LIKE' ? 'default' : 'pointer',
                 color: feedbackSent === 'LIKE' ? 'var(--status-success)' : 'var(--text-primary)',
-                fontSize: 14, transition: 'background 0.2s, border-color 0.2s',
+                fontSize: 'var(--font-md)', transition: 'background 0.2s, border-color 0.2s',
               }}
             >👍{feedbackSent === 'LIKE' ? ' 已反馈' : ''}</button>
             <button
@@ -296,12 +296,12 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
               disabled={feedbackBusy || feedbackSent === 'DISLIKE'}
               aria-label="没帮助"
               style={{
-                background: feedbackSent === 'DISLIKE' ? 'rgba(47,26,26,0.3)' : 'var(--bg-secondary)',
+                background: feedbackSent === 'DISLIKE' ? 'var(--feedback-dislike-bg)' : 'var(--bg-secondary)',
                 border: `1px solid ${feedbackSent === 'DISLIKE' ? 'var(--status-danger)' : 'var(--border)'}`,
                 borderRadius: 'var(--radius-sm)', padding: '4px var(--space-md)',
                 cursor: feedbackSent === 'DISLIKE' ? 'default' : 'pointer',
                 color: feedbackSent === 'DISLIKE' ? 'var(--status-danger)' : 'var(--text-primary)',
-                fontSize: 14, transition: 'background 0.2s, border-color 0.2s',
+                fontSize: 'var(--font-md)', transition: 'background 0.2s, border-color 0.2s',
               }}
             >👎{feedbackSent === 'DISLIKE' ? ' 已反馈' : ''}</button>
             <button

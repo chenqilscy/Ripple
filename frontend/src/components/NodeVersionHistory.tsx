@@ -89,7 +89,7 @@ export default function NodeVersionHistory({ node, revisions, onClose, onRolledB
             )}
             <button onClick={onClose} style={{
               background: 'none', border: 'none', color: 'var(--text-secondary)',
-              fontSize: 20, cursor: 'pointer', lineHeight: 1,
+              fontSize: 'var(--font-lg)', cursor: 'pointer', lineHeight: 1,
             }} aria-label="关闭">✕</button>
           </div>
         </div>

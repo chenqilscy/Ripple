@@ -90,7 +90,7 @@ export default function SpaceSwitcher(props: SpaceSwitcherProps) {
             background: 'transparent', border: '1px solid var(--border)',
             color: 'var(--text-tertiary)',
             borderRadius: 'var(--radius-sm)', width: 22, height: 22,
-            cursor: 'pointer', fontSize: 14, lineHeight: 1,
+            cursor: 'pointer', fontSize: 'var(--font-lg)', lineHeight: 1,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >+</button>
@@ -197,7 +197,7 @@ function SpaceRow(p: {
             aria-label="管理成员"
             style={{
               background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
-              cursor: 'pointer', fontSize: 14, padding: '0 var(--space-xs)',
+              cursor: 'pointer', fontSize: 'var(--font-lg)', padding: '0 var(--space-xs)',
             }}
           >
             👥

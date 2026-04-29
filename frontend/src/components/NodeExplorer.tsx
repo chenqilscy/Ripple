@@ -89,7 +89,7 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
           onClick={onClose}
           style={{
             background: 'none', border: 'none', color: 'var(--text-secondary)',
-            cursor: 'pointer', fontSize: 18, lineHeight: 1,
+            cursor: 'pointer', fontSize: 'var(--font-lg)', lineHeight: 1,
           }}
           aria-label="关闭"
         >×</button>

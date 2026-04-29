@@ -126,7 +126,7 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
       >
         {/* Header */}
         <div style={{ padding: 'var(--space-lg) var(--space-lg) 0', display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-          <span style={{ color: 'var(--accent)', fontSize: 16 }}>🔍</span>
+          <span style={{ color: 'var(--accent)', fontSize: 'var(--font-xl)' }}>🔍</span>
           <input
             ref={inputRef}
             value={q}

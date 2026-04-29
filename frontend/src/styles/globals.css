@@ -52,6 +52,8 @@
   --status-success-subtle: rgba(82,196,26,0.1);
   --status-warning-subtle: rgba(245,166,35,0.1);
   --status-danger-subtle: rgba(245,34,45,0.1);
+  --feedback-like-bg:    rgba(82,196,26,0.15);
+  --feedback-dislike-bg: rgba(245,34,45,0.15);
 
   /* 间距 */
   --space-xs:  4px;
