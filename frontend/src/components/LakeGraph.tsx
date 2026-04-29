@@ -139,6 +139,16 @@ function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew,
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const [hovered, setHovered] = useState(false)
 
+  useEffect(() => {
+    if (!meshRef.current) return
+    if (isNew) {
+      scaleRef.current = 0
+      meshRef.current.scale.setScalar(0)
+      return
+    }
+    if (scaleRef.current >= 1) meshRef.current.scale.setScalar(1)
+  }, [isNew])
+
   useFrame((_state, delta) => {
     if (!meshRef.current) return
     if (scaleRef.current < 1.0) {

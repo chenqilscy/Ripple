@@ -1110,14 +1110,18 @@ export function Home({ onLogout }: Props) {
                       <button
                         key={mode}
                         onClick={() => setViewMode(mode)}
+                        aria-pressed={viewMode === mode}
                         style={{
                           ...miniBtn,
-                          background: viewMode === mode ? 'rgba(74,144,226,0.35)' : undefined,
-                          color: viewMode === mode ? '#9ec5ee' : undefined,
+                          background: viewMode === mode ? '#4a8eff' : 'rgba(255,255,255,0.06)',
+                          borderColor: viewMode === mode ? '#8bc1ff' : 'rgba(255,255,255,0.14)',
+                          color: viewMode === mode ? '#fff' : '#9eb6cc',
+                          boxShadow: viewMode === mode ? '0 0 0 1px rgba(139,193,255,0.28)' : 'none',
+                          fontWeight: viewMode === mode ? 700 : 500,
                           padding: '2px 10px',
                         }}
                       >
-                        {mode === 'list' ? '列表' : '图谱'}
+                        {viewMode === mode ? '✓ ' : ''}{mode === 'list' ? '列表' : '图谱'}
                       </button>
                     ))}
                   </div>
