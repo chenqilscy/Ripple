@@ -27,6 +27,8 @@ type NodeRepository interface {
 	FindRelated(ctx context.Context, nodeID, lakeID, keyword string, limit int) ([]domain.NodeSearchResult, error)
 	// CountByOrg 统计某组织所有湖中的非已删除节点总数（Phase 16 真实用量）。
 	CountByOrg(ctx context.Context, orgID string) (int64, error)
+	// ListNeighbors 返回通过 EDGE 关系与指定节点相邻的节点（一跳，双向），用于 AI 邻居上下文注入。
+	ListNeighbors(ctx context.Context, nodeID string, limit int) ([]domain.Node, error)
 }
 
 type nodeRepoNeo struct {
@@ -541,3 +543,42 @@ func (r *nodeRepoNeo) FindRelated(ctx context.Context, nodeID, lakeID, keyword s
 	return out.([]domain.NodeSearchResult), nil
 }
 
+const cypherListNeighbors = `
+MATCH (n:Node {id: $node_id})-[:EDGE]-(nb:Node)
+WHERE nb.deleted_at IS NULL
+  AND nb.state IN ['DROP','MIST','CLOUD','PERMA']
+RETURN nb.id, nb.lake_id, nb.content, nb.state
+LIMIT $limit
+`
+
+func (r *nodeRepoNeo) ListNeighbors(ctx context.Context, nodeID string, limit int) ([]domain.Node, error) {
+	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
+	defer func() { _ = sess.Close(ctx) }()
+	out, err := sess.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		res, err := tx.Run(ctx, cypherListNeighbors, map[string]any{
+			"node_id": nodeID,
+			"limit":   int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		var nodes []domain.Node
+		for res.Next(ctx) {
+			v := res.Record().Values
+			nodes = append(nodes, domain.Node{
+				ID:      asString(v[0]),
+				LakeID:  asString(v[1]),
+				Content: asString(v[2]),
+				State:   domain.NodeState(asString(v[3])),
+			})
+		}
+		return nodes, res.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return []domain.Node{}, nil
+	}
+	return out.([]domain.Node), nil
+}

@@ -76,6 +76,10 @@ func (r *memNodeRepo) FindRelated(_ context.Context, nodeID, lakeID, keyword str
 	return []domain.NodeSearchResult{}, nil
 }
 
+func (r *memNodeRepo) ListNeighbors(_ context.Context, nodeID string, limit int) ([]domain.Node, error) {
+	return []domain.Node{}, nil
+}
+
 func newNodeSvc(t *testing.T) (*NodeService, *memLakeRepo, *memMembershipRepo, *memNodeRepo) {
 	t.Helper()
 	lakes := newMemLakeRepo()
