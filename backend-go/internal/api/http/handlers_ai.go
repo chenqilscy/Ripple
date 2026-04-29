@@ -9,6 +9,7 @@ import (
 	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 )
 
 // NodeAIHandlers P16-B：节点 AI 摘要处理器。
@@ -72,7 +73,8 @@ func (h *NodeAIHandlers) AISummary(w http.ResponseWriter, r *http.Request) {
 		Hints:    llm.TextHints{Temperature: 0.3, MaxTokens: 120},
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "LLM error: "+err.Error())
+		zerolog.Ctx(r.Context()).Error().Err(err).Str("node_id", nodeID).Msg("ai_summary llm error")
+		writeError(w, http.StatusInternalServerError, "AI 服务暂时不可用，请稍后重试")
 		return
 	}
 
@@ -89,7 +91,8 @@ func (h *NodeAIHandlers) AISummary(w http.ResponseWriter, r *http.Request) {
 		sb.WriteString(chunk.Delta)
 	}
 	if streamErr != nil {
-		writeError(w, http.StatusInternalServerError, "LLM stream error: "+streamErr.Error())
+		zerolog.Ctx(r.Context()).Error().Err(streamErr).Str("node_id", nodeID).Msg("ai_summary stream error")
+		writeError(w, http.StatusInternalServerError, "AI 生成中断，请稍后重试")
 		return
 	}
 

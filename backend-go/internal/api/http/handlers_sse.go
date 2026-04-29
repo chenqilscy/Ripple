@@ -11,6 +11,7 @@ import (
 	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 )
 
 // WeaveStreamHandlers M3 流式编织（SSE）。
@@ -67,13 +68,15 @@ func (h *WeaveStreamHandlers) Stream(w http.ResponseWriter, r *http.Request) {
 		N:        1,
 	})
 	if err != nil {
-		writeSSE(w, flusher, "error", map[string]string{"message": err.Error()})
+		zerolog.Ctx(r.Context()).Error().Err(err).Str("lake_id", lakeID).Msg("weave stream error")
+		writeSSE(w, flusher, "error", map[string]string{"message": "AI 暂歇，请稍候"})
 		return
 	}
 
 	for chunk := range ch {
 		if chunk.Err != nil {
-			writeSSE(w, flusher, "error", map[string]string{"message": chunk.Err.Error()})
+			zerolog.Ctx(r.Context()).Error().Err(chunk.Err).Str("lake_id", lakeID).Msg("weave stream chunk error")
+			writeSSE(w, flusher, "error", map[string]string{"message": "AI 生成中断，请稍后重试"})
 			return
 		}
 		if chunk.Delta != "" {
@@ -85,7 +88,8 @@ func (h *WeaveStreamHandlers) Stream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// channel 关闭但未收到 Done：视为异常
-	writeSSE(w, flusher, "error", map[string]string{"message": "stream closed unexpectedly"})
+	zerolog.Ctx(r.Context()).Warn().Str("lake_id", lakeID).Msg("weave stream closed without done")
+	writeSSE(w, flusher, "error", map[string]string{"message": "AI 连接中断，请稍后重试"})
 }
 
 // writeSSE 写一条 SSE 事件并 flush。

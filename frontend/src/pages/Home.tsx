@@ -160,6 +160,9 @@ export function Home({ onLogout }: Props) {
   const [remoteCursors, setRemoteCursors] = useState<Map<string, RemoteCursor>>(new Map())
   // P20-D：节点详情侧边栏
   const [selectedNode, setSelectedNode] = useState<NodeItem | null>(null)
+  // P1-03：关系列表筛选和排序
+  const [edgeKindFilter, setEdgeKindFilter] = useState<string>('')
+  const [edgeSortOrder, setEdgeSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -1182,7 +1185,7 @@ export function Home({ onLogout }: Props) {
               <strong style={{ letterSpacing: 2, fontSize: 13 }}>造云 · AI 发散</strong>
               <textarea
                 value={prompt} onChange={e => setPrompt(e.target.value)}
-                placeholder="例如：给一款冥想 App 起 5 个名字" rows={3}
+                placeholder="例如：梳理这片湖泊的知识脉络 / 找出节点的共同主题" rows={3}
                 style={textarea}
               />
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -1476,7 +1479,7 @@ export function Home({ onLogout }: Props) {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ ...statePill, background: stateColor(n.state) }}>{n.state}</span>
                         <span style={{ fontSize: 10, opacity: 0.6, display: 'flex', gap: 6, alignItems: 'center' }}>
-                          →{out} ←{inc}
+                          <span title={`入边 ${inc} 条（有 ${inc} 个节点指向此节点）| 出边 ${out} 条（此节点指向 ${out} 个节点）`}>入边: {inc} | 出边: {out}</span>
                           {/* P14-C 批量选择 checkbox */}
                           <input
                             type="checkbox"
@@ -1523,17 +1526,17 @@ export function Home({ onLogout }: Props) {
                           title="打开节点详情：选择 Prompt 模板并触发 AI Workflow"
                         >详情 / AI</button>
                         {n.state === 'MIST' && (
-                          <button onClick={() => condense(n.id)} style={miniBtn}>凝露 ↓</button>
+                          <button onClick={() => condense(n.id)} style={miniBtn} title="凝露：将节点从雾态降为水滴">凝露 ↓</button>
                         )}
                         {(n.state === 'DROP' || n.state === 'FROZEN') && (
-                          <button onClick={() => evaporate(n.id)} style={miniBtn}>蒸发 ↑</button>
+                          <button onClick={() => evaporate(n.id)} style={miniBtn} title="蒸发：将节点上升为蒸发态">蒸发 ↑</button>
                         )}
                         <button onClick={() => handleNodeClickForLink(n.id)} style={miniBtn}
                           title={isLinkSrc ? '取消连线' : '连线（先选起点再选终点）'}>
                           {isLinkSrc ? '✕' : '🔗'}
                         </button>
-                        <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容">✎</button>
-                        <button onClick={() => showHistory(n)} style={miniBtn} title="历史版本">⟲</button>
+                        <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容（固形前的雕琢）">✎</button>
+                        <button onClick={() => showHistory(n)} style={miniBtn} title="历史版本（溯源：回望节点的演变轨迹）">⟲</button>
                         <button onClick={() => void showDiff(n)} style={miniBtn} title="版本对比 diff">⇄</button>
                         {/* P17-D 节点导出 */}
                         <button
@@ -1542,7 +1545,7 @@ export function Home({ onLogout }: Props) {
                             exportNode(n, fmt)
                           }}
                           style={miniBtn}
-                          title="导出节点"
+                          title="导出节点（析出：将节点内容提取为文件）"
                         >⬇</button>
                         {/* P16-B AI 摘要 */}
                         <button
@@ -1563,13 +1566,13 @@ export function Home({ onLogout }: Props) {
                           onClick={() => setShareNode(n)}
                           disabled={false}
                           style={{ ...miniBtn, color: '#f9e2af' }}
-                          title="分享节点"
+                          title="分享节点：生成外链分享给他人"
                         >🔗分享</button>
                         {canCrystal && (
                           <button
                             onClick={() => toggleCrystalSel(n.id)}
                             style={{ ...miniBtn, background: isSelected ? '#4a8eff' : undefined, color: isSelected ? '#fff' : undefined }}
-                            title="选入凝结集合"
+                            title="凝结：选入节点并提炼为永久知识卡片"
                           >❄</button>
                         )}
                       </div>
@@ -1639,7 +1642,7 @@ export function Home({ onLogout }: Props) {
                       <span style={{ flex: 1, fontFamily: 'monospace', opacity: 0.85 }}>
                         {r.target_id.slice(0, 8)}…
                       </span>
-                      <span style={{ opacity: 0.6 }}>score {r.score.toFixed(2)}</span>
+                      <span style={{ opacity: 0.6 }} title="向量相似度（余弦距离，越高越相关）">相似度: {r.score.toFixed(2)}</span>
                       <button style={miniBtn}
                         onClick={() => {
                           void api.sendFeedback('perma_node', r.target_id, 'LIKE')
@@ -1661,8 +1664,40 @@ export function Home({ onLogout }: Props) {
             {edges.length > 0 && (
               <section style={card}>
                 <strong style={{ letterSpacing: 2, fontSize: 13 }}>边 ({edges.length})</strong>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-                  {edges.map(e => {
+                {/* P1-03: 关系列表筛选和排序 */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select
+                    value={edgeKindFilter}
+                    onChange={e => setEdgeKindFilter(e.target.value)}
+                    title="按关系类型筛选"
+                    style={{ background: '#0e1218', border: '1px solid #2a3a4a', color: '#9ec5ee', borderRadius: 4, padding: '2px 6px', fontSize: 11 }}
+                  >
+                    <option value="">全部类型</option>
+                    {[...new Set(edges.map(e => e.kind))].sort().map(k => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setEdgeSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
+                    title={edgeSortOrder === 'desc' ? '当前：最新在前，点击切换为最旧在前' : '当前：最旧在前，点击切换为最新在前'}
+                    style={{ ...miniBtn, fontSize: 11 }}
+                  >
+                    时间 {edgeSortOrder === 'desc' ? '↓' : '↑'}
+                  </button>
+                  {edgeKindFilter && (
+                    <span style={{ fontSize: 11, opacity: 0.6 }}>
+                      {edges.filter(e => e.kind === edgeKindFilter).length} / {edges.length}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {edges
+                    .filter(e => !edgeKindFilter || e.kind === edgeKindFilter)
+                    .sort((a, b) => {
+                      const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                      return edgeSortOrder === 'desc' ? -diff : diff
+                    })
+                    .map(e => {
                     const src = nodeContentById.get(e.src_node_id)
                     const dst = nodeContentById.get(e.dst_node_id)
                     return (
@@ -1673,7 +1708,7 @@ export function Home({ onLogout }: Props) {
                           {' → '}
                           {(dst ?? e.dst_node_id.slice(0, 8)).slice(0, 24)}
                         </span>
-                        <button onClick={() => deleteEdge(e.id)} style={miniBtn}>删</button>
+                        <button onClick={() => deleteEdge(e.id)} style={miniBtn} title="删除关系（断流：切断节点间的关联）">删</button>
                       </div>
                     )
                   })}
@@ -1799,7 +1834,7 @@ export function Home({ onLogout }: Props) {
                 border: '1px solid rgba(137,220,235,0.2)', borderRadius: 6,
               }}>
                 <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-                  id: {r.node_id.slice(0, 8)}… · score: {r.score.toFixed(3)}
+                  id: {r.node_id.slice(0, 8)}… · 相似度: {r.score.toFixed(3)}
                 </div>
                 <div style={{ fontSize: 13, lineHeight: 1.5 }}>{r.snippet.slice(0, 120)}{r.snippet.length > 120 ? '…' : ''}</div>
               </div>

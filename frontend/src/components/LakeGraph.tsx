@@ -7,7 +7,7 @@
  * deps: @react-three/fiber@8 + @react-three/drei@9 + three@0.160 + d3-force@3
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import {
@@ -350,7 +350,7 @@ function SpringEdges({ simLinks }: SpringEdgesProps) {
           itemSize={3}
         />
       </bufferGeometry>
-      <lineBasicMaterial color="#2a4a7e" transparent opacity={0.6} />
+      <lineBasicMaterial color="#2e8b90" transparent opacity={0.75} />
     </lineSegments>
   )
 }
@@ -515,6 +515,26 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
 }
 
 // ---------------------------------------------------------------------------
+// CameraController -- 暴露缩放/适配命令给父组件
+// ---------------------------------------------------------------------------
+interface CameraControllerProps {
+  onZoomIn: React.MutableRefObject<() => void>
+  onZoomOut: React.MutableRefObject<() => void>
+  onFit: React.MutableRefObject<() => void>
+}
+
+function CameraController({ onZoomIn, onZoomOut, onFit }: CameraControllerProps) {
+  const { camera } = useThree()
+  useEffect(() => {
+    onZoomIn.current = () => { camera.position.z = Math.max(50, camera.position.z * 0.7) }
+    onZoomOut.current = () => { camera.position.z = Math.min(2000, camera.position.z * 1.4) }
+    onFit.current = () => { camera.position.set(0, 0, 600) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera])
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // LakeGraph -- public export
 // ---------------------------------------------------------------------------
 export interface RemoteCursor {
@@ -552,6 +572,11 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
   )
   const tooMany =
     nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').length > MAX_NODES
+
+  // 缩放控制 refs
+  const zoomInRef = useRef<() => void>(() => undefined)
+  const zoomOutRef = useRef<() => void>(() => undefined)
+  const fitRef = useRef<() => void>(() => undefined)
 
   // P19-C: throttle ref for cursor send（50ms）
   const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -640,10 +665,10 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
           仅展示前 {MAX_NODES} 个节点
         </div>
       )}
-      {/* P15-C: 重置布局按钞 */}
+      {/* P15-C: 重置布局按钮 */}
       <button
         onClick={() => setResetToken(t => t + 1)}
-        title="重置布局"
+        title="重排布局：重新计算节点位置"
         style={{
           position: 'absolute', bottom: 12, right: 12, zIndex: 10,
           background: 'rgba(0,0,0,0.6)', border: '1px solid #2a4a7e',
@@ -653,6 +678,12 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
       >
         重排布局 ↻
       </button>
+      {/* P0-04: 缩放控制按钮组 */}
+      <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <button onClick={() => zoomInRef.current()} title="放大" style={zoomBtnStyle}>+</button>
+        <button onClick={() => zoomOutRef.current()} title="缩小" style={zoomBtnStyle}>−</button>
+        <button onClick={() => fitRef.current()} title="适配画布：恢复默认视角" style={zoomBtnStyle}>⊡</button>
+      </div>
       <Canvas camera={{ position: [0, 0, 600], fov: 50 }} gl={{ antialias: true }}>
         <React.Suspense fallback={null}>
           <GraphScene
@@ -666,6 +697,7 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
             snapshotLayout={snapshotLayout}
           />
         </React.Suspense>
+        <CameraController onZoomIn={zoomInRef} onZoomOut={zoomOutRef} onFit={fitRef} />
       </Canvas>
       {/* P19-C / P28: 协作光标 DOM overlay（百分比定位，避免 SVG preserveAspectRatio 字体变形） */}
       {remoteCursors && remoteCursors.size > 0 && (
@@ -716,4 +748,10 @@ export default function LakeGraph({ nodes, edges, onNodeSelect, onMultiSelectCha
       )}
     </div>
   )
+}
+
+const zoomBtnStyle: React.CSSProperties = {
+  background: 'rgba(0,0,0,0.6)', border: '1px solid #2a4a7e',
+  color: '#9ec5ee', borderRadius: 4, padding: '3px 8px',
+  fontSize: 14, cursor: 'pointer', lineHeight: 1, fontWeight: 600,
 }

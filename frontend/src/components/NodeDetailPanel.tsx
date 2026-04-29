@@ -116,9 +116,33 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
         {/* 节点 ID */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>ID</div>
-          <code style={{ fontSize: 11, color: '#6a8aaa', fontFamily: 'monospace' }}>
-            {node.id.slice(0, 8)}…
-          </code>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <code style={{ fontSize: 11, color: '#6a8aaa', fontFamily: 'monospace' }}>
+              {node.id.slice(0, 8)}…
+            </code>
+            <button
+              onClick={() => {
+                void navigator.clipboard.writeText(node.id)
+                  .then(() => {
+                    const el = document.createElement('div')
+                    el.textContent = '已复制'
+                    Object.assign(el.style, {
+                      position: 'fixed', bottom: '24px', right: '24px', zIndex: '9999',
+                      background: '#1e3a5a', color: '#9ec5ee', padding: '6px 14px',
+                      borderRadius: '6px', fontSize: '12px', pointerEvents: 'none',
+                    })
+                    document.body.appendChild(el)
+                    setTimeout(() => document.body.removeChild(el), 1800)
+                  })
+              }}
+              title="复制完整节点 ID 到剪贴板"
+              style={{
+                background: 'transparent', border: '1px solid #2a3a4a',
+                color: '#4a6a8e', borderRadius: 4, padding: '1px 6px',
+                fontSize: 10, cursor: 'pointer', lineHeight: 1.5,
+              }}
+            >复制</button>
+          </div>
         </div>
 
         {/* AI Workflow */}
