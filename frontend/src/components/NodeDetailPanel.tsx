@@ -30,6 +30,11 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
   const [promptTemplateId, setPromptTemplateId] = useState('')
   const [promptLoadError, setPromptLoadError] = useState('')
   const [aiMessage, setAiMessage] = useState('')
+  /** 3-P2-01: 反馈状态 */
+  const [feedbackSent, setFeedbackSent] = useState<'LIKE' | 'DISLIKE' | null>(null)
+  const [feedbackComment, setFeedbackComment] = useState('')
+  const [feedbackCommentOpen, setFeedbackCommentOpen] = useState(false)
+  const [feedbackBusy, setFeedbackBusy] = useState(false)
   const nodeMap = new Map(allNodes.map(n => [n.id, n]))
 
   const relatedEdges = edges.filter(
@@ -52,7 +57,34 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
   useEffect(() => {
     setPromptTemplateId('')
     setAiMessage('')
+    setFeedbackSent(null)
+    setFeedbackComment('')
+    setFeedbackCommentOpen(false)
   }, [node.id])
+
+  async function sendFeedback(type: 'LIKE' | 'DISLIKE') {
+    if (feedbackBusy) return
+    setFeedbackBusy(true)
+    try {
+      await api.sendFeedback('node', node.id, type)
+      setFeedbackSent(type)
+    } catch { /* 静默 */ } finally {
+      setFeedbackBusy(false)
+    }
+  }
+
+  async function submitComment() {
+    const text = feedbackComment.trim()
+    if (!text || feedbackBusy) return
+    setFeedbackBusy(true)
+    try {
+      await api.sendFeedback('node', node.id, 'COMMENT', text)
+      setFeedbackComment('')
+      setFeedbackCommentOpen(false)
+    } catch { /* 静默 */ } finally {
+      setFeedbackBusy(false)
+    }
+  }
 
   return (
     <div style={{
@@ -238,6 +270,69 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
             </div>
           )}
         </div>
+
+        {/* 3-P2-01: 节点反馈模块 */}
+        <div style={{ borderTop: '1px solid #1e3a5a', paddingTop: 10, marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: '#6a8aaa', marginBottom: 6 }}>这个节点对你有帮助吗？</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={() => void sendFeedback('LIKE')}
+              disabled={feedbackBusy || feedbackSent === 'LIKE'}
+              style={{
+                background: feedbackSent === 'LIKE' ? '#1a4a2e' : '#0f1f2e',
+                border: `1px solid ${feedbackSent === 'LIKE' ? '#3ddc84' : '#2d5278'}`,
+                borderRadius: 5, padding: '4px 12px', cursor: feedbackSent === 'LIKE' ? 'default' : 'pointer',
+                color: feedbackSent === 'LIKE' ? '#3ddc84' : '#9ec5ee', fontSize: 14,
+              }}
+              title="有帮助"
+            >👍{feedbackSent === 'LIKE' ? ' 已反馈' : ''}</button>
+            <button
+              onClick={() => void sendFeedback('DISLIKE')}
+              disabled={feedbackBusy || feedbackSent === 'DISLIKE'}
+              style={{
+                background: feedbackSent === 'DISLIKE' ? '#2d1a1a' : '#0f1f2e',
+                border: `1px solid ${feedbackSent === 'DISLIKE' ? '#f38ba8' : '#2d5278'}`,
+                borderRadius: 5, padding: '4px 12px', cursor: feedbackSent === 'DISLIKE' ? 'default' : 'pointer',
+                color: feedbackSent === 'DISLIKE' ? '#f38ba8' : '#9ec5ee', fontSize: 14,
+              }}
+              title="没帮助"
+            >👎{feedbackSent === 'DISLIKE' ? ' 已反馈' : ''}</button>
+            <button
+              onClick={() => setFeedbackCommentOpen(v => !v)}
+              style={{
+                background: feedbackCommentOpen ? '#1a2d4a' : '#0f1f2e',
+                border: '1px solid #2d5278', borderRadius: 5, padding: '4px 10px',
+                cursor: 'pointer', color: '#9ec5ee', fontSize: 12,
+              }}
+              title="留下文字反馈"
+            >✏ 留言</button>
+          </div>
+          {feedbackCommentOpen && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <textarea
+                value={feedbackComment}
+                onChange={e => setFeedbackComment(e.target.value)}
+                placeholder="写下你的想法..."
+                rows={3}
+                style={{
+                  width: '100%', background: '#0a1526', border: '1px solid #2d5278',
+                  borderRadius: 5, color: '#c8d8e8', padding: '6px 8px', fontSize: 12,
+                  resize: 'vertical', boxSizing: 'border-box',
+                }}
+              />
+              <button
+                onClick={() => void submitComment()}
+                disabled={feedbackBusy || !feedbackComment.trim()}
+                style={{
+                  alignSelf: 'flex-end', background: '#1e4d9e', border: '1px solid #4a8eff',
+                  borderRadius: 5, padding: '4px 14px', color: '#9ec5ee',
+                  fontSize: 12, cursor: feedbackComment.trim() ? 'pointer' : 'default',
+                }}
+              >提交</button>
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   )
