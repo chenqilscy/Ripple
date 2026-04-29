@@ -121,7 +121,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	authH := &AuthHandlers{Auth: d.Auth}
-	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces, Orgs: d.Orgs, Nodes: d.Nodes, Edges: d.Edges}
+	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces, Orgs: d.Orgs, Nodes: d.Nodes, Edges: d.Edges, Presence: d.Presence}
 	nodeH := &NodeHandlers{Nodes: d.Nodes}
 	cloudH := &CloudHandlers{Clouds: d.Clouds}
 	var edgeH *EdgeHandlers
@@ -158,6 +158,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/lakes", lakeH.Create)
 			r.Get("/lakes", lakeH.ListMine)
 			r.Get("/lakes/{id}", lakeH.Get)
+			r.Get("/lakes/{id}/health", lakeH.GetHealth)
 			r.Patch("/lakes/{id}/space", lakeH.Move)
 			r.Get("/lakes/{id}/nodes", nodeH.ListByLake)
 			r.Post("/lakes/{id}/nodes/batch", nodeH.BatchImport)
@@ -201,6 +202,15 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/edges", edgeH.Create)
 				r.Delete("/edges/{id}", edgeH.Delete)
 				r.Get("/lakes/{id}/edges", edgeH.ListByLake)
+			}
+
+			// 图谱分析端点（推荐/路径/聚类/规划）
+			if d.Nodes != nil && d.Edges != nil {
+				graphH := &GraphAnalysisHandlers{Nodes: d.Nodes, Edges: d.Edges}
+				r.Get("/lakes/{id}/recommendations", graphH.GetRecommendations)
+				r.Post("/graph/path", graphH.GetPath)
+				r.Get("/lakes/{id}/clusters", graphH.GetClusters)
+				r.Get("/lakes/{id}/planning", graphH.GetPlanning)
 			}
 
 			if inviteH != nil {
