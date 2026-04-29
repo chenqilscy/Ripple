@@ -49,6 +49,25 @@ const EDGE_KINDS: EdgeKind[] = ['relates', 'derives', 'opposes', 'refines', 'gro
 const LAKE_READY_INITIAL_DELAY_MS = 1000
 const LAKE_READY_ATTEMPTS = 30
 const LAKE_READY_DELAY_MS = 200
+let activeInviteToken: string | null = null
+
+function removeUrlSearchParam(name: string) {
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has(name)) return
+  url.searchParams.delete(name)
+  window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+}
+
+function readInitialShortcutAction(): string | null {
+  const url = new URL(window.location.href)
+  const action = url.searchParams.get('action')
+  if (!action) return null
+  if (action !== 'search' && action !== 'import') {
+    removeUrlSearchParam('action')
+    return null
+  }
+  return action
+}
 
 function delay(ms: number) {
   return new Promise<void>(resolve => setTimeout(resolve, ms))
@@ -85,6 +104,7 @@ export function Home({ onLogout }: Props) {
   // P19-C：meIdRef 与 state 同步，供 WS 闭包读取最新值（WS useEffect 依赖 [active]，不依赖 meId）
   const meIdRef = useRef<string>('')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [inviteFlowActive, setInviteFlowActive] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
   const [importBusy, setImportBusy] = useState(false)
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null)
@@ -142,20 +162,18 @@ export function Home({ onLogout }: Props) {
 
   // P12-E：PWA shortcut 处理 — ?action=search|import（需等 active 湖加载完毕）
   useEffect(() => {
-    const url = new URL(window.location.href)
-    const action = url.searchParams.get('action')
+    const action = readInitialShortcutAction()
     if (!action) return
-    url.searchParams.delete('action')
-    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
     setPendingAction(action)
   }, [])
 
   useEffect(() => {
-    if (!pendingAction || !active) return
+    if (!pendingAction || inviteFlowActive || activeInviteToken || !active) return
     if (pendingAction === 'search') setSearchOpen(true)
     if (pendingAction === 'import') setImportOpen(true)
+    removeUrlSearchParam('action')
     setPendingAction(null)
-  }, [pendingAction, active])
+  }, [pendingAction, active, inviteFlowActive])
   // M3-S2：凝结多选（DROP/FROZEN 节点 id 集合）
   const [crystalSel, setCrystalSel] = useState<Set<string>>(new Set())
   // 凝结结果（最近一次）
@@ -514,17 +532,27 @@ export function Home({ onLogout }: Props) {
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get('invite')
     if (!token) return
+    if (activeInviteToken === token) return
+    activeInviteToken = token
+    setInviteFlowActive(true)
     ;(async () => {
       try {
         const prev = await api.previewInvite(token)
         if (!prev.alive) { setErr(`邀请已失效（${prev.used_count}/${prev.max_uses}）`); return }
         if (!(await modalConfirm(`加入湖 "${prev.lake_name}" 作为 ${prev.role}？`))) return
         const r = await api.acceptInvite(token)
-        window.history.replaceState({}, '', window.location.pathname)
-        await refresh()
-        // refresh 已把 lakes 刷新并可能自动选中首个；这里不手动设置 active，避免 stale closure。
-        void r
+        const url = new URL(window.location.href)
+        url.searchParams.delete('invite')
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+        const listed = await api.listLakes(currentSpaceId || undefined)
+        const joinedLake = listed.lakes.find(l => l.id === r.lake_id) ?? await api.getLake(r.lake_id)
+        setLakes([joinedLake, ...listed.lakes.filter(l => l.id !== joinedLake.id)])
+        setActive(joinedLake)
       } catch (e) { setErr((e as Error).message) }
+      finally {
+        if (activeInviteToken === token) activeInviteToken = null
+        setInviteFlowActive(false)
+      }
     })()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
