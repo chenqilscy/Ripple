@@ -108,9 +108,10 @@ services:
       RIPPLE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       RIPPLE_ADMIN_EMAILS: ${RIPPLE_ADMIN_EMAILS:-}
       RIPPLE_REGISTRATION_GRAYLIST_ENABLED: ${RIPPLE_REGISTRATION_GRAYLIST_ENABLED:-false}
-      RIPPLE_CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4173,http://127.0.0.1:4173}
+      RIPPLE_CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4173,http://127.0.0.1:4173,http://fn.cky:14173}
       RIPPLE_UPLOAD_DIR: /app/data/uploads
       RIPPLE_METRICS_ENABLED: "true"
+      RIPPLE_STUB_PAYMENT: ${RIPPLE_STUB_PAYMENT:-true}
       RIPPLE_LOG_LEVEL: ${LOG_LEVEL:-info}
       # LLM providers (P20-A)
       RIPPLE_ZHIPU_ENDPOINT: ${RIPPLE_ZHIPU_ENDPOINT:-}
@@ -138,7 +139,7 @@ services:
       YJS_BRIDGE_API_URL: http://backend:8000
       YJS_BRIDGE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       RIPPLE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      YJS_BRIDGE_ALLOWED_ORIGINS: ${CORS_ORIGINS:-http://localhost:4173,http://127.0.0.1:4173}
+      YJS_BRIDGE_ALLOWED_ORIGINS: ${CORS_ORIGINS:-http://localhost:4173,http://127.0.0.1:4173,http://fn.cky:14173}
       YJS_BRIDGE_REQUIRE_AUTH: "true"
       GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
       GOTOOLCHAIN: local
@@ -159,7 +160,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE: http://localhost:18000
+        VITE_API_BASE: ""
     container_name: ripple-staging-frontend
     ports:
       - "${STAGING_FRONTEND_PORT:-14173}:80"

@@ -2,6 +2,17 @@ import { expect, test } from '@playwright/test'
 
 interface MockState {
   graylist: { id: string; email: string; note: string; created_by: string; created_at: string }[]
+  promptTemplates: {
+    id: string
+    name: string
+    description: string
+    template: string
+    scope: 'private' | 'org'
+    org_id?: string
+    created_by: string
+    created_at: string
+    updated_at: string
+  }[]
   platformAdmins: {
     user_id: string
     email: string
@@ -72,6 +83,31 @@ function makeMock(state: MockState) {
         body = { api_keys: [] }
       } else if (url.pathname === '/api/v1/organizations') {
         body = { organizations: [] }
+      } else if (url.pathname === '/api/v1/prompt_templates' && method === 'GET') {
+        body = { items: state.promptTemplates, total: state.promptTemplates.length }
+      } else if (url.pathname === '/api/v1/prompt_templates' && method === 'POST') {
+        const payload = JSON.parse(route.request().postData() ?? '{}') as {
+          name?: string
+          description?: string
+          template?: string
+          scope?: 'private' | 'org'
+          org_id?: string
+        }
+        const now = new Date().toISOString()
+        const created = {
+          id: `tpl-${state.promptTemplates.length + 1}`,
+          name: payload.name ?? '',
+          description: payload.description ?? '',
+          template: payload.template ?? '',
+          scope: payload.scope ?? 'private',
+          org_id: payload.org_id ?? '',
+          created_by: 'u-e2e',
+          created_at: now,
+          updated_at: now,
+        }
+        state.promptTemplates = [created, ...state.promptTemplates]
+        status = 201
+        body = created
       } else if (url.pathname === '/api/v1/admin/graylist' && method === 'GET') {
         body = { entries: state.graylist }
       } else if (url.pathname === '/api/v1/admin/graylist' && method === 'POST') {
@@ -111,8 +147,8 @@ async function loginAndOpenSettings(page: import('@playwright/test').Page) {
 }
 
 test.describe('Settings 子 Tab', () => {
-  test('可以在管理概览、平台管理员、API Key、灰度名单和审计日志之间切换', async ({ page }) => {
-    const state: MockState = { graylist: [], platformAdmins: [] }
+  test('可以在管理概览、平台管理员、API Key、灰度名单、Prompt 模板和审计日志之间切换', async ({ page }) => {
+    const state: MockState = { graylist: [], promptTemplates: [], platformAdmins: [] }
     await makeMock(state)(page)
     await loginAndOpenSettings(page)
 
@@ -127,12 +163,15 @@ test.describe('Settings 子 Tab', () => {
     await page.getByRole('button', { name: '灰度名单' }).click()
     await expect(page.getByRole('heading', { name: '灰度名单' })).toBeVisible()
 
+    await page.getByRole('button', { name: 'Prompt 模板' }).click()
+    await expect(page.getByRole('heading', { name: 'Prompt 模板库' })).toBeVisible()
+
     await page.getByRole('button', { name: '审计日志' }).click()
     await expect(page.getByRole('heading', { name: '审计日志' })).toBeVisible()
   })
 
   test('灰度名单可以新增并删除一条记录', async ({ page }) => {
-    const state: MockState = { graylist: [], platformAdmins: [] }
+    const state: MockState = { graylist: [], promptTemplates: [], platformAdmins: [] }
     await makeMock(state)(page)
     await loginAndOpenSettings(page)
 
@@ -157,6 +196,7 @@ test.describe('Settings 子 Tab', () => {
   test('平台管理员 OWNER 撤销必须经过高危 confirm', async ({ page }) => {
     const state: MockState = {
       graylist: [],
+      promptTemplates: [],
       platformAdmins: [
         {
           user_id: 'u-owner-2',
@@ -192,6 +232,25 @@ test.describe('Settings 子 Tab', () => {
     await page.getByRole('button', { name: '撤销' }).click()
     await expect(page.getByText('owner2@example.com')).toHaveCount(0)
     expect(state.platformAdmins).toHaveLength(0)
+  })
+
+  test('Prompt 模板可以从真实设置入口新增私有模板', async ({ page }) => {
+    const state: MockState = { graylist: [], promptTemplates: [], platformAdmins: [] }
+    await makeMock(state)(page)
+    await loginAndOpenSettings(page)
+
+    await page.getByRole('button', { name: 'Prompt 模板' }).click()
+    await expect(page.getByRole('heading', { name: 'Prompt 模板库' })).toBeVisible()
+
+    await page.getByPlaceholder('模板名称（必填）').fill('日报总结模板')
+    await page.getByPlaceholder('描述（可选）').fill('给日报节点做统一摘要')
+    await page.getByPlaceholder('模板内容（必填），例如：请根据 {{node_content}} 生成结构化摘要').fill('请将 {{node_content}} 整理成三点摘要。')
+    await page.getByRole('button', { name: '创建模板' }).click()
+
+    await expect(page.getByText('日报总结模板')).toBeVisible()
+    expect(state.promptTemplates).toHaveLength(1)
+    expect(state.promptTemplates[0].name).toBe('日报总结模板')
+    expect(state.promptTemplates[0].scope).toBe('private')
   })
 })
 

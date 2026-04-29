@@ -15,7 +15,7 @@ import (
 type PromptTemplateRepository interface {
 	Create(ctx context.Context, t domain.PromptTemplate) (*domain.PromptTemplate, error)
 	GetByID(ctx context.Context, id string) (*domain.PromptTemplate, error)
-	List(ctx context.Context, createdBy string, limit, offset int) ([]domain.PromptTemplate, int, error)
+	ListVisible(ctx context.Context, createdBy string, orgIDs []string, limit, offset int) ([]domain.PromptTemplate, int, error)
 	Update(ctx context.Context, id string, u domain.PromptTemplateUpdate) error
 	Delete(ctx context.Context, id string) error
 }
@@ -67,24 +67,28 @@ SELECT id::text, name, description, template, scope, COALESCE(org_id,''),
        created_by::text, created_at, updated_at
 FROM prompt_templates
 WHERE created_by = $1::uuid
+   OR (scope = 'org' AND org_id = ANY($2::text[]))
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+LIMIT $3 OFFSET $4
 `
 
 const sqlCountPromptTemplates = `
-SELECT COUNT(*) FROM prompt_templates WHERE created_by = $1::uuid
+SELECT COUNT(*)
+FROM prompt_templates
+WHERE created_by = $1::uuid
+   OR (scope = 'org' AND org_id = ANY($2::text[]))
 `
 
-func (r *promptTemplateRepoPG) List(ctx context.Context, createdBy string, limit, offset int) ([]domain.PromptTemplate, int, error) {
+func (r *promptTemplateRepoPG) ListVisible(ctx context.Context, createdBy string, orgIDs []string, limit, offset int) ([]domain.PromptTemplate, int, error) {
 	var total int
-	if err := r.pool.QueryRow(ctx, sqlCountPromptTemplates, createdBy).Scan(&total); err != nil {
+	if err := r.pool.QueryRow(ctx, sqlCountPromptTemplates, createdBy, orgIDs).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("prompt_templates count: %w", err)
 	}
 	if total == 0 {
 		return nil, 0, nil
 	}
 
-	rows, err := r.pool.Query(ctx, sqlListPromptTemplates, createdBy, limit, offset)
+	rows, err := r.pool.Query(ctx, sqlListPromptTemplates, createdBy, orgIDs, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("prompt_templates list: %w", err)
 	}

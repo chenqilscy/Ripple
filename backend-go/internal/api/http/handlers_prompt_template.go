@@ -5,9 +5,11 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -16,6 +18,7 @@ import (
 // PromptTemplateHandlers Phase 15-C：Prompt 模板 CRUD。
 type PromptTemplateHandlers struct {
 	Repo store.PromptTemplateRepository
+	Orgs *service.OrgService
 }
 
 type createPromptTplReq struct {
@@ -70,6 +73,11 @@ func (h *PromptTemplateHandlers) Create(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name)
+	in.Description = strings.TrimSpace(in.Description)
+	in.Template = strings.TrimSpace(in.Template)
+	in.Scope = strings.TrimSpace(in.Scope)
+	in.OrgID = strings.TrimSpace(in.OrgID)
 	if in.Name == "" || in.Template == "" {
 		writeError(w, http.StatusBadRequest, "name and template are required")
 		return
@@ -77,6 +85,27 @@ func (h *PromptTemplateHandlers) Create(w http.ResponseWriter, r *http.Request) 
 	scope := domain.PromptTemplateScope(in.Scope)
 	if scope != domain.PromptScopePrivate && scope != domain.PromptScopeOrg {
 		scope = domain.PromptScopePrivate
+	}
+	if scope == domain.PromptScopeOrg {
+		if in.OrgID == "" {
+			writeError(w, http.StatusBadRequest, "org_id is required for org scope")
+			return
+		}
+		if h.Orgs == nil {
+			writeError(w, http.StatusBadRequest, "organization sharing unavailable")
+			return
+		}
+		isMember, err := h.Orgs.IsMember(r.Context(), u.ID, in.OrgID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to validate org membership")
+			return
+		}
+		if !isMember {
+			writeError(w, http.StatusForbidden, "access denied")
+			return
+		}
+	} else {
+		in.OrgID = ""
 	}
 
 	now := time.Now().UTC()
@@ -118,8 +147,13 @@ func (h *PromptTemplateHandlers) List(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
+	orgIDs, err := visiblePromptTemplateOrgIDs(r.Context(), h.Orgs, u)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to resolve visible organizations")
+		return
+	}
 
-	tpls, total, err := h.Repo.List(r.Context(), u.ID, limit, offset)
+	tpls, total, err := h.Repo.ListVisible(r.Context(), u.ID, orgIDs, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list prompt templates")
 		return
@@ -152,8 +186,12 @@ func (h *PromptTemplateHandlers) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get prompt template")
 		return
 	}
-	// 私有模板只允许创建者读取
-	if tpl.Scope == domain.PromptScopePrivate && tpl.CreatedBy != u.ID {
+	allowed, err := canAccessPromptTemplate(r.Context(), h.Orgs, u.ID, tpl)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to validate prompt template access")
+		return
+	}
+	if !allowed {
 		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
@@ -185,16 +223,38 @@ func (h *PromptTemplateHandlers) Update(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "failed to get prompt template")
 		return
 	}
-	if tpl.CreatedBy != u.ID {
-		writeError(w, http.StatusForbidden, "only the creator can update this template")
+	allowed, err := canManagePromptTemplate(r.Context(), h.Orgs, u.ID, tpl)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to validate prompt template access")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, "only the creator or organization admin can update this template")
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	var in patchPromptTplReq
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
+	}
+	if in.Name != nil {
+		v := strings.TrimSpace(*in.Name)
+		in.Name = &v
+	}
+	if in.Description != nil {
+		v := strings.TrimSpace(*in.Description)
+		in.Description = &v
+	}
+	if in.Template != nil {
+		v := strings.TrimSpace(*in.Template)
+		in.Template = &v
 	}
 
 	upd := domain.PromptTemplateUpdate{
@@ -242,8 +302,13 @@ func (h *PromptTemplateHandlers) Delete(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "failed to get prompt template")
 		return
 	}
-	if tpl.CreatedBy != u.ID {
-		writeError(w, http.StatusForbidden, "only the creator can delete this template")
+	allowed, err := canManagePromptTemplate(r.Context(), h.Orgs, u.ID, tpl)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to validate prompt template access")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, "only the creator or organization admin can delete this template")
 		return
 	}
 

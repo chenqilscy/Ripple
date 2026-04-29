@@ -2,13 +2,17 @@
  * P20-D: 节点详情侧边栏
  * 点击图谱节点后在右侧展示节点基本信息和关联边。
  */
-import type { EdgeItem, NodeItem } from '../api/types'
+import { useEffect, useState, type CSSProperties } from 'react'
+import { api } from '../api/client'
+import type { EdgeItem, NodeItem, PromptTemplate } from '../api/types'
+import AiTriggerButton from './AiTriggerButton'
 
 interface Props {
   node: NodeItem
   allNodes: NodeItem[]
   edges: EdgeItem[]
   onClose: () => void
+  onAiDone?: (nodeId: string) => void | Promise<void>
 }
 
 const STATE_LABEL: Record<string, string> = {
@@ -16,15 +20,37 @@ const STATE_LABEL: Record<string, string> = {
 }
 
 const KIND_LABEL: Record<string, string> = {
-  relates: '关联', derives: '派生', opposes: '对立', refines: '细化', groups: '分组', custom: '自定义',
+  relates: '关联', derives: '派生', opposes: '对立', refines: '细化', groups: '分组', summarizes: '摘要', custom: '自定义',
 }
 
-export default function NodeDetailPanel({ node, allNodes, edges, onClose }: Props) {
+export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDone }: Props) {
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
+  const [promptTemplateId, setPromptTemplateId] = useState('')
+  const [promptLoadError, setPromptLoadError] = useState('')
+  const [aiMessage, setAiMessage] = useState('')
   const nodeMap = new Map(allNodes.map(n => [n.id, n]))
 
   const relatedEdges = edges.filter(
     e => e.src_node_id === node.id || e.dst_node_id === node.id
   )
+
+  useEffect(() => {
+    let cancelled = false
+    setPromptLoadError('')
+    api.listPromptTemplates()
+      .then(res => {
+        if (!cancelled) setPromptTemplates(res.items ?? [])
+      })
+      .catch(e => {
+        if (!cancelled) setPromptLoadError(String((e as Error)?.message || e))
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    setPromptTemplateId('')
+    setAiMessage('')
+  }, [node.id])
 
   return (
     <div style={{
@@ -95,6 +121,43 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose }: Prop
           </code>
         </div>
 
+        {/* AI Workflow */}
+        <div style={{ marginBottom: 18, padding: 10, border: '1px solid #1e3a5a', borderRadius: 8, background: '#0d1b2a' }}>
+          <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Workflow</div>
+          <div style={{ color: '#8fb7dc', fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>
+            选择 Prompt 模板后触发 AI 填充；不选模板时，将直接以当前节点内容作为 Prompt。
+          </div>
+          <select
+            value={promptTemplateId}
+            onChange={event => setPromptTemplateId(event.target.value)}
+            style={aiSelectStyle}
+            aria-label="选择 Prompt 模板"
+          >
+            <option value="">不使用模板</option>
+            {promptTemplates.map(tpl => (
+              <option key={tpl.id} value={tpl.id}>
+                {tpl.scope === 'org' ? '组织 · ' : '私有 · '}{tpl.name}
+              </option>
+            ))}
+          </select>
+          {promptLoadError && (
+            <div style={{ color: '#f9e2af', fontSize: 11, margin: '6px 0' }}>模板列表加载失败：{promptLoadError}</div>
+          )}
+          <div style={{ marginTop: 8 }}>
+            <AiTriggerButton
+              lakeId={node.lake_id}
+              nodeId={node.id}
+              promptTemplateId={promptTemplateId || undefined}
+              onDone={job => {
+                setAiMessage(`AI 已完成：${job.job_id.slice(0, 8)}…`)
+                void onAiDone?.(node.id)
+              }}
+              onFail={job => setAiMessage(`AI 失败：${job.error || job.status}`)}
+            />
+          </div>
+          {aiMessage && <div style={{ color: '#94e2d5', fontSize: 11, marginTop: 8 }}>{aiMessage}</div>}
+        </div>
+
         {/* 创建时间 */}
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>创建时间</div>
@@ -144,4 +207,14 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose }: Prop
       </div>
     </div>
   )
+}
+
+const aiSelectStyle: CSSProperties = {
+  width: '100%',
+  background: '#111827',
+  border: '1px solid #2d5278',
+  borderRadius: 6,
+  color: '#c8d8e8',
+  padding: '7px 8px',
+  fontSize: 12,
 }

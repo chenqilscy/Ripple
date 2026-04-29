@@ -28,6 +28,17 @@ type AiJobWorker struct {
 	pollGap   time.Duration
 }
 
+const maxAIJobOutputRunes = 10000
+
+const (
+	aiJobErrNodeUnavailable           = "ai job node unavailable"
+	aiJobErrPromptTemplateUnavailable = "prompt template unavailable"
+	aiJobErrInputsUnavailable         = "ai job inputs unavailable"
+	aiJobErrGenerationUnavailable     = "ai generation unavailable"
+	aiJobErrGenerationFailed          = "ai generation failed"
+	aiJobErrSaveFailed                = "failed to save ai result"
+)
+
 // NewAiJobWorker 装配。workers <= 0 时默认 3。
 func NewAiJobWorker(
 	jobs store.AiJobRepository,
@@ -114,23 +125,33 @@ func (w *AiJobWorker) process(ctx context.Context, job *domain.AiJob, idx int) {
 	node, err := w.nodes.GetByID(ctx, job.NodeID)
 	if err != nil {
 		log.Error().Err(err).Msg("ai job get node failed")
-		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, err.Error())
+		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, aiJobErrNodeUnavailable)
+		return
+	}
+	if node == nil || node.LakeID != job.LakeID {
+		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, aiJobErrNodeUnavailable)
 		return
 	}
 
 	// 3. 获取 Prompt 模板
 	var promptStr string
 	if job.PromptTemplateID != "" {
+		if w.templates == nil {
+			_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, aiJobErrPromptTemplateUnavailable)
+			return
+		}
 		tmpl, err := w.templates.GetByID(ctx, job.PromptTemplateID)
 		if err != nil {
 			log.Error().Err(err).Msg("ai job get template failed")
-			_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, err.Error())
+			_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, aiJobErrPromptTemplateUnavailable)
 			return
 		}
 		// 4. 构建模板变量
 		vars, vErr := w.buildVars(ctx, job, node)
 		if vErr != nil {
-			log.Warn().Err(vErr).Msg("ai job build vars partial failure (non-fatal)")
+			log.Error().Err(vErr).Msg("ai job build vars failed")
+			_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, aiJobErrInputsUnavailable)
+			return
 		}
 		// 合并 override_vars（用户临时覆盖）
 		for k, v := range job.OverrideVars {
@@ -150,6 +171,10 @@ func (w *AiJobWorker) process(ctx context.Context, job *domain.AiJob, idx int) {
 	llmCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
+	if w.router == nil {
+		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, aiJobErrGenerationUnavailable)
+		return
+	}
 	cands, err := w.router.Generate(llmCtx, llm.GenerateRequest{
 		Prompt:   promptStr,
 		N:        1,
@@ -158,20 +183,28 @@ func (w *AiJobWorker) process(ctx context.Context, job *domain.AiJob, idx int) {
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("ai job llm call failed")
-		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, err.Error())
+		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, aiJobErrGenerationFailed)
 		return
 	}
-	if len(cands) == 0 || cands[0].Text == "" {
+	if len(cands) == 0 {
 		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, "llm returned empty response")
 		return
 	}
+	output := strings.TrimSpace(cands[0].Text)
+	if output == "" {
+		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, "llm returned empty response")
+		return
+	}
+	if runes := []rune(output); len(runes) > maxAIJobOutputRunes {
+		output = string(runes[:maxAIJobOutputRunes])
+	}
 
 	// 6. 回写节点内容
-	node.Content = cands[0].Text
+	node.Content = output
 	node.UpdatedAt = time.Now().UTC()
 	if err := w.nodes.UpdateContent(ctx, node); err != nil {
 		log.Error().Err(err).Msg("ai job node update failed")
-		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, err.Error())
+		_ = w.jobs.UpdateStatus(ctx, job.ID, domain.AiJobFailed, 0, aiJobErrSaveFailed)
 		return
 	}
 
@@ -202,9 +235,14 @@ func (w *AiJobWorker) buildVars(ctx context.Context, job *domain.AiJob, node *do
 	if len(job.InputNodeIDs) > 0 {
 		var parts []string
 		for _, nid := range job.InputNodeIDs {
-			if n, err := w.nodes.GetByID(ctx, nid); err == nil {
-				parts = append(parts, StripHTML(n.Content))
+			n, err := w.nodes.GetByID(ctx, nid)
+			if err != nil {
+				return vars, errors.New("selected node not found or access denied")
 			}
+			if n == nil || n.LakeID != job.LakeID {
+				return vars, errors.New("selected node does not belong to this lake")
+			}
+			parts = append(parts, StripHTML(n.Content))
 		}
 		vars["selected_nodes"] = strings.Join(parts, "\n---\n")
 	}

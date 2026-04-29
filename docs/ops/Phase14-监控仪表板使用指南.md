@@ -1,7 +1,8 @@
 # Ripple 监控仪表板使用指南
 
-> 适用：Phase 14 灰度上线 7 天观察期及后续运营  
+> 适用：Phase 14 灰度上线 7 天观察期、Phase 15 运营巡检与值班处置
 > 依赖：`docker-compose.monitoring.yml` + `monitoring/` 目录
+> 当前状态：staging 已接入 Prometheus + Grafana；日志入口仍以 `docker logs` 为准，尚未落地 Loki / Alertmanager
 
 ---
 
@@ -36,11 +37,52 @@ docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml up
 
 ---
 
+## 值班入口（5 分钟首诊）
+
+收到告警或体验方反馈后，先不要直接重启。先用下面 5 个入口判断是「服务挂了」还是「功能退化」：
+
+| 检查项 | 命令 / 地址 | 期望结果 |
+|------|-------------|---------|
+| backend 健康 | `curl -fsS http://fn.cky:18000/healthz` | 返回 `{"status":"ok"}` |
+| yjs-bridge 健康 | `curl -fsS http://fn.cky:17790/healthz` | 返回 `ok` |
+| backend metrics | `curl -fsS http://fn.cky:18000/metrics | head` | 返回 Prometheus 文本 |
+| Prometheus 健康 | `curl -fsS http://fn.cky:19090/-/healthy` | 返回 `Prometheus is Healthy.` |
+| 容器状态 | `docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml ps` | backend / yjs / prometheus / grafana 均为 `Up` |
+
+建议首诊顺序：`healthz -> Grafana 面板 -> docker logs -> 再决定是否重启`。
+
+---
+
 ## 仅停止监控
 
 ```bash
 docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml stop prometheus grafana
 ```
+
+---
+
+## 日志入口（当前生产做法）
+
+设计文档里的目标态是 OTel + Loki + Alertmanager，但当前 staging 值班仍以 Docker 容器日志和 Prometheus 面板为准。
+
+```bash
+# backend 最近 10 分钟日志
+docker logs --since 10m ripple-staging-backend | tail -n 200
+
+# yjs-bridge 最近 10 分钟日志
+docker logs --since 10m ripple-staging-yjs-bridge | tail -n 200
+
+# Prometheus / Grafana 自身日志
+docker logs --since 10m ripple-monitoring-prometheus | tail -n 100
+docker logs --since 10m ripple-monitoring-grafana | tail -n 100
+
+# PostgreSQL / Redis / Neo4j 健康排查
+docker logs --since 10m ripple-staging-postgres | tail -n 120
+docker logs --since 10m ripple-staging-redis | tail -n 120
+docker logs --since 10m ripple-staging-neo4j | tail -n 120
+```
+
+优先 grep 的关键词：`error|panic|timeout|context deadline|quota|llm|redis|websocket|origin`。
 
 ---
 
@@ -59,6 +101,23 @@ docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml st
 
 ---
 
+## 日常巡检清单
+
+| 频率 | 巡检项 | 通过标准 | 失败后的第一动作 |
+|------|--------|----------|------------------|
+| 每日开工前 | `/healthz` + `/metrics` | backend / yjs 可访问，metrics 正常输出 | 查容器状态与近 10 分钟日志 |
+| 每日 1 次 | Grafana `Ripple Overview` 8 个面板 | 无明显断线、无异常尖峰 | 对照告警阈值做手动复核 |
+| 每次上线后 | `phase13-smoke.ps1` | 功能链路全绿 | 回滚或继续看日志定位 |
+| 每周 1 次 | `grafana` / `prometheus` volume 与磁盘 | 无磁盘爆满、Prometheus 仍保留 15 天数据 | 清理旧 volume 或扩容 |
+
+如果是发布窗口，额外确认：
+
+1. `docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml ps` 没有 `Restarting` 容器。
+2. Grafana 面板时间窗切到 `Last 30 minutes`，确认发布后没有新的 p95 突刺。
+3. `scripts/smoke/phase13-smoke.ps1 -Base http://fn.cky:18000` 至少跑一轮。
+
+---
+
 ## 灰度期间建议观察项
 
 7 天观察期内，每天检查：
@@ -72,25 +131,116 @@ docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml st
 
 ## 告警规则（Phase 15 引入，当前手动巡检）
 
-| 条件 | 建议阈值 | 行动 |
-|------|---------|------|
-| p95 延迟 | > 1000ms 持续 5min | 检查 DB 慢查询 + pprof |
-| DB acquired/total | > 0.9 | 临时扩 maxConns，重启 backend |
-| LLM 调用速率 | > 10 req/s | 检查是否有爬虫或滥用 |
-| backend /healthz 不通 | 任何时刻 | 立即重启容器 + 查日志 |
+| 信号 | 建议阈值 | 严重度 | 第一动作 | 后续动作 |
+|------|---------|--------|----------|----------|
+| backend `/healthz` 不通 | 任何时刻 | P0 | 查 `ripple-staging-backend` 日志 | 必要时重启 backend 并补跑 smoke |
+| HTTP p95 延迟 | > 1000ms 持续 5min | P1 | 对照 DB 连接池趋势 | 查慢查询、抓 pprof |
+| DB acquired/total | > 0.9 持续 3min | P1 | 查 backend 日志是否有 acquire timeout | 先重启 backend，再考虑调大池子 |
+| LLM 调用速率 | > 10 req/s 持续 5min | P1 | 检查 provider 分布是否异常集中 | 查 `llm_calls` / 组织维度用量 |
+| AI 任务积压 | `pending > 50` 持续 10min | P1 | 查 `ai_jobs` 状态与 backend 日志 | 必要时重启 backend 触发 RecoverProcessing |
+| WebSocket 403 / 502 | 5min 内持续出现 | P1 | 先确认是当前日志，不是浏览器历史噪声 | 查 yjs-bridge origin 配置与 backend 可达性 |
+| Prometheus / Grafana 不可用 | 任何时刻 | P2 | 查 monitoring 容器日志 | 单独重启 prometheus / grafana |
 
 ---
 
 ## pprof 诊断
 
 ```bash
-# 开启 pprof（设置 RIPPLE_PPROF_ADDR=:6060）
-docker exec ripple-staging-backend sh -c "kill -USR1 1"  # 不支持热开关；需 .env 预设
+# 需先在 staging 环境配置 RIPPLE_PPROF_ADDR=:6060，然后重启 backend
+docker compose -f docker-compose.staging.yml up -d backend
 
 # 若已开启：
-curl http://fn.cky:6060/debug/pprof/ 
+curl http://fn.cky:6060/debug/pprof/
 go tool pprof -top http://fn.cky:6060/debug/pprof/profile?seconds=30
 ```
+
+---
+
+## 常见故障 SOP
+
+### 1. backend 5xx 飙升或 `/healthz` 失败
+
+```bash
+docker compose -f docker-compose.staging.yml ps backend
+docker logs --since 10m ripple-staging-backend | tail -n 200
+curl -fsS http://fn.cky:18000/healthz
+```
+
+判断：
+
+1. 若容器已退出或反复重启，先执行：
+  `docker compose -f docker-compose.staging.yml up -d backend`
+2. 若容器存活但接口超时，转到下一个 SOP 看 DB / Redis / Neo4j 依赖。
+3. 恢复后必须补跑：
+  `powershell -ExecutionPolicy Bypass -File scripts/smoke/phase13-smoke.ps1 -Base http://fn.cky:18000`
+
+### 2. DB 连接池打满或接口明显变慢
+
+```bash
+docker logs --since 10m ripple-staging-backend | grep -Ei 'timeout|acquire|sql|context deadline'
+docker exec -i ripple-staging-postgres psql -U ripple -d ripple -c "SELECT pid, state, wait_event_type, NOW()-query_start AS age, LEFT(query, 120) AS query FROM pg_stat_activity WHERE datname='ripple' ORDER BY query_start ASC LIMIT 10;"
+```
+
+行动：
+
+1. 先确认是不是短时流量尖峰，不要第一时间重启 Postgres。
+2. 如果 backend 长时间占满连接，优先重启 backend 释放泄漏连接。
+3. 若 `pg_stat_activity` 显示单条慢 SQL 持续堆积，再进入 SQL 定位与索引修复。
+
+### 3. AI 任务积压、失败率升高或组织 AI 账单异常
+
+```sql
+SELECT COUNT(*) FROM ai_jobs WHERE status = 'pending';
+
+SELECT id, node_id, started_at FROM ai_jobs
+WHERE status = 'processing' AND started_at < NOW() - INTERVAL '5 minutes';
+
+SELECT provider, COUNT(*) AS calls, ROUND(SUM(estimated_cost_cny)::numeric, 2) AS cost
+FROM llm_calls
+WHERE created_at > NOW() - INTERVAL '24 hours'
+GROUP BY provider
+ORDER BY calls DESC;
+```
+
+```bash
+docker logs --since 15m ripple-staging-backend | grep -Ei 'ai job|llm|provider|quota|retry'
+```
+
+行动：
+
+1. 若 `processing` 任务卡住，重启 backend 触发 `RecoverProcessing`。
+2. 若单一 provider 突然飙高，先核对该 provider 是否有降级或重试风暴。
+3. 若是单组织异常高用量，再调用 `GET /api/v1/organizations/{id}/llm_usage?days=7` 做人工复核。
+
+### 4. WebSocket 403 / 502 或协作链路噪声
+
+```bash
+curl -fsS http://fn.cky:17790/healthz
+docker logs --since 10m ripple-staging-yjs-bridge | tail -n 200
+docker logs --since 10m ripple-staging-backend | grep -Ei 'websocket|origin|upgrade|403|502'
+```
+
+行动：
+
+1. 先确认日志时间戳，避免把浏览器控制台里的历史错误当成当前事故。
+2. 403 优先检查 `CORS_ORIGINS` 与 `YJS_BRIDGE_ALLOWED_ORIGINS` 是否包含当前 staging host。
+3. 502 优先检查 backend 是否健康，再看 yjs-bridge 是否能访问 `http://backend:8000`。
+4. 修复后补跑一次 smoke，确认 ws probe 已恢复。
+
+### 5. Grafana / Prometheus 打不开
+
+```bash
+docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml ps prometheus grafana
+docker logs --since 10m ripple-monitoring-prometheus | tail -n 100
+docker logs --since 10m ripple-monitoring-grafana | tail -n 100
+docker compose -f docker-compose.staging.yml -f docker-compose.monitoring.yml up -d prometheus grafana
+```
+
+行动：
+
+1. 仅重启 `prometheus grafana`，不要影响 backend / frontend。
+2. 若 Grafana 恢复但历史图空白，检查 `grafana_data` / `prometheus_data` volume 是否被误删。
+3. 若只是 dashboard 丢失，核对 `monitoring/grafana/provisioning/` 是否仍正确挂载。
 
 ---
 
@@ -99,7 +249,8 @@ go tool pprof -top http://fn.cky:6060/debug/pprof/profile?seconds=30
 - `monitoring/` 目录及 compose 文件已提交 git，**不含任何密码**（密码走 `GRAFANA_PASSWORD` 环境变量）。
 - Grafana 数据（图表历史）存于 `grafana_data` volume，重启不丢失；彻底清理：`docker volume rm ripple_grafana_data`。
 - Prometheus 数据保留 15 天（`--storage.tsdb.retention.time=15d`）。
-- 若 staging 网络名不是 `ripple-net`，编辑 `docker-compose.monitoring.yml` 的 `networks.ripple-net.name` 字段。
+- 若 staging 网络名不是 `ripple_default`，编辑 `docker-compose.monitoring.yml` 的 `networks.ripple_default.name` 字段。
+- 本仓库当前准入不依赖 GitHub Actions；值班验收以本地命令和 staging smoke 为准。
 
 ---
 

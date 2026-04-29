@@ -11,6 +11,7 @@ const APIKeyManager = React.lazy(() => import('../components/APIKeyManager'))
 const AuditLogViewer = React.lazy(() => import('../components/AuditLogViewer'))
 const GraylistManager = React.lazy(() => import('../components/GraylistManager'))
 const PlatformAdminManager = React.lazy(() => import('../components/PlatformAdminManager'))
+const PromptTemplateManager = React.lazy(() => import('../components/PromptTemplateManager'))
 const LakeMemberManager = React.lazy(() => import('../components/LakeMemberManager'))
 const SearchModal = React.lazy(() => import('../components/SearchModal'))
 const ImportModal = React.lazy(() => import('../components/ImportModal'))
@@ -30,13 +31,14 @@ import CollabDemo from '../components/CollabDemo'
 import OfflineBar from '../components/OfflineBar'
 import NotificationBell from '../components/NotificationBell'
 
-type SettingsTabKey = 'overview' | 'rbac' | 'apiKeys' | 'graylist' | 'audit'
+type SettingsTabKey = 'overview' | 'rbac' | 'apiKeys' | 'graylist' | 'templates' | 'audit'
 
 const settingsTabs: { key: SettingsTabKey; label: string }[] = [
   { key: 'overview', label: '总览' },
   { key: 'rbac', label: '平台管理员' },
   { key: 'apiKeys', label: 'API Key' },
   { key: 'graylist', label: '灰度名单' },
+  { key: 'templates', label: 'Prompt 模板' },
   { key: 'audit', label: '审计日志' },
 ]
 import { LakeWS } from '../api/wsClient'
@@ -883,6 +885,7 @@ export function Home({ onLogout }: Props) {
               {settingsTab === 'rbac' && <PlatformAdminManager />}
               {settingsTab === 'apiKeys' && <APIKeyManager />}
               {settingsTab === 'graylist' && <GraylistManager />}
+              {settingsTab === 'templates' && <PromptTemplateManager />}
               {settingsTab === 'audit' && <AuditLogViewer />}
             </div>
           </React.Suspense>
@@ -1161,14 +1164,14 @@ export function Home({ onLogout }: Props) {
                       <div style={{ textAlign: 'center', marginTop: 8 }}>
                         <button
                           onClick={() => setSummarizeOpen(true)}
-                          title="点击生成 AI 摘要节点（Ctrl/Cmd+点击节点可多选）"
+                          title="点击生成 AI 摘要节点与 summarizes 关联（Ctrl/Cmd+点击节点可多选）"
                           style={{
                             background: '#1e4d9e', border: '1px solid #4a8eff', color: '#9ec5ee',
                             borderRadius: 6, padding: '6px 18px', fontSize: 13,
                             cursor: 'pointer',
                           }}
                         >
-                          ✦ 摘要所选节点 ({multiSelectedNodeIds.size})
+                          ✦ AI 整理所选节点 ({multiSelectedNodeIds.size})
                         </button>
                         <span style={{ marginLeft: 8, color: '#4a6a8e', fontSize: 11 }}>
                           Ctrl/Cmd+点击继续添加
@@ -1691,6 +1694,13 @@ export function Home({ onLogout }: Props) {
             allNodes={nodes}
             edges={edges}
             onClose={() => setSelectedNode(null)}
+            onAiDone={async nodeId => {
+              if (!active) return
+              const refreshed = (await api.listNodes(active.id)).nodes
+              setNodes(refreshed)
+              const nextSelected = refreshed.find(n => n.id === nodeId)
+              if (nextSelected) setSelectedNode(nextSelected)
+            }}
           />
         </React.Suspense>
       )}

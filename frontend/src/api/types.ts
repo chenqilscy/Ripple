@@ -73,7 +73,7 @@ export interface Notification {
 }
 
 // ---- Edges ----
-export type EdgeKind = 'relates' | 'derives' | 'opposes' | 'refines' | 'groups' | 'custom'
+export type EdgeKind = 'relates' | 'derives' | 'opposes' | 'refines' | 'groups' | 'summarizes' | 'custom'
 
 export interface EdgeItem {
   id: string
@@ -85,6 +85,34 @@ export interface EdgeItem {
   owner_id: string
   created_at: string
   deleted_at?: string | null
+}
+
+export interface SummarizeGraphSource {
+  id: string
+  content_snippet: string
+  content_length: number
+}
+
+export interface SummarizeGraphEdge {
+  source_id: string
+  target_id: string
+  kind: EdgeKind
+}
+
+export interface SummarizeGraphEdgeFailure {
+  source_id: string
+  target_id: string
+  reason: string
+}
+
+export interface SummarizeGraphResult {
+  summary_node: { id: string; content: string }
+  sources: SummarizeGraphSource[]
+  edges: SummarizeGraphEdge[]
+  edge_failures: SummarizeGraphEdgeFailure[]
+  source_count: number
+  edge_kind: EdgeKind
+  complete: boolean
 }
 
 // ---- Invites ----
@@ -349,8 +377,10 @@ export type PromptScope = 'private' | 'org'
 export interface PromptTemplate {
   id: string
   name: string
+  description: string
   template: string
   scope: PromptScope
+  org_id?: string
   created_by: string
   created_at: string
   updated_at: string
@@ -372,7 +402,7 @@ export interface SubscriptionPlan {
   name: string
   description: string
   price_cny_monthly: number
-  price_cny_yearly: number
+  price_cny_yearly?: number
   quotas: PlanQuotas
 }
 
@@ -421,10 +451,12 @@ export interface OrgLLMUsage {
 export type AiJobStatus = 'pending' | 'processing' | 'done' | 'failed'
 
 export interface AiJob {
+  ai_job_id?: string
   job_id: string
   node_id: string
   status: AiJobStatus
   progress_pct: number
+  estimated_seconds?: number
   error?: string
   started_at?: string | null
   finished_at?: string | null

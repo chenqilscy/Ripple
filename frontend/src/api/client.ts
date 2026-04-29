@@ -5,7 +5,7 @@
 import type {
   APIKeyCreated, APIKeyItem, AuditLogItem,
   ApiError, AuthTokens, CloudTask, EdgeItem, EdgeKind, InviteItem, InvitePreview,
-  Lake, NodeItem, NodeRevision, NodeType, PermaNode, Space, SpaceMember, User,
+  Lake, NodeItem, NodeRevision, NodeType, PermaNode, Space, SpaceMember, SummarizeGraphResult, User,
 } from './types'
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
@@ -13,6 +13,12 @@ const TOKEN_KEY = 'ripple.token'
 
 let onUnauthorizedCb: (() => void) | null = null
 export function onUnauthorized(cb: () => void) { onUnauthorizedCb = cb }
+
+const PLAN_DESCRIPTIONS: Record<string, string> = {
+  free: '适合个人试用与轻量协作。',
+  pro: '适合稳定使用 AI Workflow 的个人团队。',
+  team: '适合多人协作、配额更高的正式团队。',
+}
 
 export function getToken(): string | null { return localStorage.getItem(TOKEN_KEY) }
 export function setToken(tok: string | null) {
@@ -43,6 +49,51 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw err
   }
   return data as T
+}
+
+function normalizeBillingCycle(cycle: string | undefined): import('./types').BillingCycle {
+  return cycle === 'annual' ? 'yearly' : 'monthly'
+}
+
+function normalizePlan(plan: {
+  id: string
+  name?: string
+  name_zh?: string
+  price_cny_monthly: number
+  price_cny_yearly?: number
+  quotas: import('./types').PlanQuotas
+}): import('./types').SubscriptionPlan {
+  return {
+    id: plan.id,
+    name: plan.name ?? plan.name_zh ?? plan.id,
+    description: PLAN_DESCRIPTIONS[plan.id] ?? '',
+    price_cny_monthly: plan.price_cny_monthly,
+    price_cny_yearly: plan.price_cny_yearly,
+    quotas: plan.quotas,
+  }
+}
+
+function normalizeSubscription(subscription: {
+  id: string
+  org_id: string
+  plan_id: string
+  status: import('./types').SubscriptionStatus
+  billing_cycle?: string
+  started_at?: string
+  expires_at?: string | null
+  created_at: string
+} | null): import('./types').OrgSubscription | null {
+  if (!subscription) return null
+  return {
+    id: subscription.id,
+    org_id: subscription.org_id,
+    plan_id: subscription.plan_id,
+    status: subscription.status,
+    billing_cycle: normalizeBillingCycle(subscription.billing_cycle),
+    current_period_start: subscription.started_at ?? subscription.created_at,
+    current_period_end: subscription.expires_at ?? subscription.started_at ?? subscription.created_at,
+    created_at: subscription.created_at,
+  }
 }
 
 export const api = {
@@ -512,13 +563,25 @@ export const api = {
   listPromptTemplates(): Promise<{ items: import('./types').PromptTemplate[]; total: number }> {
     return request('GET', '/api/v1/prompt_templates')
   },
-  createPromptTemplate(name: string, template: string, scope: import('./types').PromptScope = 'private'): Promise<import('./types').PromptTemplate> {
-    return request('POST', '/api/v1/prompt_templates', { name, template, scope })
+  createPromptTemplate(input: {
+    name: string
+    description?: string
+    template: string
+    scope?: import('./types').PromptScope
+    org_id?: string
+  }): Promise<import('./types').PromptTemplate> {
+    return request('POST', '/api/v1/prompt_templates', {
+      name: input.name,
+      description: input.description ?? '',
+      template: input.template,
+      scope: input.scope ?? 'private',
+      org_id: input.org_id ?? '',
+    })
   },
   getPromptTemplate(id: string): Promise<import('./types').PromptTemplate> {
     return request('GET', `/api/v1/prompt_templates/${id}`)
   },
-  updatePromptTemplate(id: string, patch: { name?: string; template?: string; scope?: import('./types').PromptScope }): Promise<import('./types').PromptTemplate> {
+  updatePromptTemplate(id: string, patch: { name?: string; description?: string; template?: string }): Promise<import('./types').PromptTemplate> {
     return request('PATCH', `/api/v1/prompt_templates/${id}`, patch)
   },
   deletePromptTemplate(id: string): Promise<void> {
@@ -527,13 +590,44 @@ export const api = {
 
   // ---- Phase 15-B：订阅套餐 ----
   listSubscriptionPlans(): Promise<{ plans: import('./types').SubscriptionPlan[] }> {
-    return request('GET', '/api/v1/subscriptions/plans')
+    return request<{ plans: Array<{
+      id: string
+      name?: string
+      name_zh?: string
+      price_cny_monthly: number
+      price_cny_yearly?: number
+      quotas: import('./types').PlanQuotas
+    }> }>('GET', '/api/v1/subscriptions/plans')
+      .then(res => ({ plans: (res.plans ?? []).map(normalizePlan) }))
   },
-  getOrgSubscription(orgId: string): Promise<{ subscription: import('./types').OrgSubscription }> {
-    return request('GET', `/api/v1/organizations/${orgId}/subscription`)
+  getOrgSubscription(orgId: string): Promise<{ subscription: import('./types').OrgSubscription | null }> {
+    return request<{ subscription: {
+      id: string
+      org_id: string
+      plan_id: string
+      status: import('./types').SubscriptionStatus
+      billing_cycle?: string
+      started_at?: string
+      expires_at?: string | null
+      created_at: string
+    } | null }>('GET', `/api/v1/organizations/${orgId}/subscription`)
+      .then(res => ({ subscription: normalizeSubscription(res.subscription) }))
   },
-  createOrgSubscription(orgId: string, plan_id: string, billing_cycle: import('./types').BillingCycle, stub_confirm = false): Promise<{ subscription: import('./types').OrgSubscription }> {
-    return request('POST', `/api/v1/organizations/${orgId}/subscription`, { plan_id, billing_cycle, stub_confirm })
+  createOrgSubscription(orgId: string, plan_id: string, billing_cycle: import('./types').BillingCycle, stub_confirm = false): Promise<{ subscription: import('./types').OrgSubscription | null }> {
+    return request<{ subscription: {
+      id: string
+      org_id: string
+      plan_id: string
+      status: import('./types').SubscriptionStatus
+      billing_cycle?: string
+      started_at?: string
+      expires_at?: string | null
+      created_at: string
+    } | null }>('POST', `/api/v1/organizations/${orgId}/subscription`, {
+      plan_id,
+      billing_cycle: billing_cycle === 'yearly' ? 'annual' : 'monthly',
+      stub_confirm,
+    }).then(res => ({ subscription: normalizeSubscription(res.subscription) }))
   },
   // Phase 16: 真实用量
   getOrgUsage(orgId: string): Promise<{ usage: import('./types').OrgUsage }> {
@@ -545,11 +639,16 @@ export const api = {
   },
 
   // ---- Phase 15-C：AI Job 触发 ----
-  aiTrigger(lakeId: string, nodeId: string, opts?: { prompt_template_id?: string; input_node_ids?: string[] }): Promise<import('./types').AiJob> {
+  aiTrigger(lakeId: string, nodeId: string, opts?: { prompt_template_id?: string; input_node_ids?: string[]; override_vars?: Record<string, string> }): Promise<import('./types').AiJob> {
     return request('POST', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_trigger`, opts ?? {})
   },
   aiStatus(lakeId: string, nodeId: string): Promise<import('./types').AiJob> {
     return request('GET', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_status`)
+  },
+
+  // ---- Phase 15-C.3：多节点 AI 整理 ----
+  summarizeGraph(lakeId: string, nodeIds: string[], titleHint = ''): Promise<SummarizeGraphResult> {
+    return request('POST', `/api/v1/lakes/${lakeId}/nodes/summarize`, { node_ids: nodeIds, title_hint: titleHint })
   },
 
   // ---- P20-A：自由文本一键转图谱 ----

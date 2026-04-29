@@ -46,6 +46,7 @@
 | [Phase14.7-三签字流程](launch/Phase14.7-三签字流程.md) | PM / QA / 决策者三签字制 |
 | [Phase15-立项调研](launch/Phase15-立项调研.md) | Phase 15 候选主题调研与决策矩阵 |
 | [Phase13-联调与回滚手册](ops/Phase13-联调与回滚手册.md) | staging 拉起 / 回收 / 故障演练 |
+| [Phase14-监控仪表板使用指南](ops/Phase14-监控仪表板使用指南.md) | Prometheus / Grafana / 日志入口 / 告警阈值 / 故障 SOP |
 | [Phase13-rollback-acceptance-20260427](dev/Phase13-rollback-acceptance-20260427.md) | Phase 13 应用回滚、数据库 down/up 与 CI 验收记录 |
 | [Phase13-canonical-path-repair-20260428](dev/Phase13-canonical-path-repair-20260428.md) | 远端 `/home/admin/Ripple` 标准源码路径权限修复记录 |
 | [v0.13.0-release-notes](dev/v0.13.0-release-notes.md) | Phase 13 灰度准入版本发布说明 |
@@ -54,6 +55,7 @@
 | [Phase14-A-技术方案评审-20260427](dev/Phase14-A-技术方案评审-20260427.md) | Org 配额数据模型第一切片评审与验证记录 |
 | [Phase14-6-运营化回归与准入设计-20260428](dev/Phase14-6-运营化回归与准入设计-20260428.md) | Phase 14.6 运营化回归、WebSocket smoke 与准入 Gate 设计 |
 | [Phase13-故障演练验收记录模板](dev/Phase13-故障演练验收记录模板.md) | 演练结果记录模板 |
+| [Phase15-体验试用实操指南](dev/Phase15-体验试用实操指南.md) | Phase 15 AI Workflow staging 真实体验脚本 |
 
 ### Layer 2 · 系统设计 (`docs/system-design/`)
 

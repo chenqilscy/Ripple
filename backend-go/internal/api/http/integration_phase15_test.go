@@ -254,6 +254,135 @@ func TestIntegrationPhase15PromptTemplate(t *testing.T) {
 	}
 }
 
+func TestIntegrationPhase15PromptTemplateOrgVisibilityAndAITrigger(t *testing.T) {
+	f := setup15(t)
+
+	ownerTok := f.registerAndLogin(t, "tplowner")
+	ownerID := f.user.ID
+	memberTok := f.registerAndLogin(t, "tplmember")
+	memberID := f.user.ID
+	outsiderTok := f.registerAndLogin(t, "tploutsider")
+
+	f.tok = ownerTok
+	var org struct{ ID string `json:"id"` }
+	orgSuffix := uuid.NewString()[:6]
+	if code := f.do(t, "POST", "/api/v1/organizations", map[string]any{
+		"name": "tpl-org-" + orgSuffix,
+		"slug": "tplorg" + orgSuffix,
+	}, &org); code != http.StatusCreated {
+		t.Fatalf("create org: want 201, got %d", code)
+	}
+	if code := f.do(t, "POST", fmt.Sprintf("/api/v1/organizations/%s/members", org.ID), map[string]any{
+		"user_id": memberID,
+		"role":    "MEMBER",
+	}, nil); code != http.StatusNoContent {
+		t.Fatalf("add org member: want 204, got %d", code)
+	}
+
+	var shared struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/prompt_templates", map[string]any{
+		"name":     "shared-template",
+		"template": "Hello {{lake_name}}",
+		"scope":    "org",
+		"org_id":   org.ID,
+	}, &shared); code != http.StatusCreated {
+		t.Fatalf("create shared template: want 201, got %d", code)
+	}
+
+	f.tok = memberTok
+	var memberList struct {
+		Items []struct{ ID string `json:"id"` } `json:"items"`
+	}
+	if code := f.do(t, "GET", "/api/v1/prompt_templates", nil, &memberList); code != http.StatusOK {
+		t.Fatalf("member list templates: want 200, got %d", code)
+	}
+	foundShared := false
+	for _, item := range memberList.Items {
+		if item.ID == shared.ID {
+			foundShared = true
+			break
+		}
+	}
+	if !foundShared {
+		t.Fatalf("member list templates: expected shared template %s", shared.ID)
+	}
+	if code := f.do(t, "GET", "/api/v1/prompt_templates/"+shared.ID, nil, nil); code != http.StatusOK {
+		t.Fatalf("member get shared template: want 200, got %d", code)
+	}
+
+	f.tok = outsiderTok
+	var outsiderList struct {
+		Items []struct{ ID string `json:"id"` } `json:"items"`
+	}
+	if code := f.do(t, "GET", "/api/v1/prompt_templates", nil, &outsiderList); code != http.StatusOK {
+		t.Fatalf("outsider list templates: want 200, got %d", code)
+	}
+	for _, item := range outsiderList.Items {
+		if item.ID == shared.ID {
+			t.Fatalf("outsider should not see shared template %s", shared.ID)
+		}
+	}
+	if code := f.do(t, "GET", "/api/v1/prompt_templates/"+shared.ID, nil, nil); code != http.StatusForbidden {
+		t.Fatalf("outsider get shared template: want 403, got %d", code)
+	}
+
+	f.tok = memberTok
+	var memberLake struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+		"name":      "member-ai-lake-" + uuid.NewString()[:6],
+		"is_public": false,
+	}, &memberLake); code != http.StatusCreated {
+		t.Fatalf("member create lake: want 201, got %d", code)
+	}
+	for i := 0; i < 30; i++ {
+		var l struct{ ID string `json:"id"` }
+		if code := f.do(t, "GET", "/api/v1/lakes/"+memberLake.ID, nil, &l); code == http.StatusOK && l.ID == memberLake.ID {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	var memberNode struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/nodes", map[string]any{
+		"lake_id": memberLake.ID, "content": "member node", "type": "TEXT",
+	}, &memberNode); code != http.StatusCreated {
+		t.Fatalf("member create node: want 201, got %d", code)
+	}
+	memberTriggerPath := fmt.Sprintf("/api/v1/lakes/%s/nodes/%s/ai_trigger", memberLake.ID, memberNode.ID)
+	if code := f.do(t, "POST", memberTriggerPath, map[string]any{"prompt_template_id": shared.ID}, nil); code != http.StatusAccepted {
+		t.Fatalf("member ai trigger with shared template: want 202, got %d", code)
+	}
+
+	f.tok = outsiderTok
+	var outsiderLake struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/lakes", map[string]any{
+		"name":      "outsider-ai-lake-" + uuid.NewString()[:6],
+		"is_public": false,
+	}, &outsiderLake); code != http.StatusCreated {
+		t.Fatalf("outsider create lake: want 201, got %d", code)
+	}
+	for i := 0; i < 30; i++ {
+		var l struct{ ID string `json:"id"` }
+		if code := f.do(t, "GET", "/api/v1/lakes/"+outsiderLake.ID, nil, &l); code == http.StatusOK && l.ID == outsiderLake.ID {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	var outsiderNode struct{ ID string `json:"id"` }
+	if code := f.do(t, "POST", "/api/v1/nodes", map[string]any{
+		"lake_id": outsiderLake.ID, "content": "outsider node", "type": "TEXT",
+	}, &outsiderNode); code != http.StatusCreated {
+		t.Fatalf("outsider create node: want 201, got %d", code)
+	}
+	outsiderTriggerPath := fmt.Sprintf("/api/v1/lakes/%s/nodes/%s/ai_trigger", outsiderLake.ID, outsiderNode.ID)
+	if code := f.do(t, "POST", outsiderTriggerPath, map[string]any{"prompt_template_id": shared.ID}, nil); code != http.StatusForbidden {
+		t.Fatalf("outsider ai trigger with shared template: want 403, got %d", code)
+	}
+
+	if ownerID == "" {
+		t.Fatalf("owner id should not be empty")
+	}
+}
+
 // TestIntegrationPhase15AiTrigger 测试 AI Trigger 冲突检测。
 func TestIntegrationPhase15AiTrigger(t *testing.T) {
 	f := setup15(t)

@@ -76,7 +76,7 @@ type Deps struct {
 
 	// Phase 15-C: AI 节点填充任务
 	// AiJobs 非 nil 时挂载 /nodes/{id}/ai_trigger 及 /nodes/{id}/ai_status 端点。
-	AiJobs         store.AiJobRepository
+	AiJobs          store.AiJobRepository
 	PromptTemplates store.PromptTemplateRepository
 
 	// Phase 15-D: 订阅 & LLM 用量
@@ -433,13 +433,16 @@ func NewRouter(d Deps) http.Handler {
 			// Phase 15-C: AI 节点填充任务 + Prompt 模板库
 			if d.AiJobs != nil && d.PromptTemplates != nil {
 				aiTriggerH := &AiTriggerHandlers{
-					Jobs:        d.AiJobs,
-					Memberships: d.Memberships,
+					Jobs:            d.AiJobs,
+					Nodes:           d.Nodes,
+					Memberships:     d.Memberships,
+					PromptTemplates: d.PromptTemplates,
+					Orgs:            d.Orgs,
 				}
 				r.Post("/lakes/{lake_id}/nodes/{node_id}/ai_trigger", aiTriggerH.Trigger)
 				r.Get("/lakes/{lake_id}/nodes/{node_id}/ai_status", aiTriggerH.Status)
 
-				promptTplH := &PromptTemplateHandlers{Repo: d.PromptTemplates}
+				promptTplH := &PromptTemplateHandlers{Repo: d.PromptTemplates, Orgs: d.Orgs}
 				r.Post("/prompt_templates", promptTplH.Create)
 				r.Get("/prompt_templates", promptTplH.List)
 				r.Get("/prompt_templates/{id}", promptTplH.Get)

@@ -75,6 +75,7 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
     setLoadingPlans(true)
     setLoadingSub(true)
     try {
+      const loadErrors: string[] = []
       const [plansRes, subRes, usageRes, llmUsageRes] = await Promise.allSettled([
         api.listSubscriptionPlans(),
         api.getOrgSubscription(orgId),
@@ -84,18 +85,28 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
       if (plansRes.status === 'fulfilled') {
         setPlans(plansRes.value.plans)
       } else {
-        setError('加载套餐失败: ' + String((plansRes.reason as Error)?.message || plansRes.reason))
+        loadErrors.push('加载套餐失败: ' + String((plansRes.reason as Error)?.message || plansRes.reason))
+        setPlans([])
       }
       if (subRes.status === 'fulfilled') {
         setCurrent(subRes.value.subscription)
+      } else {
+        setCurrent(null)
+        loadErrors.push('加载当前订阅失败: ' + String((subRes.reason as Error)?.message || subRes.reason))
       }
       if (usageRes.status === 'fulfilled') {
         setUsage(usageRes.value.usage)
+      } else {
+        setUsage(null)
+        loadErrors.push('加载组织用量失败: ' + String((usageRes.reason as Error)?.message || usageRes.reason))
       }
       if (llmUsageRes.status === 'fulfilled') {
         setLlmUsage(llmUsageRes.value)
+      } else {
+        setLlmUsage(null)
+        loadErrors.push('加载 AI 用量失败: ' + String((llmUsageRes.reason as Error)?.message || llmUsageRes.reason))
       }
-      // 404 means no subscription yet — that's OK
+      setError(loadErrors.length > 0 ? loadErrors.join('；') : null)
     } finally {
       setLoadingPlans(false)
       setLoadingSub(false)
@@ -144,7 +155,6 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
               }}
             >
               {c === 'monthly' ? '月付' : '年付'}
-              {c === 'yearly' && <span style={{ color: '#52c41a', marginLeft: 4, fontSize: 11 }}>省20%</span>}
             </button>
           ))}
         </div>
@@ -276,11 +286,14 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
           {plans.map(plan => {
             const price = selectedCycle === 'monthly' ? plan.price_cny_monthly : plan.price_cny_yearly
+            const hasExactPrice = typeof price === 'number'
+            const isFreePlan = plan.price_cny_monthly === 0 && (!hasExactPrice || price === 0)
             const isCurrent = current?.plan_id === plan.id
             const isSubmitting = submitting === plan.id
 
             return (
               <div
+                data-testid={`plan-card-${plan.id}`}
                 key={plan.id}
                 style={{
                   background: '#1a1a2e',
@@ -305,9 +318,12 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
                 </div>
                 <div style={{ color: '#888', fontSize: 12, minHeight: 32 }}>{plan.description}</div>
                 <div style={{ color: '#fff', fontWeight: 600, fontSize: 20 }}>
-                  {price === 0 ? '免费' : `¥${price}`}
-                  {price > 0 && <span style={{ fontSize: 12, color: '#aaa', fontWeight: 400 }}>/{selectedCycle === 'monthly' ? '月' : '年'}</span>}
+                  {isFreePlan ? '免费' : hasExactPrice ? `¥${price}` : '价格待配置'}
+                  {hasExactPrice && !isFreePlan && <span style={{ fontSize: 12, color: '#aaa', fontWeight: 400 }}>/{selectedCycle === 'monthly' ? '月' : '年'}</span>}
                 </div>
+                {!hasExactPrice && selectedCycle === 'yearly' && !isFreePlan && (
+                  <div style={{ color: '#888', fontSize: 12 }}>年付金额以后端套餐配置为准</div>
+                )}
                 <div style={{ color: '#888', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <div>成员上限：{plan.quotas.max_members === -1 ? '不限' : plan.quotas.max_members}</div>
                   <div>湖上限：{plan.quotas.max_lakes === -1 ? '不限' : plan.quotas.max_lakes}</div>
@@ -316,6 +332,7 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
                 </div>
                 {isOwner && (
                   <button
+                    data-testid={`plan-select-${plan.id}`}
                     disabled={isSubmitting || (isCurrent && current?.billing_cycle === selectedCycle)}
                     onClick={() => handleSelect(plan)}
                     style={{

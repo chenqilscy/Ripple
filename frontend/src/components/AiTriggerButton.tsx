@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
-import type { AiJob, AiJobStatus } from '../api/types'
+import type { AiJob, AiJobStatus, ApiError } from '../api/types'
 
 interface Props {
   lakeId: string
@@ -52,7 +52,9 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
   const poll = useCallback(async (currentJob: AiJob) => {
     if (pollCount.current >= POLL_MAX) {
       stopPolling()
-      setJob(prev => prev ? { ...prev, status: 'failed', error: '轮询超时（60s）' } : prev)
+      const timeoutJob: AiJob = { ...currentJob, status: 'failed', progress_pct: 0, error: '轮询超时（60s）' }
+      setJob(timeoutJob)
+      onFail?.(timeoutJob)
       return
     }
     try {
@@ -81,6 +83,14 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
 
   useEffect(() => () => stopPolling(), [stopPolling])
 
+  useEffect(() => {
+    stopPolling()
+    setJob(null)
+    setError(null)
+    pollCount.current = 0
+    setPollCountDisplay(0)
+  }, [lakeId, nodeId, stopPolling])
+
   const handleTrigger = useCallback(async () => {
     if (triggering || (job && (job.status === 'pending' || job.status === 'processing'))) return
     setError(null)
@@ -102,6 +112,25 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
         onFail?.(newJob)
       }
     } catch (e) {
+      const err = e as ApiError
+      if (err.status === 409) {
+        try {
+          const existing = await api.aiStatus(lakeId, nodeId)
+          setJob(existing)
+          setError('该节点已有 AI 任务，已继续跟踪当前任务状态。')
+          if (existing.status !== 'done' && existing.status !== 'failed') {
+            pollTimer.current = setTimeout(() => poll(existing), POLL_INTERVAL_MS)
+          } else if (existing.status === 'done') {
+            onDone?.(existing)
+          } else {
+            onFail?.(existing)
+          }
+          return
+        } catch (statusErr) {
+          setError(String((statusErr as Error)?.message || statusErr))
+          return
+        }
+      }
       setError(String((e as Error)?.message || e))
     } finally {
       setTriggering(false)
