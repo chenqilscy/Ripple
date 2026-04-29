@@ -49,6 +49,9 @@
   --status-warning: #f5a623;
   --status-danger:  #f5222d;
   --status-info:    #4a8eff;
+  --status-success-subtle: rgba(82,196,26,0.1);
+  --status-warning-subtle: rgba(245,166,35,0.1);
+  --status-danger-subtle: rgba(245,34,45,0.1);
 
   /* 间距 */
   --space-xs:  4px;
@@ -63,6 +66,7 @@
   --radius-md:  6px;
   --radius-lg:  10px;
   --radius-xl:  12px;
+  --radius-full: 9999px;
 
   /* 阴影 */
   --shadow-card:   0 4px 24px rgba(0,0,0,0.5);

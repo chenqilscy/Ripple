@@ -347,7 +347,7 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
                       border: 'none',
                       cursor: isSubmitting || (isCurrent && current?.billing_cycle === selectedCycle) ? 'not-allowed' : 'pointer',
                       background: isCurrent && current?.billing_cycle === selectedCycle ? 'var(--bg-tertiary)' : planColorVal,
-                      color: '#fff',
+                      color: 'var(--text-inverse)',
                       fontWeight: 600,
                       fontSize: 'var(--font-md)',
                       opacity: isSubmitting ? 0.7 : 1,

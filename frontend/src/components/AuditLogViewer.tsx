@@ -2,7 +2,7 @@
  * P11-B：审计日志浏览器
  * 修复：scroll lock + CSS 变量 + table min-height
  */
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { api, type AuditLogItem } from '../api/client'
 
 interface Props {

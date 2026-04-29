@@ -164,11 +164,11 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
         <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
           <div style={{ flex: 1 }}>
             <Label>类型</Label>
-            <span style={badgeStyle}>{node.type}</span>
+            <span style={badgeStyle()}>{node.type}</span>
           </div>
           <div style={{ flex: 1 }}>
             <Label>状态</Label>
-            <span style={badgeStyle}>{STATE_LABEL[node.state] ?? node.state}</span>
+            <span style={badgeStyle()}>{STATE_LABEL[node.state] ?? node.state}</span>
           </div>
         </div>
 
@@ -197,7 +197,7 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
             value={promptTemplateId}
             onChange={event => setPromptTemplateId(event.target.value)}
             aria-label="选择 Prompt 模板"
-            style={selectStyle}
+            style={selectStyle()}
           >
             <option value="">不使用模板</option>
             {promptTemplates.map(tpl => (
