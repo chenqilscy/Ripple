@@ -248,9 +248,11 @@ func (w *AiJobWorker) buildVars(ctx context.Context, job *domain.AiJob, node *do
 	}
 
 	// {{neighbor_nodes}}：目标节点的一跳邻居内容（M3 §10.2 邻居上下文注入）。
-	// 失败时静默降级，不影响主流程。
+	// 失败时静默降级，不影响主流程，但记日志。
 	neighbors, nerr := w.nodes.ListNeighbors(ctx, node.ID, 5)
-	if nerr == nil && len(neighbors) > 0 {
+	if nerr != nil {
+		w.log.Warn().Err(nerr).Str("node_id", node.ID).Msg("failed to fetch neighbor nodes")
+	} else if len(neighbors) > 0 {
 		const maxNeighborRunes = 200
 		const maxTotalRunes = 4000
 		var parts []string

@@ -475,12 +475,21 @@ export function Home({ onLogout }: Props) {
       await api.updateNodeContent(node.id, next, reason, node.version)
       if (active) await loadNodes(active.id)
     } catch (e) {
-      const msg = (e as Error).message
-      if (msg.includes('content_conflict') || msg.includes('conflict')) {
-        setErr('内容冲突：已被他人修改，请刷新后重新编辑')
-      } else {
-        setErr(msg)
+      const err = e as Error
+      // 尝试解析后端 JSON 错误响应
+      let msg = err.message
+      try {
+        const json = JSON.parse(msg)
+        if (json.error?.includes('content_conflict')) {
+          msg = '内容冲突：已被他人修改，请刷新后重新编辑'
+        }
+      } catch {
+        // 非 JSON 或其他错误，使用原始消息
+        if (msg.includes('content_conflict') || msg.includes('conflict')) {
+          msg = '内容冲突：已被他人修改，请刷新后重新编辑'
+        }
       }
+      setErr(msg)
     }
   }
 

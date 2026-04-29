@@ -48,7 +48,8 @@ CREATE (n:Node {
   id: $id, lake_id: $lake_id, owner_id: $owner_id,
   content: $content, type: $type, state: $state,
   x: $x, y: $y, z: $z,
-  created_at: $created_at, updated_at: $updated_at
+  created_at: $created_at, updated_at: $updated_at,
+  version: 0
 })
 WITH n
 OPTIONAL MATCH (l:Lake {id: $lake_id})
