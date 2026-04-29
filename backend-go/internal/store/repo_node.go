@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -91,7 +92,8 @@ func (r *nodeRepoNeo) Create(ctx context.Context, n *domain.Node) error {
 const cypherGetNode = `
 MATCH (n:Node {id: $id})
 RETURN n.id, n.lake_id, n.owner_id, n.content, n.type, n.state,
-       n.x, n.y, n.z, n.created_at, n.updated_at, n.deleted_at, n.ttl_at
+       n.x, n.y, n.z, n.created_at, n.updated_at, n.deleted_at, n.ttl_at,
+       coalesce(n.version, 0)
 `
 
 func (r *nodeRepoNeo) GetByID(ctx context.Context, id string) (*domain.Node, error) {
@@ -118,7 +120,8 @@ const cypherListByLake = `
 MATCH (:Lake {id: $lake_id})-[:CONTAINS]->(n:Node)
 WHERE $include_vapor OR n.state <> 'VAPOR'
 RETURN n.id, n.lake_id, n.owner_id, n.content, n.type, n.state,
-       n.x, n.y, n.z, n.created_at, n.updated_at, n.deleted_at, n.ttl_at
+       n.x, n.y, n.z, n.created_at, n.updated_at, n.deleted_at, n.ttl_at,
+       coalesce(n.version, 0)
 ORDER BY n.created_at DESC
 `
 
@@ -281,30 +284,41 @@ func (r *nodeRepoNeo) UpdateState(ctx context.Context, n *domain.Node) error {
 
 const cypherUpdateNodeContent = `
 MATCH (n:Node {id: $id})
-SET n.content = $content, n.updated_at = $updated_at
-RETURN n.id
+WHERE $expected_version = -1 OR coalesce(n.version, 0) = $expected_version
+SET n.content = $content,
+    n.updated_at = $updated_at,
+    n.version = coalesce(n.version, 0) + 1
+RETURN n.id, coalesce(n.version, 0)
 `
 
 // UpdateContent 更新节点 content 与 updated_at。若节点不存在返回 ErrNotFound。
+// n.Version 为期望版本号，-1 表示强制覆盖（管理员/迁移场景）。
+// 若版本号不匹配返回 ErrConflict。
 func (r *nodeRepoNeo) UpdateContent(ctx context.Context, n *domain.Node) error {
 	sess := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: r.dbName})
 	defer func() { _ = sess.Close(ctx) }()
 
 	_, err := sess.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 		rec, err := tx.Run(ctx, cypherUpdateNodeContent, map[string]any{
-			"id":         n.ID,
-			"content":    n.Content,
-			"updated_at": n.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			"id":               n.ID,
+			"content":          n.Content,
+			"updated_at":       n.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			"expected_version": n.Version, // -1 = force
 		})
 		if err != nil {
 			return nil, err
 		}
 		if !rec.Next(ctx) {
-			return nil, domain.ErrNotFound
+			// Node not found OR version mismatch → distinguish by a follow-up read
+			// For simplicity treat as conflict if node was previously versioned
+			return nil, domain.ErrConflict
 		}
 		return nil, nil
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			return domain.ErrConflict
+		}
 		return fmt.Errorf("node update content: %w", err)
 	}
 	return nil
@@ -330,6 +344,9 @@ func scanNode(v []any) *domain.Node {
 	if s := asString(v[12]); s != "" {
 		t := parseTime(s)
 		n.TTLAt = &t
+	}
+	if len(v) > 13 {
+		n.Version = neoInt64(v[13])
 	}
 	return n
 }

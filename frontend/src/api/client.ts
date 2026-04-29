@@ -187,8 +187,8 @@ export const api = {
   },
 
   // ---- Node revisions (F3) ----
-  updateNodeContent(id: string, content: string, edit_reason?: string): Promise<NodeItem> {
-    return request('PUT', `/api/v1/nodes/${id}/content`, { content, edit_reason: edit_reason ?? '' })
+  updateNodeContent(id: string, content: string, edit_reason?: string, version?: number): Promise<NodeItem> {
+    return request('PUT', `/api/v1/nodes/${id}/content`, { content, edit_reason: edit_reason ?? '', version: version ?? 0 })
   },
   listNodeRevisions(id: string, limit = 50): Promise<{ revisions: NodeRevision[] }> {
     return request('GET', `/api/v1/nodes/${id}/revisions?limit=${limit}`)

@@ -472,9 +472,16 @@ export function Home({ onLogout }: Props) {
     })
     if (reason === null) return
     try {
-      await api.updateNodeContent(node.id, next, reason)
+      await api.updateNodeContent(node.id, next, reason, node.version)
       if (active) await loadNodes(active.id)
-    } catch (e) { setErr((e as Error).message) }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg.includes('content_conflict') || msg.includes('conflict')) {
+        setErr('内容冲突：已被他人修改，请刷新后重新编辑')
+      } else {
+        setErr(msg)
+      }
+    }
   }
 
   async function showHistory(node: NodeItem) {

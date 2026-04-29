@@ -25,3 +25,6 @@ var ErrInvalidInput = errors.New("invalid input")
 
 // ErrQuotaExceeded 资源配额不足。
 var ErrQuotaExceeded = errors.New("quota exceeded")
+
+// ErrConflict 并发写冲突（乐观锁 CAS 校验失败）。
+var ErrConflict = errors.New("conflict")

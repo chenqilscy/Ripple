@@ -241,6 +241,10 @@ type UpdateContentInput struct {
 	NodeID     string
 	Content    string
 	EditReason string // 可选：审计注释
+	// Version 期望版本号（乐观锁 CAS，3-P1-01）。
+	// 0 = 尚未初始化的旧节点（兼容），-1 = 强制覆盖（管理员）。
+	// 版本不匹配时 UpdateContent 返回 domain.ErrConflict。
+	Version int64
 }
 
 // UpdateContent 更新节点 content 并追加一条 revision。
@@ -266,6 +270,7 @@ func (s *NodeService) UpdateContent(ctx context.Context, actor *domain.User, in 
 	}
 	n.Content = in.Content
 	n.UpdatedAt = time.Now().UTC()
+	n.Version = in.Version // 乐观锁期望版本；-1 = 强制覆盖
 	if err := s.nodes.UpdateContent(ctx, n); err != nil {
 		return nil, err
 	}

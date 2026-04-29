@@ -145,6 +145,8 @@ func mapDomainError(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, domain.ErrAlreadyExists):
 		return http.StatusConflict
+	case errors.Is(err, domain.ErrConflict):
+		return http.StatusConflict
 	case errors.Is(err, domain.ErrNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, domain.ErrPermissionDenied):

@@ -38,6 +38,7 @@ export interface NodeItem {
   created_at: string
   updated_at: string
   ttl_at?: string | null
+  version?: number // 乐观锁版本号（3-P1-01）
 }
 
 export type CloudStatus = 'queued' | 'running' | 'done' | 'failed'

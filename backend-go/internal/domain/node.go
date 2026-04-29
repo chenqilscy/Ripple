@@ -90,6 +90,8 @@ type Node struct {
 	UpdatedAt time.Time
 	DeletedAt *time.Time // VAPOR 时填充
 	TTLAt     *time.Time // MIST/VAPOR 到期时间
+	// Version 乐观锁版本号（3-P1-01）；0 表示尚未初始化（旧节点/新创建）。
+	Version int64
 }
 
 // NodeSearchResult 全文搜索命中（P12-D）。

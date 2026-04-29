@@ -163,6 +163,8 @@ func (h *NodeHandlers) Condense(w http.ResponseWriter, r *http.Request) {
 type updateContentReq struct {
 	Content    string `json:"content"`
 	EditReason string `json:"edit_reason"`
+	// Version 为期望版本号（3-P1-01 乐观锁）。0 表示运行旧节点列，-1 表示强制覆盖。
+	Version int64 `json:"version"`
 }
 
 type revisionResp struct {
@@ -198,8 +200,13 @@ func (h *NodeHandlers) UpdateContent(w http.ResponseWriter, r *http.Request) {
 		NodeID:     id,
 		Content:    body.Content,
 		EditReason: body.EditReason,
+		Version:    body.Version,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			writeError(w, http.StatusConflict, "content_conflict: 内容已被他人修改，请刷新后重新编辑")
+			return
+		}
 		writeError(w, mapDomainError(err), err.Error())
 		return
 	}
