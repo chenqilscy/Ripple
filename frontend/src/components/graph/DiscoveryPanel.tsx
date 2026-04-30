@@ -1,6 +1,7 @@
 // DiscoveryPanel.tsx — 发现面板：推荐列表 + 路径触发
 import React from 'react'
 import type { Recommendation, PathResult, HeatNode } from '../../api/types'
+import { Button } from '../ui'
 
 interface DiscoveryPanelProps {
   recommendations: Recommendation[]
@@ -120,15 +121,15 @@ export default function DiscoveryPanel({
                   </div>
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <button onClick={() => onAccept(rec)} style={{ ...btnStyle, background: 'rgba(82,196,26,0.2)', color: '#52c41a', borderColor: 'rgba(82,196,26,0.4)' }}>
+                    <Button variant="primary" size="sm" onClick={() => onAccept(rec)}>
                       建立关联
-                    </button>
-                    <button onClick={() => onTracePath(rec.source_node_id, rec.target_node_id)} style={{ ...btnStyle, background: 'rgba(46,139,144,0.2)', color: '#2e8b90' }}>
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onTracePath(rec.source_node_id, rec.target_node_id)}>
                       路径
-                    </button>
-                    <button onClick={() => onIgnore(rec.id)} style={{ ...btnStyle, color: '#666', fontSize: 10 }}>
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onIgnore(rec.id)}>
                       忽略
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )
@@ -140,7 +141,7 @@ export default function DiscoveryPanel({
             <div style={{ borderTop: '1px solid rgba(46,139,144,0.3)', padding: '8px 12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ color: '#2e8b90', fontSize: 12 }}>路径追溯 · {activePath.total_steps} 步</span>
-                <button onClick={onClosePath} style={{ ...closeBtnStyle, fontSize: 10 }}>关闭</button>
+                <Button variant="ghost" size="sm" onClick={onClosePath} style={{ fontSize: 10 }}>关闭</Button>
               </div>
               <div style={{ fontSize: 11, color: '#9ec5ee', lineHeight: 1.8 }}>
                 {activePath.nodes.map((n, i) => (
@@ -221,16 +222,6 @@ export default function DiscoveryPanel({
   )
 }
 
-const closeBtnStyle: React.CSSProperties = {
-  background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', padding: '0 4px', fontSize: 12,
-}
-
 const emptyStyle: React.CSSProperties = {
   padding: '20px 12px', textAlign: 'center' as const, color: '#4a6a8e', fontSize: 12, lineHeight: 1.8,
-}
-
-const btnStyle: React.CSSProperties = {
-  flex: 1, padding: '3px 0', fontSize: 11, cursor: 'pointer',
-  borderRadius: 4, border: '1px solid rgba(46,139,144,0.3)',
-  background: 'transparent', color: '#9ec5ee',
 }
