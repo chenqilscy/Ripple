@@ -23,6 +23,7 @@ import {
 } from 'd3-force'
 import type { EdgeItem, NodeItem, NodeState, Recommendation, PathResult, Cluster, PlanningSuggestion } from '../api/types'
 import DiscoveryPanel from './graph/DiscoveryPanel'
+import PresencePanel from './graph/PresencePanel'
 import PathTracePanel from './graph/PathTracePanel'
 import ClusterView from './graph/ClusterView'
 import PlanningPanel from './graph/PlanningPanel'
@@ -930,6 +931,9 @@ export interface LakeGraphProps {
   onAcceptPlanning?: (s: PlanningSuggestion) => void
   onRefreshPlanning?: () => void
   onClosePlanning?: () => void
+  /** P2-02: 协作者头像列表 */
+  onlineUsers?: string[]
+  currentUserId?: string
 }
 
 // P19-C：协作光标颜色（按 user_id hash 分配）
@@ -947,6 +951,7 @@ export default function LakeGraph({
   recCountByNode, onToggleDiscovery, onAcceptRec, onIgnoreRec, onTracePath, onClosePath,
   showCluster, clusters, focusedClusterId, loadingClusters, onFocusCluster, onRefreshClusters, onCloseCluster,
   showPlanning, planningSuggestions, loadingPlanning, onAcceptPlanning, onRefreshPlanning, onClosePlanning,
+  onlineUsers, currentUserId,
 }: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
@@ -1158,6 +1163,13 @@ export default function LakeGraph({
           onAccept={onAcceptPlanning ?? (() => {})}
           onRefresh={onRefreshPlanning ?? (() => {})}
           onClose={onClosePlanning ?? (() => {})}
+        />
+      )}
+      {/* P2-02: 协作者头像列表 */}
+      {onlineUsers && onlineUsers.length > 0 && (
+        <PresencePanel
+          onlineUsers={onlineUsers}
+          currentUserId={currentUserId}
         />
       )}
       {/* P19-C / P28: 协作光标 DOM overlay（百分比定位，避免 SVG preserveAspectRatio 字体变形） */}

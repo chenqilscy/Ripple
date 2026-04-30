@@ -1614,6 +1614,8 @@ export function Home({ onLogout }: Props) {
                       onAcceptPlanning={s => graphAnalysis.acceptPlanningSuggestion(s)}
                       onRefreshPlanning={() => graphAnalysis.loadPlanning()}
                       onClosePlanning={() => graphAnalysis.closePanel()}
+                      onlineUsers={onlineUsers}
+                      currentUserId={meId ?? undefined}
                     />
                     {multiSelectedNodeIds.size >= 2 && (
                       <div style={{ textAlign: 'center', marginTop: 8 }}>
