@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Space, type SpaceMember } from '../api/client'
 import { prompt as modalPrompt } from './Modal'
+import { Button } from './ui'
 
 export interface SpaceMembersDrawerProps {
   space: Space
@@ -89,7 +90,7 @@ export default function SpaceMembersDrawer(props: SpaceMembersDrawerProps) {
           </div>
           <div style={{ fontSize: 11, color: '#666' }}>成员管理</div>
         </div>
-        <button onClick={props.onClose} style={{ background: 'transparent', border: 'none', color: '#999', cursor: 'pointer', fontSize: 18 }}>×</button>
+        <Button variant="ghost" size="sm" onClick={props.onClose} icon="×" aria-label="关闭" />
       </div>
 
       {isOwner && (

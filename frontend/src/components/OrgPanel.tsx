@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import AuditLogViewer from './AuditLogViewer'
+import { Button } from './ui'
 import SubscriptionPanel from './SubscriptionPanel'
 import type { Lake, OrgMember, OrgOverview, OrgQuota, OrgQuotaPatch, OrgRole, Organization } from '../api/types'
 
@@ -540,7 +541,7 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
           style={{ ...btnStyle, marginRight: 'var(--space-sm)' }}>
           {loading ? '加载中…' : '刷新'}
         </button>
-        <button onClick={onClose} style={{ ...btnStyle, color: 'var(--text-tertiary)' }}>✕</button>
+        <Button variant="ghost" size="sm" onClick={onClose} icon="✕" aria-label="关闭" />
       </div>
 
       {error && <ErrorMsg>{error}</ErrorMsg>}

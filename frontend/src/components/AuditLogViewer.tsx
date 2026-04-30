@@ -4,6 +4,7 @@
  */
 import React, { useEffect, useState } from 'react'
 import { api, type AuditLogItem } from '../api/client'
+import { Button } from './ui'
 
 interface Props {
   /** 预填资源类型（如 "node"）*/
@@ -98,13 +99,14 @@ export default function AuditLogViewer({ defaultResourceType = '', defaultResour
           <option value={100}>100 条</option>
           <option value={200}>200 条</option>
         </select>
-        <button
+        <Button
           onClick={() => void handleQuery()}
           disabled={loading || !resourceType.trim() || !resourceId.trim()}
-          style={btnStyle}
+          variant="primary"
+          size="md"
         >
           {loading ? '查询中…' : '查询'}
-        </button>
+        </Button>
       </div>
 
       {err && <p style={{ color: 'var(--status-danger)', margin: '0 0 var(--space-md)' }}>⚠ {err}</p>}
@@ -170,11 +172,6 @@ const inputStyle: React.CSSProperties = {
 
 const selectStyle: React.CSSProperties = {
   ...inputStyle, cursor: 'pointer',
-}
-
-const btnStyle: React.CSSProperties = {
-  background: 'var(--accent)', border: 'none', color: 'var(--text-inverse)',
-  borderRadius: 'var(--radius-md)', padding: 'var(--space-sm) var(--space-lg)', cursor: 'pointer', fontSize: 'var(--font-md)',
 }
 
 const thStyle: React.CSSProperties = {

@@ -27,6 +27,7 @@ const SnapshotTimeline = React.lazy(() => import('../components/SnapshotTimeline
 import { prompt as modalPrompt, confirm as modalConfirm, alert as modalAlert } from '../components/Modal'
 import SpaceSwitcher from '../components/SpaceSwitcher'
 import SpaceMembersDrawer from '../components/SpaceMembersDrawer'
+import { Button } from '../components/ui'
 import AttachmentBar from '../components/AttachmentBar'
 import CollabDemo from '../components/CollabDemo'
 import OfflineBar from '../components/OfflineBar'
@@ -1119,7 +1120,7 @@ export function Home({ onLogout }: Props) {
       )}
       <aside style={isMobile ? { ...sidebar, position: 'fixed', top: 0, left: 0, height: '100%', zIndex: 100, transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.25s ease', background: '#0e1e30' } : sidebar}>
         {isMobile && (
-          <button onClick={() => setSidebarOpen(false)} title="关闭导航" style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#9ec5ee', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(false)} title="关闭导航" icon="✕" aria-label="关闭" />
         )}
         <SpaceSwitcher
           currentSpaceId={currentSpaceId}
@@ -1463,9 +1464,9 @@ export function Home({ onLogout }: Props) {
                 {crystalSel.size > 0 && (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <span style={{ fontSize: 11, color: '#9ec5ee' }}>已选 {crystalSel.size}</span>
-                    <button onClick={doCrystallize} style={{ ...miniBtn, background: '#4a8eff', color: '#fff' }}>
+                    <Button variant="primary" size="sm" onClick={doCrystallize}>
                       ❄ 凝结所选
-                    </button>
+                    </Button>
                     <button onClick={() => setCrystalSel(new Set())} style={miniBtn}>清空</button>
                   </div>
                 )}
@@ -1691,8 +1692,8 @@ export function Home({ onLogout }: Props) {
                       <button onClick={() => setBatchSel(new Set(filteredNodes.map(n => n.id)))} style={{ ...miniBtn, opacity: 0.7 }}>全选</button>
                       <button onClick={() => void batchOperate('condense')} disabled={batchBusy} style={miniBtn}>凝露 ↓</button>
                       <button onClick={() => void batchOperate('evaporate')} disabled={batchBusy} style={miniBtn}>蒸发 ↑</button>
-                      <button onClick={() => batchExportNodes()} disabled={batchBusy} style={{ ...miniBtn, background: 'rgba(74,144,226,0.15)', color: '#9ec5ee' }} title="将选中节点导出为 JSON 文件">导出 ↓ JSON</button>
-                      <button onClick={() => { if (window.confirm(`确认彻底删除已选 ${batchSel.size} 个节点？此操作不可恢复。`)) { void batchOperate('erase') } }} disabled={batchBusy} style={{ ...miniBtn, background: 'rgba(220,53,69,0.15)', color: '#ff6b7a' }}>删除 ✕</button>
+                      <Button variant="primary" size="sm" onClick={() => batchExportNodes()} disabled={batchBusy} title="将选中节点导出为 JSON 文件">导出 ↓ JSON</Button>
+                      <Button variant="danger" size="sm" onClick={() => { if (window.confirm(`确认彻底删除已选 ${batchSel.size} 个节点？此操作不可恢复。`)) { void batchOperate('erase') } }} disabled={batchBusy}>删除 ✕</Button>
                       <button onClick={() => setBatchSel(new Set())} style={{ ...miniBtn, opacity: 0.6 }}>取消选择</button>
                     </div>
                   )}

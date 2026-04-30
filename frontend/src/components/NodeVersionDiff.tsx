@@ -4,6 +4,7 @@
  */
 import { useMemo, useState } from 'react'
 import type { NodeRevision } from '../api/types'
+import { Button } from './ui'
 
 interface Props {
   revisions: NodeRevision[]
@@ -131,7 +132,7 @@ export default function NodeVersionDiff({ revisions, onClose }: Props) {
             <span style={{ color: '#95de64' }}>■ 新增</span>
             <span style={{ color: '#ff7875' }}>■ 删除</span>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#9ec5ee', fontSize: 18, cursor: 'pointer' }}>✕</button>
+          <Button variant="ghost" size="sm" onClick={onClose} icon="✕" aria-label="关闭" />
         </div>
 
         {/* diff body */}
