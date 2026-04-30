@@ -560,7 +560,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
 
   // P3-03: LOD scale — normalize camera zoom to ~1.0 at default (z=600)
   const { camera } = useThree()
-  const cameraScale = camera.zoom / 600
+  const cameraScale = 600 / camera.position.z
   const useLOD = cameraScale < 0.1  // zoom ≤ 10% triggers LOD
 
   const { simLinks, positions, simNodes } = useMemo(() => {
