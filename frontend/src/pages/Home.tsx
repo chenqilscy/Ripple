@@ -1196,12 +1196,12 @@ export function Home({ onLogout }: Props) {
                 <div>{l.name}</div>
                 {active?.id === l.id && l.role === 'OWNER' && (
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <button onClick={e => { e.stopPropagation(); void moveLakeUI(l) }}
+                    <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); void moveLakeUI(l) }}
                       title="移动湖到空间"
-                      style={{ ...miniBtn, padding: '2px 6px', fontSize: 10 }}>移</button>
-                    <button onClick={e => { e.stopPropagation(); void manageInvites() }}
+                      style={{ padding: '2px 6px', fontSize: 10 }}>移</Button>
+                    <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); void manageInvites() }}
                       title="创建或管理邀请链接"
-                      style={{ ...miniBtn, padding: '2px 6px', fontSize: 10 }}>邀请</button>
+                      style={{ padding: '2px 6px', fontSize: 10 }}>邀请</Button>
                   </div>
                 )}
               </div>
@@ -1295,12 +1295,12 @@ export function Home({ onLogout }: Props) {
                 <>
                   <span style={{ fontSize: 11, opacity: 0.5, marginLeft: 8 }}>标签筛选：</span>
                   {tagFilter && (
-                    <button onClick={() => applyTagFilter('')} style={{ ...miniBtn, color: '#89dceb' }}>
+                    <Button variant="ghost" size="sm" onClick={() => applyTagFilter('')} style={{ color: '#89dceb' }}>
                       {tagLoading ? '…' : `✕ ${tagFilter}`}
-                    </button>
+                    </Button>
                   )}
                   {lakeTags.filter(t => t !== tagFilter).map(t => (
-                    <button key={t} onClick={() => applyTagFilter(t)} style={miniBtn}>{t}</button>
+                    <Button variant="ghost" size="sm" key={t} onClick={() => applyTagFilter(t)}>{t}</Button>
                   ))}
                 </>
               )}
@@ -1467,7 +1467,7 @@ export function Home({ onLogout }: Props) {
                     <Button variant="primary" size="sm" onClick={doCrystallize}>
                       ❄ 凝结所选
                     </Button>
-                    <button onClick={() => setCrystalSel(new Set())} style={miniBtn}>清空</button>
+                    <Button variant="ghost" size="sm" onClick={() => setCrystalSel(new Set())}>清空</Button>
                   </div>
                 )}
               </div>
@@ -1694,7 +1694,7 @@ export function Home({ onLogout }: Props) {
                       <button onClick={() => void batchOperate('evaporate')} disabled={batchBusy} style={miniBtn}>蒸发 ↑</button>
                       <Button variant="primary" size="sm" onClick={() => batchExportNodes()} disabled={batchBusy} title="将选中节点导出为 JSON 文件">导出 ↓ JSON</Button>
                       <Button variant="danger" size="sm" onClick={() => { if (window.confirm(`确认彻底删除已选 ${batchSel.size} 个节点？此操作不可恢复。`)) { void batchOperate('erase') } }} disabled={batchBusy}>删除 ✕</Button>
-                      <button onClick={() => setBatchSel(new Set())} style={{ ...miniBtn, opacity: 0.6 }}>取消选择</button>
+                      <Button variant="ghost" size="sm" onClick={() => setBatchSel(new Set())} style={{ opacity: 0.6 }}>取消选择</Button>
                     </div>
                   )}
                   {nodes.length > 0 && filteredNodes.length === 0 && (
@@ -1768,14 +1768,12 @@ export function Home({ onLogout }: Props) {
                           style={{ ...miniBtn, color: '#cba6f7' }}
                           title="打开节点详情：选择 Prompt 模板并触发 AI Workflow"
                         >详情 / AI</button>
-                        <button onClick={() => editNodeContent(n)} style={miniBtn} title="编辑内容（固形前的雕琢）">✎</button>
+                        <Button variant="ghost" size="sm" onClick={() => editNodeContent(n)} icon="✎" aria-label="编辑内容" />
                         {/* P0-02: 更多菜单按钮 */}
                         <div style={{ position: 'relative' }}>
-                          <button
+                          <Button variant="ghost" size="sm"
                             onClick={e => { e.stopPropagation(); setOpenMoreId(openMoreId === n.id ? null : n.id) }}
-                            style={{ ...miniBtn }}
-                            title="更多操作"
-                          >⋯</button>
+                            icon="⋯" aria-label="更多操作" />
                           {openMoreId === n.id && (
                             <div
                               onClick={e => e.stopPropagation()}
@@ -1846,7 +1844,7 @@ export function Home({ onLogout }: Props) {
               <section style={{ ...card, borderLeft: '3px solid #4a8eff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong style={{ letterSpacing: 2, fontSize: 13, color: '#9ec5ee' }}>❄ 凝结结果</strong>
-                  <button onClick={() => setRecentPerma(null)} style={miniBtn}>关</button>
+                  <Button variant="ghost" size="sm" onClick={() => setRecentPerma(null)}>关</Button>
                 </div>
                 <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600 }}>{recentPerma.title}</div>
                 <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.6, opacity: 0.9 }}>{recentPerma.summary}</div>
@@ -1877,8 +1875,8 @@ export function Home({ onLogout }: Props) {
                     <div style={{ marginTop: 4, fontSize: 13, color: '#c8d8e8' }}>邀请协作者、查看成员并调整角色。</div>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => setLakeMembersOpen(true)} style={{ ...miniBtn, color: '#89dceb' }}>成员管理</button>
-                    <button onClick={() => void manageInvites()} style={{ ...miniBtn, color: '#a6e3a1' }}>邀请成员</button>
+                    <Button variant="ghost" size="sm" onClick={() => setLakeMembersOpen(true)} style={{ color: '#89dceb' }}>成员管理</Button>
+                    <Button variant="ghost" size="sm" onClick={() => void manageInvites()} style={{ color: '#a6e3a1' }}>邀请成员</Button>
                   </div>
                 </div>
               </section>
@@ -1935,13 +1933,11 @@ export function Home({ onLogout }: Props) {
                       <option key={k} value={k}>{k}</option>
                     ))}
                   </select>
-                  <button
-                    onClick={() => setEdgeSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
+                  <Button variant="ghost" size="sm" onClick={() => setEdgeSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
                     title={edgeSortOrder === 'desc' ? '当前：最新在前，点击切换为最旧在前' : '当前：最旧在前，点击切换为最新在前'}
-                    style={{ ...miniBtn, fontSize: 11 }}
-                  >
-                    时间 {edgeSortOrder === 'desc' ? '↓' : '↑'}
-                  </button>
+                    style={{ fontSize: 11 }}>
+                      时间 {edgeSortOrder === 'desc' ? '↓' : '↑'}
+                    </Button>
                   {edgeKindFilter && (
                     <span style={{ fontSize: 11, opacity: 0.6 }}>
                       {edges.filter(e => e.kind === edgeKindFilter).length} / {edges.length}
@@ -1966,7 +1962,7 @@ export function Home({ onLogout }: Props) {
                           {' → '}
                           {(dst ?? e.dst_node_id.slice(0, 8)).slice(0, 24)}
                         </span>
-                        <button onClick={() => deleteEdge(e.id)} style={miniBtn} title="删除关系（断流：切断节点间的关联）">删</button>
+                        <Button variant="ghost" size="sm" onClick={() => deleteEdge(e.id)} icon="删" aria-label="删除关系" />
                       </div>
                     )
                   })}
@@ -2043,7 +2039,7 @@ export function Home({ onLogout }: Props) {
           <div style={{ ...modalBox, minWidth: 360 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <strong style={{ color: '#89dceb' }}>👥 {active.name} 成员</strong>
-              <button onClick={() => setLakeMembersOpen(false)} style={miniBtn}>✕</button>
+              <Button variant="ghost" size="sm" onClick={() => setLakeMembersOpen(false)} icon="✕" aria-label="关闭" />
             </div>
             <React.Suspense fallback={<div style={{ color: '#6c7086', fontSize: 12 }}>Loading members...</div>}>
               <LakeMemberManager
@@ -2082,7 +2078,7 @@ export function Home({ onLogout }: Props) {
           <div style={{ ...modalBox, minWidth: 360 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <strong style={{ color: '#89dceb' }}>⚡ 关联节点推荐</strong>
-              <button onClick={() => setRelatedPanel(null)} style={miniBtn}>✕</button>
+              <Button variant="ghost" size="sm" onClick={() => setRelatedPanel(null)} icon="✕" aria-label="关闭" />
             </div>
             {relatedPanel.results.length === 0 ? (
               <div style={{ fontSize: 13, opacity: 0.5 }}>暂无关联节点</div>
@@ -2120,7 +2116,7 @@ export function Home({ onLogout }: Props) {
                 >
                   {tplCreateOpen ? '取消新建' : '+ 新建模板'}
                 </button>
-                <button onClick={() => { setTemplateModalOpen(false); setTplCreateOpen(false); setTplPreviewId(null) }} style={miniBtn}>✕</button>
+                <Button variant="ghost" size="sm" onClick={() => { setTemplateModalOpen(false); setTplCreateOpen(false); setTplPreviewId(null) }} icon="✕" aria-label="关闭" />
               </div>
             </div>
 
