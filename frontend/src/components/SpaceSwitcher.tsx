@@ -210,7 +210,7 @@ function SpaceRow(p: {
             aria-label="删除空间"
             style={{
               background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
-              cursor: 'pointer', fontSize: 12, padding: '0 var(--space-xs)',
+              cursor: 'pointer', fontSize: 'var(--font-sm)', padding: '0 var(--space-xs)',
             }}
           >
             🗑

@@ -700,7 +700,7 @@ function ErrorMsg({ children }: { children: React.ReactNode }) {
       fontSize: 'var(--font-sm)',
       marginBottom: 'var(--space-sm)',
       padding: 'var(--space-xs) var(--space-sm)',
-      background: 'rgba(245,34,45,0.1)',
+      background: 'var(--status-danger-subtle)',
       borderRadius: 'var(--radius-md)',
     }}>
       {children}

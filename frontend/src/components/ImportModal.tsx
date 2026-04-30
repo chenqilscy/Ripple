@@ -163,7 +163,7 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
 
         {done ? (
           <div style={{ textAlign: 'center', padding: 'var(--space-xl) 0' }}>
-            <div style={{ fontSize: 32, marginBottom: 'var(--space-sm)' }}>✅</div>
+            <div style={{ fontSize: 'var(--font-2xl)', marginBottom: 'var(--space-sm)' }}>✅</div>
             <div style={{ color: 'var(--status-success)', fontSize: 'var(--font-lg)' }}>
               成功导入 {doneCount} 个节点
             </div>

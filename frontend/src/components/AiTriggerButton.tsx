@@ -163,7 +163,7 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
           transition: 'opacity 0.2s, background 0.2s',
         }}
       >
-        <span style={{ fontSize: 15 }}>✦</span>
+        <span style={{ fontSize: 'var(--font-lg)' }}>✦</span>
         {isRunning ? 'AI 处理中…' : 'AI 触发'}
       </button>
 
