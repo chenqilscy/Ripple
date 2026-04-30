@@ -1254,27 +1254,26 @@ export function Home({ onLogout }: Props) {
             </div>
             <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 11, opacity: 0.5 }}>导出：</span>
-              <button onClick={() => void exportLakeUI('json')} disabled={exportBusy} style={miniBtn}>
+              <Button variant="ghost" size="sm" onClick={() => void exportLakeUI('json')} disabled={exportBusy}>
                 {exportBusy ? '…' : 'JSON'}
-              </button>
-              <button onClick={() => void exportLakeUI('markdown')} disabled={exportBusy} style={miniBtn}>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => void exportLakeUI('markdown')} disabled={exportBusy}>
                 {exportBusy ? '…' : 'Markdown'}
-              </button>
+              </Button>
               {/* P13-E 导入 */}
               <span style={{ fontSize: 11, opacity: 0.5, marginLeft: 8 }}>导入：</span>
-              <button
+              <Button variant="ghost" size="sm"
                 onClick={() => importInputRef.current?.click()}
                 disabled={importBusy}
-                style={miniBtn}
                 title="从本地 JSON / Markdown 文件导入到当前湖"
               >
                 {importBusy ? '…' : '📂 文件'}
-              </button>
-              <button
+              </Button>
+              <Button variant="ghost" size="sm"
                 onClick={() => setLakeMembersOpen(true)}
-                style={{ ...miniBtn, color: '#89dceb' }}
+                style={{ color: '#89dceb' }}
                 title="查看成员、管理角色与邀请协作"
-              >👥 成员</button>
+              >👥 成员</Button>
               <input
                 ref={importInputRef}
                 type="file"
@@ -1371,14 +1370,14 @@ export function Home({ onLogout }: Props) {
                   {busy ? '...' : '造云'}
                 </button>
                 {!streaming ? (
-                  <button onClick={startWeaveStream} disabled={!prompt.trim()} style={miniBtn}
+                  <Button variant="primary" size="sm" onClick={startWeaveStream} disabled={!prompt.trim()}
                     title="SSE 流式预览（不落盘）">
                     ✨ 流式预览
-                  </button>
+                  </Button>
                 ) : (
-                  <button onClick={stopWeaveStream} style={{ ...miniBtn, color: '#d24343' }}>
+                  <Button variant="ghost" size="sm" onClick={stopWeaveStream} style={{ color: '#d24343' }}>
                     停止
-                  </button>
+                  </Button>
                 )}
               </div>
               {(streaming || streamText) && (
@@ -1392,8 +1391,8 @@ export function Home({ onLogout }: Props) {
                   {streaming && <span style={{ opacity: 0.5 }}>▍</span>}
                   {!streaming && streamText && (
                     <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                      <button style={miniBtn} onClick={() => { void navigator.clipboard.writeText(streamText) }}>复制</button>
-                      <button style={miniBtn} onClick={() => setStreamText('')}>清空</button>
+                      <Button variant="ghost" size="sm" onClick={() => { void navigator.clipboard.writeText(streamText) }}>复制</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setStreamText('')}>清空</Button>
                     </div>
                   )}
                 </div>
@@ -1422,20 +1421,19 @@ export function Home({ onLogout }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <strong style={{ letterSpacing: 2, fontSize: 13 }}>湖中节点 ({nodes.length})</strong>
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <button
+                    <Button variant="primary" size="sm"
                       data-testid="create-node-button"
                       onClick={() => void createManualNode()}
                       disabled={busy}
-                      style={{ ...miniBtn, background: 'rgba(74,144,226,0.28)', color: '#9ec5ee', fontWeight: 700 }}
+                      style={{ background: 'rgba(74,144,226,0.28)', color: '#9ec5ee', fontWeight: 700 }}
                       title="手工添加一个普通文本节点（快捷键 N）"
-                    >+ 节点</button>
+                    >+ 节点</Button>
                     {(['list', 'graph'] as const).map(mode => (
-                      <button
-                        key={mode}
+                      <Button key={mode}
+                        variant="ghost" size="sm"
                         onClick={() => setViewMode(mode)}
                         aria-pressed={viewMode === mode}
                         style={{
-                          ...miniBtn,
                           background: viewMode === mode ? '#4a8eff' : 'rgba(255,255,255,0.06)',
                           borderColor: viewMode === mode ? '#8bc1ff' : 'rgba(255,255,255,0.14)',
                           color: viewMode === mode ? '#fff' : '#9eb6cc',
@@ -1445,21 +1443,21 @@ export function Home({ onLogout }: Props) {
                         }}
                       >
                         {viewMode === mode ? '✓ ' : ''}{mode === 'list' ? '列表' : '图谱'}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   {/* P18-C：从模板创建节点 */}
-                  <button
+                  <Button variant="ghost" size="sm"
                     onClick={() => { void loadTemplates(); setTemplateModalOpen(true) }}
-                    style={{ ...miniBtn, color: '#cba6f7' }}
+                    style={{ color: '#cba6f7' }}
                     title="打开节点模板库，从预设模板快速创建节点"
-                  >📋 模板库</button>
-                  <button
+                  >📋 模板库</Button>
+                  <Button variant="ghost" size="sm"
                     onClick={() => void analyzeRelationships()}
                     disabled={relationshipBusy || nodes.length < 2}
-                    style={{ ...miniBtn, color: relationshipBusy ? '#6c7086' : '#a6e3a1' }}
+                    style={{ color: relationshipBusy ? '#6c7086' : '#a6e3a1' }}
                     title="分析湖中节点的潜在关联，并自动创建 relates 关系"
-                  >{relationshipBusy ? '分析中…' : '🔎 分析关系'}</button>
+                  >{relationshipBusy ? '分析中…' : '🔎 分析关系'}</Button>
                 </div>
                 {crystalSel.size > 0 && (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1490,61 +1488,61 @@ export function Home({ onLogout }: Props) {
                   </div>
                   {/* P18-D：快照工具栏 */}
                   <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <button
+                    <Button variant="ghost" size="sm"
                       onClick={() => void saveSnapshot()}
-                      style={{ ...miniBtn, color: '#a6e3a1' }}
+                      style={{ color: '#a6e3a1' }}
                       title="保存当前图谱布局为快照"
-                    >📷 保存快照</button>
-                    <button
+                    >📷 保存快照</Button>
+                    <Button variant="ghost" size="sm"
                       onClick={() => setSnapshotPanelOpen(true)}
-                      style={{ ...miniBtn, color: snapshotPanelOpen ? '#89b4fa' : undefined }}
+                      style={{ color: snapshotPanelOpen ? '#89b4fa' : undefined }}
                       title="查看图谱快照"
-                    >🗂 快照</button>
-                    <button
+                    >🗂 快照</Button>
+                    <Button variant="ghost" size="sm"
                       onClick={() => setTimelineOpen(v => !v)}
-                      style={{ ...miniBtn, color: timelineOpen ? '#89b4fa' : '#a6e3a1' }}
+                      style={{ color: timelineOpen ? '#89b4fa' : '#a6e3a1' }}
                       title="版本历史时间线"
-                    >🕐 时间线</button>
+                    >🕐 时间线</Button>
                     {/* P25：图谱导出 */}
                     {active && (
                       <>
-                        <button
+                        <Button variant="ghost" size="sm"
                           disabled={exportLoading}
                           onClick={async () => {
                             setExportLoading(true)
                             try { await api.exportLake(active.id, 'json') } catch { /* ignore */ } finally { setExportLoading(false) }
                           }}
-                          style={{ ...miniBtn, color: exportLoading ? '#4a6a8e' : '#fab387' }}
+                          style={{ color: exportLoading ? '#4a6a8e' : '#fab387' }}
                           title="导出为 JSON"
-                        >{exportLoading ? '导出中…' : '↓ JSON'}</button>
-                        <button
+                        >{exportLoading ? '导出中…' : '↓ JSON'}</Button>
+                        <Button variant="ghost" size="sm"
                           disabled={exportLoading}
                           onClick={async () => {
                             setExportLoading(true)
                             try { await api.exportLake(active.id, 'markdown') } catch { /* ignore */ } finally { setExportLoading(false) }
                           }}
-                          style={{ ...miniBtn, color: exportLoading ? '#4a6a8e' : '#a6e3a1' }}
+                          style={{ color: exportLoading ? '#4a6a8e' : '#a6e3a1' }}
                           title="导出为 Markdown"
-                        >{exportLoading ? '导出中…' : '↓ MD'}</button>
+                        >{exportLoading ? '导出中…' : '↓ MD'}</Button>
                       </>
                     )}
                     {graphLayout && (
-                      <button onClick={() => setGraphLayout(undefined)} style={{ ...miniBtn, color: '#f38ba8' }}>
+                      <Button variant="ghost" size="sm" onClick={() => setGraphLayout(undefined)} style={{ color: '#f38ba8' }}>
                         ✕ 清除快照布局
-                      </button>
+                      </Button>
                     )}
                     {/* P19-A：AI 探索 */}
-                    <button
+                    <Button variant="ghost" size="sm"
                       onClick={() => setExplorerOpen(v => !v)}
-                      style={{ ...miniBtn, color: explorerOpen ? '#89b4fa' : '#cba6f7' }}
+                      style={{ color: explorerOpen ? '#89b4fa' : '#cba6f7' }}
                       title="AI 图谱探索"
-                    >🔍 AI探索</button>
+                    >🔍 AI探索</Button>
                     {exploredNodeIds.size > 0 && (
-                      <button
+                      <Button variant="ghost" size="sm"
                         onClick={() => setExploredNodeIds(new Set())}
-                        style={{ ...miniBtn, color: '#f38ba8' }}
+                        style={{ color: '#f38ba8' }}
                         title="清除探索高亮"
-                      >✕ 清除高亮</button>
+                      >✕ 清除高亮</Button>
                     )}
                   </div>
                   {snapshotPanelOpen && active && (
@@ -1689,9 +1687,9 @@ export function Home({ onLogout }: Props) {
                   {batchSel.size > 0 && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, padding: '6px 10px', background: 'rgba(74,144,226,0.1)', borderRadius: 6 }}>
                       <span style={{ fontSize: 12, color: '#9ec5ee' }}>已选 {batchSel.size} 个节点</span>
-                      <button onClick={() => setBatchSel(new Set(filteredNodes.map(n => n.id)))} style={{ ...miniBtn, opacity: 0.7 }}>全选</button>
-                      <button onClick={() => void batchOperate('condense')} disabled={batchBusy} style={miniBtn}>凝露 ↓</button>
-                      <button onClick={() => void batchOperate('evaporate')} disabled={batchBusy} style={miniBtn}>蒸发 ↑</button>
+                      <Button variant="ghost" size="sm" onClick={() => setBatchSel(new Set(filteredNodes.map(n => n.id)))} style={{ opacity: 0.7 }}>全选</Button>
+                      <Button variant="ghost" size="sm" onClick={() => void batchOperate('condense')} disabled={batchBusy}>凝露 ↓</Button>
+                      <Button variant="ghost" size="sm" onClick={() => void batchOperate('evaporate')} disabled={batchBusy}>蒸发 ↑</Button>
                       <Button variant="primary" size="sm" onClick={() => batchExportNodes()} disabled={batchBusy} title="将选中节点导出为 JSON 文件">导出 ↓ JSON</Button>
                       <Button variant="danger" size="sm" onClick={() => { if (window.confirm(`确认彻底删除已选 ${batchSel.size} 个节点？此操作不可恢复。`)) { void batchOperate('erase') } }} disabled={batchBusy}>删除 ✕</Button>
                       <Button variant="ghost" size="sm" onClick={() => setBatchSel(new Set())} style={{ opacity: 0.6 }}>取消选择</Button>
@@ -1763,11 +1761,11 @@ export function Home({ onLogout }: Props) {
                       />
                       <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                         {/* P0-02: 主要操作（始终可见） */}
-                        <button
+                        <Button variant="ghost" size="sm"
                           onClick={() => setSelectedNode(n)}
-                          style={{ ...miniBtn, color: '#cba6f7' }}
+                          style={{ color: '#cba6f7' }}
                           title="打开节点详情：选择 Prompt 模板并触发 AI Workflow"
-                        >详情 / AI</button>
+                        >详情 / AI</Button>
                         <Button variant="ghost" size="sm" onClick={() => editNodeContent(n)} icon="✎" aria-label="编辑内容" />
                         {/* P0-02: 更多菜单按钮 */}
                         <div style={{ position: 'relative' }}>
@@ -1899,18 +1897,18 @@ export function Home({ onLogout }: Props) {
                         {r.target_id.slice(0, 8)}…
                       </span>
                       <span style={{ opacity: 0.6 }} title="向量相似度（余弦距离，越高越相关）">相似度: {r.score.toFixed(2)}</span>
-                      <button style={miniBtn}
+                      <Button variant="ghost" size="sm"
                         onClick={() => {
                           void api.sendFeedback('perma_node', r.target_id, 'LIKE')
                             .then(() => setRecos(prev => prev.filter(x => x.target_id !== r.target_id)))
                             .catch(e => modalAlert(`反馈失败：${(e as Error).message}`))
-                        }}>👍</button>
-                      <button style={miniBtn}
+                        }}>👍</Button>
+                      <Button variant="ghost" size="sm"
                         onClick={() => {
                           void api.sendFeedback('perma_node', r.target_id, 'DISMISS')
                             .then(() => setRecos(prev => prev.filter(x => x.target_id !== r.target_id)))
                             .catch(() => { /* ignore */ })
-                        }}>✕</button>
+                        }}>✕</Button>
                     </div>
                   ))}
                 </div>
@@ -2110,12 +2108,12 @@ export function Home({ onLogout }: Props) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
               <strong style={{ color: '#cba6f7' }}>📋 节点模板库</strong>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button
+                <Button variant="ghost" size="sm"
                   onClick={() => { setTplCreateOpen(v => !v); setTplPreviewId(null) }}
-                  style={{ ...miniBtn, color: tplCreateOpen ? '#cba6f7' : '#89b4fa' }}
+                  style={{ color: tplCreateOpen ? '#cba6f7' : '#89b4fa' }}
                 >
                   {tplCreateOpen ? '取消新建' : '+ 新建模板'}
-                </button>
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => { setTemplateModalOpen(false); setTplCreateOpen(false); setTplPreviewId(null) }} icon="✕" aria-label="关闭" />
               </div>
             </div>
@@ -2162,7 +2160,7 @@ export function Home({ onLogout }: Props) {
                     </div>
                   </div>
                 )}
-                <button
+                <Button variant="ghost" size="sm"
                   disabled={tplCreateBusy || !tplForm.name.trim() || !tplForm.content.trim()}
                   onClick={async () => {
                     setTplCreateBusy(true)
@@ -2175,10 +2173,10 @@ export function Home({ onLogout }: Props) {
                     } catch (e) { void modalAlert((e as Error).message, { title: '创建失败' }) }
                     finally { setTplCreateBusy(false) }
                   }}
-                  style={{ ...miniBtn, marginTop: 8, color: '#cba6f7' }}
+                  style={{ marginTop: 8, color: '#cba6f7' }}
                 >
                   {tplCreateBusy ? '保存中…' : '保存模板'}
-                </button>
+                </Button>
               </div>
             )}
 
@@ -2199,16 +2197,16 @@ export function Home({ onLogout }: Props) {
                     <strong style={{ fontSize: 13, cursor: 'pointer', flex: 1 }} onClick={() => setTplPreviewId(tplPreviewId === t.id ? null : t.id)}>{t.name}</strong>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                       {t.is_system && <span style={{ fontSize: 10, color: '#cba6f7', opacity: 0.7 }}>系统</span>}
-                      <button
+                      <Button variant="ghost" size="sm"
                         onClick={() => setTplPreviewId(tplPreviewId === t.id ? null : t.id)}
-                        style={{ ...miniBtn, color: '#89b4fa', fontSize: 11, padding: '2px 6px' }}
-                      >{tplPreviewId === t.id ? '收起' : '预览'}</button>
-                      <button
+                        style={{ color: '#89b4fa', fontSize: 11, padding: '2px 6px' }}
+                      >{tplPreviewId === t.id ? '收起' : '预览'}</Button>
+                      <Button variant="ghost" size="sm"
                         onClick={() => void createFromTemplate(t.id)}
-                        style={{ ...miniBtn, color: '#a6e3a1', fontSize: 11, padding: '2px 8px' }}
-                      >使用</button>
+                        style={{ color: '#a6e3a1', fontSize: 11, padding: '2px 8px' }}
+                      >使用</Button>
                       {!t.is_system && (
-                        <button
+                        <Button variant="ghost" size="sm"
                           onClick={async () => {
                             if (!await modalConfirm(`确认删除「${t.name}」？`, { title: '删除模板' })) return
                             try {
@@ -2216,8 +2214,8 @@ export function Home({ onLogout }: Props) {
                               setTemplates(prev => prev.filter(x => x.id !== t.id))
                             } catch (e) { void modalAlert((e as Error).message, { title: '删除失败' }) }
                           }}
-                          style={{ ...miniBtn, color: '#f38ba8', fontSize: 11, padding: '2px 6px' }}
-                        >删</button>
+                          style={{ color: '#f38ba8', fontSize: 11, padding: '2px 6px' }}
+                        >删</Button>
                       )}
                     </div>
                   </div>
@@ -2435,12 +2433,6 @@ const statePill: React.CSSProperties = {
 const nodeCard: React.CSSProperties = {
   background: 'rgba(255,255,255,0.04)', padding: 12,
   borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)',
-}
-const miniBtn: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.15)',
-  color: '#cde', padding: '3px 10px', borderRadius: 3,
-  fontSize: 11, cursor: 'pointer',
 }
 const edgeRow: React.CSSProperties = {
   display: 'flex', gap: 8, alignItems: 'center',
