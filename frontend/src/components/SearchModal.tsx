@@ -1,7 +1,7 @@
 // SearchModal · P12-D 全文搜索浮层 + P20-C 语义搜索
 // 快捷键 Cmd+K / Ctrl+K 触发；在当前激活的湖内搜索节点。
 // 修复：scroll lock + 键盘导航 + 响应式 + 统一样式
-import { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { SearchHit } from '../api/types'
 

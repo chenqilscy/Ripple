@@ -3,7 +3,7 @@
  * P13-A: Lake ↔ Org binding tab added.
  * 修复：scroll lock + Tab min-height + 统一中文标签 + CSS 变量
  */
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import AuditLogViewer from './AuditLogViewer'
 import SubscriptionPanel from './SubscriptionPanel'

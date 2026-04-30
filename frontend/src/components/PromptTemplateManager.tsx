@@ -2,7 +2,7 @@
  * PromptTemplateManager · Prompt 模板库管理
  * 修复：scroll lock + CSS 变量 + 响应式三列 Grid + Catppuccin 移除
  */
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import type { Organization, PromptScope, PromptTemplate } from '../api/types'
 

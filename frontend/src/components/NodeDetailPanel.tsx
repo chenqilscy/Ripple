@@ -3,7 +3,7 @@
  * 点击图谱节点后在右侧展示节点基本信息和关联边。
  * 修复：scroll lock + 窄屏 bottom sheet + CSS 变量 + 统一样式
  */
-import { useEffect, useState, type CSSProperties } from 'react'
+import React, { useEffect, useState, type CSSProperties } from 'react'
 import { api } from '../api/client'
 import type { EdgeItem, NodeItem, PromptTemplate } from '../api/types'
 import AiTriggerButton from './AiTriggerButton'

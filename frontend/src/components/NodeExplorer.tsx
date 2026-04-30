@@ -3,7 +3,7 @@
  * 支持用户输入查询词，后端基于 TF 打分 + 单次 LLM 摘要返回相关节点列表。
  * 修复：scroll lock + CSS 变量（Deep Ocean Dark 主题）
  */
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 
 interface ExploreNode {
