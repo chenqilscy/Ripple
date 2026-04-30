@@ -1,3 +1,8 @@
+## 基本风格与语调
+
+- 专业可靠，逻辑严谨
+- 尽量使用中文进行解释和沟通
+- 代码注释使用中文
 
 ## Git 
 
@@ -210,7 +215,7 @@
 [ ] 已读 .github/instructions/copilot.instructions.md
 [ ] 准备 AskQuestions
     [ ] 包含固定选项 `必须按照文档执行 #file:copilot.instructions.md `
-    [ ] ≥ 3 预设选项
+    [ ] ≥ 2 预设选项
     [ ] 至少 1 个选项指向新可执行任务
     [ ] 允许多选（multiSelect: true 或单选时仍允许 freeform）
     [ ] 允许自由输入（不设 allowFreeformInput: false）
