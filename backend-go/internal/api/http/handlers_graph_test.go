@@ -75,3 +75,41 @@ func TestGenerateRecommendations_ExistingEdge(t *testing.T) {
 		t.Errorf("existing edge should not generate recommendation, got %d", len(recs))
 	}
 }
+
+func TestBfsPath(t *testing.T) {
+	// Build a simple graph: 1--2--3--4 and 2--5
+	adj := map[string][]string{
+		"1": {"2"},
+		"2": {"1", "3", "5"},
+		"3": {"2", "4"},
+		"4": {"3"},
+		"5": {"2"},
+	}
+
+	// Direct path 1->4 (1-2-3-4)
+	path := bfsPath(adj, "1", "4")
+	if len(path) != 4 {
+		t.Errorf("1->4 expected path length 4, got %d", len(path))
+	}
+	if path[0] != "1" || path[len(path)-1] != "4" {
+		t.Errorf("1->4 path should start with 1 and end with 4, got %v", path)
+	}
+
+	// Self-loop
+	path = bfsPath(adj, "3", "3")
+	if len(path) != 1 || path[0] != "3" {
+		t.Errorf("self should return [self], got %v", path)
+	}
+
+	// No path (disconnected node)
+	path = bfsPath(adj, "1", "999")
+	if path != nil {
+		t.Errorf("no path should return nil, got %v", path)
+	}
+
+	// Via alternative route 5->4 (5-2-3-4)
+	path = bfsPath(adj, "5", "4")
+	if path == nil || path[0] != "5" || path[len(path)-1] != "4" {
+		t.Errorf("5->4 should find path, got %v", path)
+	}
+}
