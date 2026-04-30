@@ -18,7 +18,6 @@ import {
   forceCenter,
   forceX,
   forceY,
-  type Simulation,
   type SimulationNodeDatum,
   type SimulationLinkDatum,
 } from 'd3-force'
@@ -498,21 +497,19 @@ function SpringEdges({ simLinks, onEdgeHover }: SpringEdgesProps) {
 // ---------------------------------------------------------------------------
 // SimTicker -- advances the D3 live simulation one tick per frame
 // ---------------------------------------------------------------------------
-interface SimTickerProps {
-  sim: Simulation<SimNode, SimLink>
-}
-
-function SimTicker({ sim }: SimTickerProps) {
-  const { invalidate } = useThree()
-  useFrame(() => {
-    if (sim.alpha() > 0.001) {
-      sim.tick()
-      invalidate()
-    }
-  })
-  return null
-}
-
+// SimTicker — DEPRECATED (P2-01: d3-force moved to Web Worker)
+// Kept here as reference; tick loop is now handled in forceWorker.js
+// ---------------------------------------------------------------------------
+// function SimTicker({ sim }: SimTickerProps) {
+//   const { invalidate } = useThree()
+//   useFrame(() => {
+//     if (sim.alpha() > 0.001) {
+//       sim.tick()
+//       invalidate()
+//     }
+//   })
+//   return null
+// }
 // ---------------------------------------------------------------------------
 // GraphScene
 // ---------------------------------------------------------------------------
@@ -541,7 +538,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set())
 
-  const { sim, simLinks, positions, simNodes } = useMemo(() => {
+  const { simLinks, positions, simNodes } = useMemo(() => {
     const simNodes: SimNode[] = displayNodes.map((n, index) => {
       const forced = snapshotLayout?.[n.id]
       const pos = initialNodePosition(n, index, forced)
@@ -559,6 +556,8 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
         kind: e.kind,
       }))
 
+    // Initial simulation pass to resolve node positions and pre-warm layout.
+    // After this, the Worker takes over the continuous tick loop.
     const sim = forceSimulation<SimNode>(simNodes)
       .force(
         'link',
@@ -580,10 +579,8 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       positions.set(n.id, new THREE.Vector3(n.x ?? 0, n.y ?? 0, 0))
     }
 
-    // Reset alpha so SimTicker continues spring animation
-    sim.alpha(0.3).restart().stop()
-
-    return { sim, simLinks, positions, simNodes }
+    // Note: sim is not returned — tick loop is handled by Web Worker.
+    return { simLinks, positions, simNodes }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayNodes, displayEdges, resetToken, snapshotLayout])
 
@@ -592,6 +589,58 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
     for (const n of simNodes) m.set(n.id, n)
     return m
   }, [simNodes])
+
+  // Web Worker for d3-force simulation
+  const workerRef = useRef<Worker | null>(null)
+  const [workerPositions, setWorkerPositions] = useState<Map<string, { x: number; y: number }>>(new Map())
+
+  // Initialize worker with initial positions from the pre-warmed simNodes
+  useEffect(() => {
+    const worker = new Worker(
+      new URL('../workers/forceWorker.js', import.meta.url),
+      { type: 'module' },
+    )
+    workerRef.current = worker
+
+    worker.onmessage = (e) => {
+      if (e.data.type === 'tick') {
+        const posMap = new Map<string, { x: number; y: number }>()
+        for (const p of e.data.positions) {
+          posMap.set(p.id, { x: p.x, y: p.y })
+        }
+        setWorkerPositions(posMap)
+      }
+    }
+
+    // Initialize worker simulation with initial positions from pre-warmed simNodes
+    worker.postMessage({
+      type: 'init',
+      data: {
+        nodes: simNodes.map(n => ({ id: n.id, x: n.x, y: n.y })),
+        edges: displayEdges.map(e => ({ src_node_id: e.src_node_id, dst_node_id: e.dst_node_id })),
+      },
+    })
+
+    return () => {
+      worker.postMessage({ type: 'stop' })
+      worker.terminate()
+      workerRef.current = null
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayNodes, displayEdges])
+
+  // Sync worker positions back to simNodes so SpringEdges/EdgeParticles keep working
+  // (they access node positions via lk.source.x / lk.target.x object references)
+  useEffect(() => {
+    if (workerPositions.size === 0) return
+    for (const [id, pos] of workerPositions) {
+      const sn = simNodeMap.get(id)
+      if (sn) {
+        sn.x = pos.x
+        sn.y = pos.y
+      }
+    }
+  }, [workerPositions, simNodeMap])
 
   const handleNodeClick = useCallback(
     (node: NodeItem, isMulti: boolean) => {
@@ -624,19 +673,14 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
     dragOffsetRef.current = { x: e.point.x - nodeX, y: e.point.y - nodeY }
     draggingNodeIdRef.current = nodeId
 
-    // 通知 D3 simulation 开始拖动
-    const sn = simNodeMap.get(nodeId)
-    if (sn) {
-      sn.fx = sn.x
-      sn.fy = sn.y
-    }
-    sim.alphaTarget(0.1)
+    // 通知 Worker 开始拖动
+    workerRef.current?.postMessage({ type: 'drag', data: { nodeId, x: nodeX, y: nodeY } })
 
     // 禁用 OrbitControls 防止拖动时误触画布
     if (controlsRef.current) {
       controlsRef.current.enabled = false
     }
-  }, [sim, simNodeMap])
+  }, [])
 
   // 全局 pointermove / pointerup 处理拖动（解决鼠标移出节点边界时事件丢失的问题）
   useEffect(() => {
@@ -660,6 +704,9 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       sn.fx = nx
       sn.fy = ny
       mesh.position.set(nx, ny, 0)
+
+      // 通知 Worker 拖动位置
+      workerRef.current?.postMessage({ type: 'drag', data: { nodeId: draggingNodeIdRef.current, x: nx, y: ny } })
     }
 
     const onUp = () => {
@@ -669,6 +716,8 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
           sn.fx = sn.x
           sn.fy = sn.y
         }
+        // 通知 Worker 释放拖动
+        workerRef.current?.postMessage({ type: 'release', data: { nodeId: draggingNodeIdRef.current } })
         draggingNodeIdRef.current = null
         if (controlsRef.current) {
           controlsRef.current.enabled = true
@@ -712,7 +761,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       <pointLight position={[0, 200, 200]} intensity={1.2} />
       <pointLight position={[0, -200, -100]} intensity={0.4} color="#4a8eff" />
 
-      <SimTicker sim={sim} />
+      {/* SimTicker removed — d3-force tick loop is now handled by Web Worker */}
       <SpringEdges simLinks={simLinks} onEdgeHover={onEdgeHover} />
       <EdgeParticles simLinks={simLinks} />
 

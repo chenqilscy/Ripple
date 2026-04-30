@@ -5,6 +5,8 @@ dist-ssr/
 # TypeScript compiled output (Vite uses .ts directly, these are not needed)
 src/**/*.js
 src/**/*.d.ts
+# Exception: Web Worker files in src/workers/
+!src/workers/*.js
 
 # Dependencies
 node_modules/
