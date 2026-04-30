@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/llm"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/go-chi/chi/v5"
@@ -20,6 +22,7 @@ type GraphAnalysisHandlers struct {
 	Edges       *service.EdgeService
 	Recommender *service.RecommenderService
 	Feedback    store.FeedbackRepository
+	LLM         llm.Router // AI 标签生成（可选；nil 时回退到 "领域 N" 占位符）
 }
 
 // ---- 推荐 ----
@@ -391,6 +394,42 @@ func (h *GraphAnalysisHandlers) GetClusters(w http.ResponseWriter, r *http.Reque
 			BridgeNodeIDs: findBridgeNodes(component, adj, len(clusters)),
 			Density:       float64(clusterEdges) / float64(len(component)+1),
 		})
+	}
+
+	// AI 标签生成：如果 LLM 可用，用 AI 替换占位符 "领域 N"
+	if h.LLM != nil && len(clusters) > 0 {
+		nodeMap := make(map[string]string)
+		for _, n := range nodes {
+			if n.State != domain.StateErased && n.State != domain.StateGhost {
+				nodeMap[n.ID] = n.Content
+			}
+		}
+
+		for i := range clusters {
+			var contents []string
+			for _, nid := range clusters[i].NodeIDs {
+				if c, ok := nodeMap[nid]; ok {
+					contents = append(contents, c)
+					if len(contents) >= 5 { // 最多取 5 个节点内容作为 context
+						break
+					}
+				}
+			}
+			if len(contents) > 0 {
+				prompt := fmt.Sprintf("这些知识节点的内容摘要如下：\n%s\n\n请用2-4个字概括这些节点所属的领域主题，只返回一个词，例如「系统设计」「算法原理」「产品运营」。", strings.Join(contents, "\n---\n"))
+				cands, err := h.LLM.Generate(r.Context(), llm.GenerateRequest{
+					Prompt:   prompt,
+					N:        1,
+					Modality: llm.ModalityText,
+				})
+				if err == nil && len(cands) > 0 && cands[0].Text != "" {
+					label := strings.TrimSpace(cands[0].Text)
+					label = strings.TrimPrefix(label, "\"")
+					label = strings.TrimSuffix(label, "\"")
+					clusters[i].Label = label
+				}
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"clusters": clusters})

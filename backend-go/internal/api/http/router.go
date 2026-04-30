@@ -206,11 +206,18 @@ func NewRouter(d Deps) http.Handler {
 
 			// 图谱分析端点（推荐/路径/聚类/规划）
 			if d.Nodes != nil && d.Edges != nil {
+				var llmRouter llm.Router
+				if d.LLMRouter != nil {
+					if r2, ok := d.LLMRouter.(llm.Router); ok {
+						llmRouter = r2
+					}
+				}
 				graphH := &GraphAnalysisHandlers{
 					Nodes:       d.Nodes,
 					Edges:       d.Edges,
 					Recommender: d.Recommender,
 					Feedback:    d.Feedback,
+					LLM:         llmRouter,
 				}
 				r.Get("/lakes/{id}/recommendations", graphH.GetRecommendations)
 				r.Post("/lakes/{id}/recommendations/{id}/accept", graphH.AcceptRecommendation)
