@@ -980,7 +980,7 @@ export default function LakeGraph({
         <button onClick={() => zoomOutRef.current()} title="缩小" style={zoomBtnStyle}>−</button>
         <button onClick={() => fitRef.current()} title="适配画布：恢复默认视角" style={zoomBtnStyle}>⊡</button>
       </div>
-      <Canvas camera={{ position: [0, 0, 600], fov: 50 }} gl={{ antialias: true }} frameloop="always">
+      <Canvas camera={{ position: [0, 0, 600], fov: 50 }} gl={{ antialias: true }} frameloop="demand">
         <React.Suspense fallback={null}>
           <GraphScene
             displayNodes={displayNodes}
