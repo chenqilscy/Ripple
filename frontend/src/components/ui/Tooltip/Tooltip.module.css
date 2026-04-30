@@ -1,0 +1,79 @@
+/* ─── Tooltip.module.css ─── */
+@import '../../../styles/animations.css';
+
+.wrapper {
+  display: inline-flex;
+  position: relative;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 9998;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 4px);
+  background: #1f2937;
+  color: #fff;
+  font-size: 11px;
+  font-family: var(--font-body);
+  line-height: 1.4;
+  white-space: nowrap;
+  max-width: 240px;
+  white-space: normal;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(46,139,144,0.2);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast, 150ms);
+}
+
+.tooltip.visible {
+  opacity: 1;
+}
+
+/* ── 箭头 ── */
+.tooltip::after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+/* 上方 */
+.top::after {
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #1f2937;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* 下方 */
+.bottom::after {
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid #1f2937;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* 左侧 */
+.left::after {
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid #1f2937;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* 右侧 */
+.right::after {
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 6px solid #1f2937;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
