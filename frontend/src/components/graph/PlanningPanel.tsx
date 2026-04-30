@@ -1,6 +1,6 @@
 // PlanningPanel.tsx — 规划面板：知识缺口分析 + 行动建议
-import React from 'react'
 import type { PlanningSuggestion } from '../../api/types'
+import { Button } from '../ui'
 
 interface PlanningPanelProps {
   suggestions: PlanningSuggestion[]
@@ -38,8 +38,8 @@ export default function PlanningPanel({ suggestions, loading, onAccept, onRefres
       }}>
         <span style={{ color: '#9ec5ee', fontSize: 13, fontWeight: 600 }}>📋 规划建议</span>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={onRefresh} title="重新分析" style={iconBtn}>↻</button>
-          <button onClick={onClose} style={iconBtn}>✕</button>
+          <Button variant="ghost" size="sm" onClick={onRefresh} title="重新分析" icon="↻" />
+          <Button variant="ghost" size="sm" onClick={onClose} icon="✕" aria-label="关闭" />
         </div>
       </div>
 
@@ -88,16 +88,14 @@ export default function PlanningPanel({ suggestions, loading, onAccept, onRefres
                 <div style={{ fontSize: 11, color: '#4a6a8e', marginBottom: 6, lineHeight: 1.5 }}>
                   {s.description}
                 </div>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => onAccept(s)}
-                  style={{
-                    width: '100%', padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                    borderRadius: 4, border: `1px solid ${PRIORITY_COLOR[priority]}55`,
-                    background: `${PRIORITY_COLOR[priority]}11`, color: PRIORITY_COLOR[priority],
-                  }}
+                  style={{ width: '100%', marginTop: 6 }}
                 >
                   一键采纳
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -107,7 +105,3 @@ export default function PlanningPanel({ suggestions, loading, onAccept, onRefres
   )
 }
 
-const iconBtn: React.CSSProperties = {
-  background: 'transparent', border: 'none', color: '#666', cursor: 'pointer',
-  padding: '0 3px', fontSize: 11,
-}

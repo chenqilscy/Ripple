@@ -1,6 +1,6 @@
 // PathTracePanel.tsx — 路径追溯面板：展示两节点间的关联链路
-import React from 'react'
 import type { PathResult } from '../../api/types'
+import { Button } from '../ui'
 
 interface PathTracePanelProps {
   path: PathResult | null
@@ -22,7 +22,7 @@ export default function PathTracePanel({ path, loading, onClose }: PathTracePane
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <span style={{ color: '#9ec5ee', fontSize: 13, fontWeight: 600 }}>🔍 路径追溯</span>
-        <button onClick={onClose} style={closeBtnStyle}>✕</button>
+        <Button variant="ghost" size="sm" onClick={onClose} icon="✕" aria-label="关闭" />
       </div>
 
       {loading && (
@@ -65,6 +65,3 @@ export default function PathTracePanel({ path, loading, onClose }: PathTracePane
   )
 }
 
-const closeBtnStyle: React.CSSProperties = {
-  background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', padding: '0 4px', fontSize: 12,
-}

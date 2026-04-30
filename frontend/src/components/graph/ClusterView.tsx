@@ -1,6 +1,6 @@
 // ClusterView.tsx — 聚类视图：颜色区分领域 + 聚焦/重置
-import React from 'react'
 import type { Cluster } from '../../api/types'
+import { Button } from '../ui'
 
 interface ClusterViewProps {
   clusters: Cluster[]
@@ -31,9 +31,9 @@ export default function ClusterView({ clusters, focusedClusterId, loading, onFoc
       }}>
         <span style={{ color: '#9ec5ee', fontSize: 12, fontWeight: 600 }}>🗂 知识领域</span>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={onRefresh} title="刷新聚类" style={iconBtn}>↻</button>
-          <button onClick={() => onFocus(null)} title="显示全部" style={iconBtn}>⊡</button>
-          <button onClick={onClose} style={iconBtn}>✕</button>
+          <Button variant="ghost" size="sm" onClick={onRefresh} title="刷新聚类" icon="↻" />
+          <Button variant="ghost" size="sm" onClick={() => onFocus(null)} title="显示全部" icon="⊡" />
+          <Button variant="ghost" size="sm" onClick={onClose} icon="✕" aria-label="关闭" />
         </div>
       </div>
 
@@ -86,7 +86,3 @@ export default function ClusterView({ clusters, focusedClusterId, loading, onFoc
   )
 }
 
-const iconBtn: React.CSSProperties = {
-  background: 'transparent', border: 'none', color: '#666', cursor: 'pointer',
-  padding: '0 3px', fontSize: 11, lineHeight: 1,
-}
