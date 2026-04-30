@@ -114,6 +114,18 @@ export function Home({ onLogout }: Props) {
   // P14-C：批量操作
   const [batchSel, setBatchSel] = useState<Set<string>>(new Set())
   const [batchBusy, setBatchBusy] = useState(false)
+  // P1-04：首次引导 — localStorage 持久化，跳过后不再显示
+  const GUIDE_KEY = 'ripple.onboarding_done'
+  const [showOnboard, setShowOnboard] = useState<boolean | null>(null) // null = loading
+  useEffect(() => {
+    const done = localStorage.getItem(GUIDE_KEY)
+    // 仅对空湖且从未跳过过的用户显示引导
+    setShowOnboard(done !== '1')
+  }, [])
+  function dismissGuide() {
+    localStorage.setItem(GUIDE_KEY, '1')
+    setShowOnboard(false)
+  }
   // P15-B：版本 diff 视图
   const [diffModal, setDiffModal] = useState<{ nodeId: string; revisions: NodeRevision[] } | null>(null)
   // P17-A：版本历史时间线
@@ -712,6 +724,8 @@ export function Home({ onLogout }: Props) {
         setSelectedNode(created)
         setViewMode('list')
       }
+      // P1-04：用户完成第一步操作后隐藏引导
+      dismissGuide()
       void loadNodes(lakeId)
     } catch (e) { setErr((e as Error).message) }
     finally { setBusy(false) }
@@ -1628,7 +1642,7 @@ export function Home({ onLogout }: Props) {
                       连线模式：已选起点 {linkSrc.slice(0, 8)}…，点击另一节点完成。再次点同一节点取消。
                     </div>
                   )}
-                  {nodes.length === 0 && (
+                  {nodes.length === 0 && showOnboard && (
                     <div style={{ padding: '20px 0', textAlign: 'center' }}>
                       <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>🌊</div>
                       <div style={{ fontSize: 14, color: '#9ec5ee', marginBottom: 4 }}>此处风平浪静</div>
@@ -1655,15 +1669,18 @@ export function Home({ onLogout }: Props) {
                           </div>
                         ))}
                       </div>
+                      <button
+                        onClick={() => void createManualNode()}
+                        disabled={busy}
+                        style={{ ...primaryBtnSmall, margin: '8px 0 12px' }}
+                        title="创建当前湖里的第一个文本节点"
+                      >添加第一个节点</button>
+                      {/* P1-04：跳过引导 */}
+                      <button
+                        onClick={dismissGuide}
+                        style={{ background: 'transparent', border: 'none', color: '#666', fontSize: 11, cursor: 'pointer', textDecoration: 'underline', marginTop: 4 }}
+                      >跳过引导</button>
                     </div>
-                  )}
-                  {nodes.length === 0 && (
-                    <button
-                      onClick={() => void createManualNode()}
-                      disabled={busy}
-                      style={{ ...primaryBtnSmall, margin: '8px 0 12px' }}
-                      title="创建当前湖里的第一个文本节点"
-                    >添加第一个节点</button>
                   )}
                   {/* P14-C：批量操作工具栏 */}
                   {batchSel.size > 0 && (
