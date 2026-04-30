@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CloudTask, type EdgeItem, type EdgeKind, type Lake, type NodeItem, type Space, type PermaNode } from '../api/client'
 import type { LakeRole, NodeRevision, NodeSearchResult, NodeTemplate } from '../api/types'
+import { useGraphAnalysis } from '../components/graph/RecommendationEngine'
 import { NodeDiffViewer } from '../components/NodeDiffViewer'
 import NodeVersionHistory from '../components/NodeVersionHistory'
 
@@ -168,6 +169,9 @@ export function Home({ onLogout }: Props) {
   // P1-05：移动端抽屉导航
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // 图谱分析 Hook（推荐/路径追溯/聚类/规划）
+  const graphAnalysis = useGraphAnalysis(active?.id ?? '')
 
   // P12-C：拉取当前登录用户 ID（用于组织权限判断）
   useEffect(() => {
@@ -1563,6 +1567,39 @@ export function Home({ onLogout }: Props) {
                       onMultiSelectChange={ids => setMultiSelectedNodeIds(new Set(ids))}
                       onNodeSelect={node => setSelectedNode(node)}
                       crystallizeIds={crystallizeIds}
+                      showDiscovery={graphAnalysis.state.activePanel === 'discovery'}
+                      recommendations={graphAnalysis.state.recommendations}
+                      loadingRecommendations={graphAnalysis.state.loadingRecommendations}
+                      activePath={graphAnalysis.state.activePath}
+                      loadingPath={graphAnalysis.state.loadingPath}
+                      recCountByNode={(() => {
+                        const m = new Map<string, number>()
+                        for (const r of graphAnalysis.state.recommendations) {
+                          if (r.status === 'pending') {
+                            m.set(r.source_node_id, (m.get(r.source_node_id) ?? 0) + 1)
+                            m.set(r.target_node_id, (m.get(r.target_node_id) ?? 0) + 1)
+                          }
+                        }
+                        return m
+                      })()}
+                      onToggleDiscovery={() => graphAnalysis.state.activePanel === 'discovery' ? graphAnalysis.closePanel() : graphAnalysis.setActivePanel('discovery')}
+                      onAcceptRec={rec => graphAnalysis.acceptRecommendation(rec)}
+                      onIgnoreRec={id => graphAnalysis.ignoreRecommendation(id)}
+                      onTracePath={(src, dst) => graphAnalysis.tracePath(src, dst)}
+                      onClosePath={() => graphAnalysis.closePath()}
+                      showCluster={graphAnalysis.state.activePanel === 'cluster'}
+                      clusters={graphAnalysis.state.clusters}
+                      focusedClusterId={graphAnalysis.state.focusedClusterId}
+                      loadingClusters={graphAnalysis.state.loadingClusters}
+                      onFocusCluster={id => graphAnalysis.focusCluster(id)}
+                      onRefreshClusters={() => graphAnalysis.loadClusters()}
+                      onCloseCluster={() => graphAnalysis.closePanel()}
+                      showPlanning={graphAnalysis.state.activePanel === 'planning'}
+                      planningSuggestions={graphAnalysis.state.planningSuggestions}
+                      loadingPlanning={graphAnalysis.state.loadingPlanning}
+                      onAcceptPlanning={s => graphAnalysis.acceptPlanningSuggestion(s)}
+                      onRefreshPlanning={() => graphAnalysis.loadPlanning()}
+                      onClosePlanning={() => graphAnalysis.closePanel()}
                     />
                     {multiSelectedNodeIds.size >= 2 && (
                       <div style={{ textAlign: 'center', marginTop: 8 }}>

@@ -42,6 +42,8 @@ const STATE_COLOR: Record<NodeState, string> = {
 interface SimNode extends SimulationNodeDatum {
   id: string
   item: NodeItem
+  // Attached by AnimatedNode for global drag handler
+  _mesh?: THREE.Mesh | null
 }
 
 interface SimLink extends SimulationLinkDatum<SimNode> {
@@ -237,8 +239,8 @@ function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew,
 
   // P0-04 fix: 将 mesh ref 附加到 simNode 上，供 GraphScene 全局拖动事件使用
   useEffect(() => {
-    (simNode as any)._mesh = meshRef.current
-    return () => { if ((simNode as any)._mesh === meshRef.current) (simNode as any)._mesh = null }
+    simNode._mesh = meshRef.current
+    return () => { if (simNode._mesh === meshRef.current) simNode._mesh = null }
   })
 
   useEffect(() => {
@@ -624,7 +626,10 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
 
     // 通知 D3 simulation 开始拖动
     const sn = simNodeMap.get(nodeId)
-    if (sn) { sn.fx = sn.x; sn.fy = sn.y }
+    if (sn) {
+      sn.fx = sn.x
+      sn.fy = sn.y
+    }
     sim.alphaTarget(0.1)
 
     // 禁用 OrbitControls 防止拖动时误触画布
@@ -632,20 +637,6 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       controlsRef.current.enabled = false
     }
   }, [sim, simNodeMap])
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  // @ts-expect-error handleDragEnd may be used in future pointerup handlers
-  const handleDragEnd = useCallback(() => {
-    if (!draggingNodeIdRef.current) return
-    const sn = simNodeMap.get(draggingNodeIdRef.current)
-    if (sn) { sn.fx = sn.x; sn.fy = sn.y }
-    draggingNodeIdRef.current = null
-
-    // 恢复 OrbitControls
-    if (controlsRef.current) {
-      controlsRef.current.enabled = true
-    }
-  }, [simNodeMap])
 
   // 全局 pointermove / pointerup 处理拖动（解决鼠标移出节点边界时事件丢失的问题）
   useEffect(() => {
@@ -656,7 +647,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       if (!draggingNodeIdRef.current) return
       const sn = simNodeMap.get(draggingNodeIdRef.current)
       if (!sn) return
-      const mesh = (sn as any)._mesh as THREE.Mesh | null
+      const mesh = sn._mesh
       if (!mesh) return
 
       const rect = canvas.getBoundingClientRect()
@@ -664,16 +655,24 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1
       const nx = ndcX * 300 - dragOffsetRef.current.x
       const ny = ndcY * 300 - dragOffsetRef.current.y
-      sn.x = nx; sn.y = ny; sn.fx = nx; sn.fy = ny
+      sn.x = nx
+      sn.y = ny
+      sn.fx = nx
+      sn.fy = ny
       mesh.position.set(nx, ny, 0)
     }
 
     const onUp = () => {
       if (draggingNodeIdRef.current) {
         const sn = simNodeMap.get(draggingNodeIdRef.current)
-        if (sn) { sn.fx = sn.x; sn.fy = sn.y }
+        if (sn) {
+          sn.fx = sn.x
+          sn.fy = sn.y
+        }
         draggingNodeIdRef.current = null
-        if (controlsRef.current) controlsRef.current.enabled = true
+        if (controlsRef.current) {
+          controlsRef.current.enabled = true
+        }
       }
     }
 

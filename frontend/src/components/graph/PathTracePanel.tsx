@@ -5,11 +5,10 @@ import type { PathResult } from '../../api/types'
 interface PathTracePanelProps {
   path: PathResult | null
   loading: boolean
-  onTracePath: (sourceId: string, targetId: string) => void
   onClose: () => void
 }
 
-export default function PathTracePanel({ path, loading, onTracePath, onClose }: PathTracePanelProps) {
+export default function PathTracePanel({ path, loading, onClose }: PathTracePanelProps) {
   if (!path && !loading) return null
 
   return (

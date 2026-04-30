@@ -8,7 +8,6 @@ interface DiscoveryPanelProps {
   activePath: PathResult | null
   loadingPath: boolean
   onAccept: (rec: Recommendation) => void
-  onReject: (id: string) => void
   onIgnore: (id: string) => void
   onTracePath: (sourceId: string, targetId: string) => void
   onClosePath: () => void
@@ -35,7 +34,7 @@ const CONFIDENCE_COLOR: Record<string, string> = {
 
 export default function DiscoveryPanel({
   recommendations, loading, activePath, loadingPath,
-  onAccept, onReject, onIgnore, onTracePath, onClosePath, onClose,
+  onAccept, onIgnore, onTracePath, onClosePath, onClose,
 }: DiscoveryPanelProps) {
   const pending = recommendations.filter(r => r.status === 'pending')
 
