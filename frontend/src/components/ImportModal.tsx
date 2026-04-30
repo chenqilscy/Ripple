@@ -1,6 +1,6 @@
 // ImportModal · 批量导入节点（JSON / CSV）
 // 修复：scroll lock + 预览区固定高度分配 + CSS 变量
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { api } from '../api/client'
 
 interface ImportItem {
@@ -65,14 +65,14 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Scroll lock
-  React.useEffect(() => {
+  useEffect(() => {
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = prev }
   }, [])
 
   // Escape to close
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -167,7 +167,7 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
             <div style={{ color: 'var(--status-success)', fontSize: 'var(--font-lg)' }}>
               成功导入 {doneCount} 个节点
             </div>
-            <button onClick={onClose} style={{ ...btnPrimary, marginTop: 'var(--space-lg)' }}>
+            <button onClick={onClose} aria-label="关闭成功" style={{ ...btnPrimary, marginTop: 'var(--space-lg)' }}>
               关闭
             </button>
           </div>
@@ -179,6 +179,8 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
                 <button
                   key={t}
                   onClick={() => { setTab(t); setPreview(null); setParseError('') }}
+                  aria-pressed={tab === t}
+                  aria-label={`${t.toUpperCase()} 格式`}
                   style={tab === t ? { ...btnPrimary, padding: 'var(--space-sm) var(--space-lg)' } : { ...btnSecondary, padding: 'var(--space-sm) var(--space-lg)' }}
                 >
                   {t.toUpperCase()}
@@ -228,8 +230,8 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
 
             {!preview && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)' }}>
-                <button onClick={onClose} style={btnSecondary}>取消</button>
-                <button onClick={handleParse} style={btnPrimary} disabled={!raw.trim()}>
+                <button onClick={onClose} aria-label="取消导入" style={btnSecondary}>取消</button>
+                <button onClick={handleParse} aria-label="解析预览" style={btnPrimary} disabled={!raw.trim()}>
                   解析预览
                 </button>
               </div>
@@ -283,12 +285,14 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)' }}>
                   <button
                     onClick={() => { setPreview(null); setParseError('') }}
+                    aria-label="重新编辑"
                     style={btnSecondary}
                   >
                     重新编辑
                   </button>
                   <button
                     onClick={handleConfirm}
+                    aria-label="确认导入"
                     style={btnPrimary}
                     disabled={loading || preview.length > 100}
                   >

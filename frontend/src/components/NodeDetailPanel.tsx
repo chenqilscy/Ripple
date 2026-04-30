@@ -48,6 +48,13 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
     return () => { document.body.style.overflow = prev }
   }, [])
 
+  // Escape to close
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   useEffect(() => {
     let cancelled = false
     setPromptLoadError('')

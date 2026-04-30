@@ -115,6 +115,14 @@ export function ModalHost(): React.ReactElement | null {
         }
     }, [opts])
 
+    // Scroll lock: prevent body scroll while modal is open
+    useEffect(() => {
+        if (!opts) return
+        const prev = document.body.style.overflow
+        document.body.style.overflow = 'hidden'
+        return () => { document.body.style.overflow = prev }
+    }, [opts])
+
     if (!opts) return null
 
     const close = (out: string | null) => {
