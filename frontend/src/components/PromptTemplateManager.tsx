@@ -5,6 +5,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import type { Organization, PromptScope, PromptTemplate } from '../api/types'
+import { Button } from './ui'
 
 type FormState = {
   name: string
@@ -149,9 +150,9 @@ export default function PromptTemplateManager() {
     <div style={{ padding: 'var(--space-xl) var(--space-lg)', maxWidth: 960, minWidth: 420, flex: '1 1 620px', display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
         <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 'var(--font-xl)', fontWeight: 600 }}>Prompt 模板库</h3>
-        <button onClick={() => void load()} disabled={loading || saving || !!deletingId} style={btnStyleVar('var(--accent)')}>
+        <Button variant="primary" size="sm">
           {loading ? '刷新中…' : '刷新'}
-        </button>
+        </Button>
       </div>
       <p style={{ margin: 0, color: 'var(--text-tertiary)', fontSize: 'var(--font-md)', lineHeight: 1.6 }}>
         管理 AI Workflow 使用的 Prompt 模板。private 模板仅创建者可见；org 模板组织成员可读取并用于 AI 触发，创建者或组织管理员可维护。
@@ -169,9 +170,9 @@ export default function PromptTemplateManager() {
             {editingId ? '编辑模板' : '新建模板'}
           </strong>
           {editingId && (
-            <button onClick={resetForm} disabled={saving} style={btnStyleVar('var(--status-warning)')}>
+            <Button variant="secondary" size="sm" onClick={resetForm} disabled={saving}>
               取消编辑
-            </button>
+            </Button>
           )}
         </div>
 
@@ -237,13 +238,12 @@ export default function PromptTemplateManager() {
           <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>
             常用变量：{'{{node_content}}'}，{'{{lake_name}}'}，{'{{custom_key}}'}
           </div>
-          <button
+          <Button variant="primary" size="sm"
             onClick={() => void handleSubmit()}
             disabled={saving || !!deletingId || !form.name.trim() || !form.template.trim() || (form.scope === 'org' && !form.orgId)}
-            style={btnStyleVar('var(--status-success)')}
           >
             {saving ? '保存中…' : editingId ? '保存修改' : '创建模板'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -291,20 +291,18 @@ export default function PromptTemplateManager() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-                    <button
+                    <Button variant="primary" size="sm"
                       onClick={() => beginEdit(template)}
                       disabled={saving || !!deletingId}
-                      style={btnStyleVar('var(--accent)')}
                     >
                       编辑
-                    </button>
-                    <button
+                    </Button>
+                    <Button variant="danger" size="sm"
                       onClick={() => void handleDelete(template)}
                       disabled={saving || deletingId === template.id}
-                      style={btnStyleVar('var(--status-danger)')}
                     >
                       {deletingId === template.id ? '删除中…' : '删除'}
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 {isExpanded && (
@@ -334,18 +332,6 @@ export default function PromptTemplateManager() {
 
 function fmtDateTime(value: string) {
   return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
-function btnStyleVar(color: string): React.CSSProperties {
-  return {
-    background: 'transparent',
-    border: `1px solid ${color}`,
-    color,
-    borderRadius: 'var(--radius-md)',
-    padding: 'var(--space-xs) var(--space-md)',
-    cursor: 'pointer',
-    fontSize: 'var(--font-sm)',
-  }
 }
 
 function badgeStyleVar(color: string): React.CSSProperties {

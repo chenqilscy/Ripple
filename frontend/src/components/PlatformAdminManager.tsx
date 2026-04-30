@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { PlatformAdmin, PlatformAdminRole } from '../api/types'
+import { Button } from './ui'
 
 export default function PlatformAdminManager() {
   const [admins, setAdmins] = useState<PlatformAdmin[]>([])
@@ -98,9 +99,9 @@ export default function PlatformAdminManager() {
           disabled={saving || !!deletingId || forbidden}
           style={{ ...inputStyle, minWidth: 180, flex: '1 1 180px' }}
         />
-        <button onClick={() => void handleGrant()} disabled={saving || !!deletingId || forbidden || !target.trim()} style={btnStyle('#a6e3a1')}>
+        <Button variant="primary" size="sm" style={{ color: '#a6e3a1' }} onClick={() => void handleGrant()} disabled={saving || !!deletingId || forbidden || !target.trim()}>
           {saving ? '授权中…' : '+ 授权'}
-        </button>
+        </Button>
       </div>
 
       {err && <p style={{ color: forbidden ? '#f9e2af' : '#f38ba8', margin: '0 0 12px' }}>⚠ {err}</p>}
@@ -132,9 +133,9 @@ export default function PlatformAdminManager() {
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{shortID(admin.created_by)}</td>
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{fmtDate(admin.created_at)}</td>
                 <td style={tdStyle}>
-                  <button onClick={() => void handleRevoke(admin)} disabled={saving || !!deletingId} style={btnStyle('#f38ba8', true)}>
+                  <Button variant="danger" size="sm" onClick={() => void handleRevoke(admin)} disabled={saving || !!deletingId}>
                     {deletingId === admin.user_id ? '撤销中…' : '撤销'}
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -165,14 +166,6 @@ export function platformAdminRevokeMessage(admin: Pick<PlatformAdmin, 'email' | 
 
 function shortID(s: string) {
   return s ? `${s.slice(0, 8)}…` : '—'
-}
-
-function btnStyle(color: string, small = false): React.CSSProperties {
-  return {
-    background: 'transparent', border: `1px solid ${color}`, color,
-    borderRadius: 4, padding: small ? '2px 8px' : '5px 12px',
-    cursor: 'pointer', fontSize: small ? 12 : 13,
-  }
 }
 
 const inputStyle: React.CSSProperties = {
