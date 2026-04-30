@@ -537,3 +537,16 @@ export interface PlanningSuggestion {
   related_node_ids: string[]
 }
 
+// ---- 图谱热度趋势 (Phase 3-B.3) ----
+export interface HeatNode {
+  node_id: string
+  content: string
+  content_preview: string
+  heat_score: number    // 0-1
+  editing_score: number // 0-1
+  association_score: number // 0-1
+  edit_count: number
+  edge_count: number
+  rank: number
+}
+

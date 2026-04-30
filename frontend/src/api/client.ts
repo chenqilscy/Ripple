@@ -680,6 +680,15 @@ export const api = {
     return request('GET', `/api/v1/lakes/${lakeId}/recommendations`)
   },
 
+  // 热度趋势
+  getHeatTrend(lakeId: string, limit = 10): Promise<{
+    heat_nodes: import('./types').HeatNode[]
+    window_days: number
+    computed_at: string
+  }> {
+    return request('GET', `/api/v1/lakes/${lakeId}/heat-trend?limit=${limit}`)
+  },
+
   // 推荐操作
   acceptRecommendation(id: string, sourceNodeId: string, targetNodeId: string): Promise<{ id: string; status: string }> {
     return request('POST', `/api/v1/recommendations/${id}/accept`, {
