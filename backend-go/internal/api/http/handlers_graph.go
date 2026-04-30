@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ type GraphAnalysisHandlers struct {
 	Recommender *service.RecommenderService
 	Feedback    store.FeedbackRepository
 	LLM         llm.Router // AI 标签生成（可选；nil 时回退到 "领域 N" 占位符）
+	Heat        *service.HeatService // 热度计算（Phase 3-B.3）
 }
 
 // ---- 推荐 ----
@@ -622,4 +624,59 @@ func (h *GraphAnalysisHandlers) AcceptPlanning(w http.ResponseWriter, r *http.Re
 	suggestionID := chi.URLParam(r, "id")
 	// TODO: 根据 suggestion type 执行对应操作（如创建关联节点）
 	writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "status": "accepted"})
+}
+
+// GetHeatTrend GET /api/v1/lakes/{lake_id}/heat-trend
+func (h *GraphAnalysisHandlers) GetHeatTrend(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	lakeID := chi.URLParam(r, "lake_id")
+
+	limit := 10
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	nodes, err := h.Heat.ComputeHeat(r.Context(), u, lakeID, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to compute heat: "+err.Error())
+		return
+	}
+
+	type heatNodeRes struct {
+		NodeID           string  `json:"node_id"`
+		Content          string  `json:"content"`
+		ContentPreview   string  `json:"content_preview"`
+		HeatScore        float64 `json:"heat_score"`
+		EditingScore     float64 `json:"editing_score"`
+		AssociationScore float64 `json:"association_score"`
+		EditCount        int     `json:"edit_count"`
+		EdgeCount        int     `json:"edge_count"`
+		Rank             int     `json:"rank"`
+	}
+	res := make([]heatNodeRes, len(nodes))
+	for i, n := range nodes {
+		preview := n.Content
+		if len(preview) > 50 {
+			preview = preview[:50] + "..."
+		}
+		res[i] = heatNodeRes{
+			NodeID:           n.NodeID,
+			Content:          n.Content,
+			ContentPreview:   preview,
+			HeatScore:        n.HeatScore,
+			EditingScore:     n.EditingScore,
+			AssociationScore: n.AssociationScore,
+			EditCount:        n.EditCount,
+			EdgeCount:        n.EdgeCount,
+			Rank:             n.Rank,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"heat_nodes":  res,
+		"window_days": service.HeatWindowDays,
+		"computed_at": time.Now().Format(time.RFC3339),
+	})
 }

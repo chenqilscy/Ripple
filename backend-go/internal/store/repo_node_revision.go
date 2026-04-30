@@ -115,3 +115,32 @@ func (r *nodeRevRepoPG) LatestRevNumber(ctx context.Context, nodeID string) (int
 	}
 	return n, nil
 }
+
+// CountByNodeIDsSince 返回指定节点列表中，每个节点在 since 之后的 revision 数量。
+// 返回 map[nodeID]count。
+func (r *nodeRevRepoPG) CountByNodeIDsSince(ctx context.Context, nodeIDs []string, since time.Time) (map[string]int, error) {
+	if len(nodeIDs) == 0 {
+		return map[string]int{}, nil
+	}
+	query := `
+		SELECT node_id, COUNT(*) as cnt
+		FROM node_revisions
+		WHERE node_id = ANY($1) AND created_at >= $2
+		GROUP BY node_id
+	`
+	rows, err := r.pool.Query(ctx, query, nodeIDs, since)
+	if err != nil {
+		return nil, fmt.Errorf("count revisions by node ids since: %w", err)
+	}
+	defer rows.Close()
+	out := make(map[string]int, len(nodeIDs))
+	for rows.Next() {
+		var nodeID string
+		var cnt int
+		if err := rows.Scan(&nodeID, &cnt); err != nil {
+			return nil, fmt.Errorf("scan revision count: %w", err)
+		}
+		out[nodeID] = cnt
+	}
+	return out, rows.Err()
+}

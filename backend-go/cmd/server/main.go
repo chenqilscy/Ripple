@@ -281,6 +281,7 @@ func main() {
 		Crystallize:    crystallizeSvc,
 		Recommender:    recommenderSvc,
 		Feedback:       feedbackRepo,
+		NodeRevisions:  nodeRevs, // Phase 3-B.3: 热度计算服务
 		Attachments:    attachmentH,
 		Presence:       presenceSvc,
 		WS:             wsH,

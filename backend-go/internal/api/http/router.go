@@ -28,6 +28,8 @@ type Deps struct {
 	Recommender *service.RecommenderService
 	// Feedback 仓库（与 Recommender 配套；为 nil 则不挂载 /feedback /recommendations）
 	Feedback store.FeedbackRepository
+	// NodeRevisions 节点编辑历史仓库（用于 HeatService 热度计算，Phase 3-B.3）
+	NodeRevisions store.NodeRevisionRepository
 	// Attachments M4-B：本地 FS 附件；为 nil 则不挂载 /attachments
 	Attachments *AttachmentHandlers
 	Presence    *presence.Service
@@ -219,6 +221,10 @@ func NewRouter(d Deps) http.Handler {
 					Feedback:    d.Feedback,
 					LLM:         llmRouter,
 				}
+				// Phase 3-B.3: 热度计算服务（需要 NodeService, NodeRevisionRepository, EdgeService）
+				if d.NodeRevisions != nil {
+					graphH.Heat = service.NewHeatService(d.Nodes, d.NodeRevisions, d.Edges)
+				}
 				r.Get("/lakes/{id}/recommendations", graphH.GetRecommendations)
 				r.Post("/lakes/{id}/recommendations/{id}/accept", graphH.AcceptRecommendation)
 				r.Post("/lakes/{id}/recommendations/{id}/reject", graphH.RejectRecommendation)
@@ -230,6 +236,10 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/lakes/{id}/clusters", graphH.GetClusters)
 				r.Get("/lakes/{id}/planning", graphH.GetPlanning)
 				r.Post("/planning/{id}/accept", graphH.AcceptPlanning)
+				// Phase 3-B.3: 热度趋势端点
+				if graphH.Heat != nil {
+					r.Get("/lakes/{id}/heat-trend", graphH.GetHeatTrend)
+				}
 			}
 
 			if inviteH != nil {
