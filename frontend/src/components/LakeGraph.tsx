@@ -197,6 +197,26 @@ function EdgeParticles({ simLinks, speed = 0.4 }: ParticleProps) {
 }
 
 // ---------------------------------------------------------------------------
+// LOD node — simplified 2D circle when zoom ≤ 10%
+// ---------------------------------------------------------------------------
+interface LODNodeProps {
+  node: NodeItem
+  position: [number, number, number]
+  cameraScale: number
+}
+
+function LODNode({ node, position, cameraScale }: LODNodeProps) {
+  const color = STATE_COLOR[node.state] ?? '#888888'
+  const radius = Math.max(5, 8 * cameraScale)
+  return (
+    <mesh position={position}>
+      <circleGeometry args={[radius, 16]} />
+      <meshBasicMaterial color={color} transparent opacity={0.6} />
+    </mesh>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Animated node with weave (spring scale-in) animation
 // ---------------------------------------------------------------------------
 interface AnimNodeProps {
@@ -538,6 +558,11 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set())
 
+  // P3-03: LOD scale — normalize camera zoom to ~1.0 at default (z=600)
+  const { camera } = useThree()
+  const cameraScale = camera.zoom / 600
+  const useLOD = cameraScale < 0.1  // zoom ≤ 10% triggers LOD
+
   const { simLinks, positions, simNodes } = useMemo(() => {
     const simNodes: SimNode[] = displayNodes.map((n, index) => {
       const forced = snapshotLayout?.[n.id]
@@ -774,7 +799,21 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
         return srcPositions.length > 0 ? <CrystallizeEffect key={`cryst-${[...crystallizeIds].join(',')}`} sourcePositions={srcPositions} /> : null
       })()}
 
-      {displayNodes.map(node => {
+      {/* P3-03: LOD — simplified 2D circles at zoom ≤ 10% */}
+      {useLOD && displayNodes.map(node => {
+        const pos3 = positions.get(node.id) ?? new THREE.Vector3()
+        return (
+          <LODNode
+            key={node.id}
+            node={node}
+            position={[pos3.x, pos3.y, 0]}
+            cameraScale={cameraScale}
+          />
+        )
+      })}
+
+      {/* Normal mode — full 3D nodes */}
+      {!useLOD && displayNodes.map(node => {
         const pos3 = positions.get(node.id) ?? new THREE.Vector3()
         const sn = simNodeMap.get(node.id)!
         return (
