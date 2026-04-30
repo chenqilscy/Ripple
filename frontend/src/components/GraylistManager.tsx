@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { Button } from './ui'
 import type { GraylistEntry } from '../api/types'
 
 export default function GraylistManager() {
@@ -90,13 +91,9 @@ export default function GraylistManager() {
           disabled={saving || forbidden}
           style={{ ...inputStyle, minWidth: 180, flex: '1 1 180px' }}
         />
-        <button
-          onClick={() => void handleSave()}
-          disabled={saving || forbidden || !email.trim()}
-          style={btnStyle('#f9e2af')}
-        >
+        <Button variant="primary" size="sm" onClick={() => void handleSave()} disabled={saving || forbidden || !email.trim()} style={{ color: '#f9e2af' }}>
           {saving ? '保存中…' : '+ 添加 / 更新'}
-        </button>
+        </Button>
       </div>
 
       {err && <p style={{ color: forbidden ? '#f9e2af' : '#f38ba8', margin: '0 0 12px' }}>⚠ {err}</p>}
@@ -126,13 +123,9 @@ export default function GraylistManager() {
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{shortID(entry.created_by)}</td>
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{fmtDate(entry.created_at)}</td>
                 <td style={tdStyle}>
-                  <button
-                    onClick={() => void handleDelete(entry)}
-                    disabled={deletingId === entry.id}
-                    style={btnStyle('#f38ba8', true)}
-                  >
+                  <Button variant="danger" size="sm" onClick={() => void handleDelete(entry)} disabled={deletingId === entry.id}>
                     {deletingId === entry.id ? '移除中…' : '移除'}
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -149,14 +142,6 @@ function fmtDate(s: string) {
 
 function shortID(s: string) {
   return s ? `${s.slice(0, 8)}…` : '—'
-}
-
-function btnStyle(color: string, small = false): React.CSSProperties {
-  return {
-    background: 'transparent', border: `1px solid ${color}`, color,
-    borderRadius: 4, padding: small ? '2px 8px' : '5px 12px',
-    cursor: 'pointer', fontSize: small ? 12 : 13,
-  }
 }
 
 const inputStyle: React.CSSProperties = {

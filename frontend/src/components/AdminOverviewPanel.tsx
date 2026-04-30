@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { Button } from './ui'
 import type { AdminOverview, AdminOverviewStats, OrgOverview } from '../api/types'
 
 export const EMPTY_ADMIN_OVERVIEW_STATS: AdminOverviewStats = {
@@ -55,9 +56,9 @@ export default function AdminOverviewPanel() {
     <div style={{ padding: 16, maxWidth: 860, minWidth: 360, flex: '2 1 520px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <h3 style={{ margin: 0, color: '#cdd6f4', flex: 1 }}>管理员总览</h3>
-        <button onClick={() => void load()} disabled={loading} style={btnStyle('#89b4fa')}>
+        <Button variant="primary" size="sm" onClick={() => void load()} disabled={loading} style={{ color: '#89b4fa' }}>
           {loading ? '刷新中…' : '刷新'}
-        </button>
+        </Button>
       </div>
       <p style={{ margin: '0 0 12px', color: '#6c7086', fontSize: 12, lineHeight: 1.5 }}>
         聚合展示平台级组织、用户与灰度名单规模，以及最近创建的组织 quota 使用概览。
@@ -128,13 +129,6 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 
 function fmtUsage(used: number | undefined, limit: number) {
   return `${used ?? 0}/${limit}`
-}
-
-function btnStyle(color: string): React.CSSProperties {
-  return {
-    background: 'transparent', border: `1px solid ${color}`, color,
-    borderRadius: 4, padding: '5px 12px', cursor: 'pointer', fontSize: 13,
-  }
 }
 
 const thStyle: React.CSSProperties = {

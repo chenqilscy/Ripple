@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { Button } from './ui'
 import type { APIKeyCreated, APIKeyItem, Organization } from '../api/types'
 
 /** P11-A：API Key 管理面板 */
@@ -86,15 +87,10 @@ export default function APIKeyManager() {
             {newKeyResult.raw_key}
           </code>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => handleCopy(newKeyResult.raw_key)}
-              style={btnStyle('#89b4fa')}
-            >
+            <Button variant="primary" size="sm" onClick={() => handleCopy(newKeyResult.raw_key)} style={{ color: '#89b4fa' }}>
               {copied ? '已复制 ✓' : '复制'}
-            </button>
-            <button onClick={() => setNewKeyResult(null)} style={btnStyle('#6c7086')}>
-              关闭
-            </button>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setNewKeyResult(null)}>关闭</Button>
           </div>
         </div>
       )}
@@ -113,9 +109,9 @@ export default function APIKeyManager() {
           <option value="">个人 Key</option>
           {orgs.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
         </select>
-        <button onClick={handleCreate} disabled={creating || !newName.trim()} style={btnStyle('#a6e3a1')}>
+        <Button variant="primary" size="sm" onClick={handleCreate} disabled={creating || !newName.trim()} style={{ color: '#a6e3a1' }}>
           {creating ? '创建中…' : '+ 创建'}
-        </button>
+        </Button>
       </div>
 
       {err && <p style={{ color: '#f38ba8', margin: '0 0 12px' }}>⚠ {err}</p>}
@@ -148,9 +144,9 @@ export default function APIKeyManager() {
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{k.last_used_at ? fmtDate(k.last_used_at) : '—'}</td>
                 <td style={{ ...tdStyle, color: '#6c7086' }}>{fmtDate(k.created_at)}</td>
                 <td style={tdStyle}>
-                  <button onClick={() => handleRevoke(k.id)} style={btnStyle('#f38ba8', true)}>
+                  <Button variant="danger" size="sm" onClick={() => handleRevoke(k.id)}>
                     撤销
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -169,17 +165,9 @@ function shortID(s: string) {
   return `${s.slice(0, 8)}…`
 }
 
-function btnStyle(color: string, small = false): React.CSSProperties {
-  return {
-    background: 'transparent', border: `1px solid ${color}`, color,
-    borderRadius: 4, padding: small ? '2px 8px' : '5px 12px',
-    cursor: 'pointer', fontSize: small ? 12 : 13,
-  }
-}
-
 const inputStyle: React.CSSProperties = {
-  flex: 1, background: '#1e1e2e', border: '1px solid #45475a', borderRadius: 4,
-  color: '#cdd6f4', padding: '5px 10px', fontSize: 13,
+  background: '#1e1e2e', border: '1px solid #45475a', borderRadius: 4,
+  color: '#cdd6f4', padding: '5px 10px', fontSize: 13, minWidth: 140,
 }
 
 const selectStyle: React.CSSProperties = {
