@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, type ApiError } from '../api/client'
+import { Button } from '../components/ui'
 
 interface Props {
   onSuccess: () => void
@@ -55,17 +56,17 @@ export function Login({ onSuccess }: Props) {
 
         {err && <div style={errStyle}>{err}</div>}
 
-        <button type="submit" disabled={busy} style={primaryBtn}>
+        <Button variant="primary" type="submit" disabled={busy}>
           {busy ? '...' : mode === 'login' ? '入湖' : '注册并入湖'}
-        </button>
+        </Button>
 
-        <button
-          type="button" disabled={busy}
+        <Button
+          variant="secondary"
+          disabled={busy}
           onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-          style={linkBtn}
         >
           {mode === 'login' ? '还没账号？注册' : '已有账号？登录'}
-        </button>
+        </Button>
       </form>
     </div>
   )
@@ -87,15 +88,6 @@ const input: React.CSSProperties = {
   padding: '10px 14px', background: 'rgba(255,255,255,0.08)',
   border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6,
   color: '#fff', fontSize: 14, outline: 'none',
-}
-const primaryBtn: React.CSSProperties = {
-  marginTop: 8, padding: '12px', background: '#4a90e2',
-  border: 'none', borderRadius: 6, color: 'white',
-  fontSize: 14, cursor: 'pointer', letterSpacing: 2,
-}
-const linkBtn: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#9ec5ee',
-  cursor: 'pointer', fontSize: 12, padding: 8,
 }
 const errStyle: React.CSSProperties = {
   padding: 8, background: 'rgba(255,80,80,0.15)',

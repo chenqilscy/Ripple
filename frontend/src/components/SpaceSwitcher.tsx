@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Space } from '../api/client'
 import { prompt as modalPrompt, confirm as modalConfirm } from './Modal'
+import { Button } from './ui'
 
 export interface SpaceSwitcherProps {
   currentSpaceId: string
@@ -82,18 +83,7 @@ export default function SpaceSwitcher(props: SpaceSwitcherProps) {
         borderBottom: '1px solid var(--border-subtle)',
       }}>
         <span style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>空间</span>
-        <button
-          onClick={handleCreate}
-          title="创建空间"
-          aria-label="创建空间"
-          style={{
-            background: 'transparent', border: '1px solid var(--border)',
-            color: 'var(--text-tertiary)',
-            borderRadius: 'var(--radius-sm)', width: 22, height: 22,
-            cursor: 'pointer', fontSize: 'var(--font-lg)', lineHeight: 1,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >+</button>
+        <Button variant="ghost" size="sm" onClick={handleCreate} title="创建空间" aria-label="创建空间">+</Button>
       </div>
 
       {/* List — independent scroll */}

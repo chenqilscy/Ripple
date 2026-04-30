@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { Notification } from '../api/types'
+import { Button } from './ui'
 
 const POLL_MS = 30_000
 const PAGE = 20
@@ -134,12 +135,9 @@ export default function NotificationBell() {
           }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: '#89dceb' }}>通知</span>
             {items.some(n => !n.is_read) && (
-              <button onClick={markAll} style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: '#6c7086', fontSize: 11,
-              }}>
+              <Button variant="ghost" size="sm" onClick={markAll}>
                 全部已读
-              </button>
+              </Button>
             )}
           </div>
 
@@ -175,13 +173,9 @@ export default function NotificationBell() {
           ))}
           {!loading && hasMore && (
             <div style={{ padding: '8px 12px', textAlign: 'center' }}>
-              <button
-                onClick={() => void loadMore()}
-                disabled={loadingMore}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#89dceb', fontSize: 12 }}
-              >
+              <Button variant="ghost" size="sm" onClick={() => void loadMore()} disabled={loadingMore}>
                 {loadingMore ? '加载中…' : '加载更多'}
-              </button>
+              </Button>
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { getToken } from '../api/client'
+import { Button } from './ui'
 
 const ALLOWED = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 
@@ -119,15 +120,9 @@ export default function AttachmentBar({ nodeId, onUploaded, compact }: Props) {
           style={{ display: 'none' }}
           onChange={(e) => { void handleFiles(e.target.files); if (inputRef.current) inputRef.current.value = '' }}
         />
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          style={{
-            background: '#4a8eff', color: '#fff', border: 'none',
-            padding: '4px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer',
-            opacity: busy ? 0.5 : 1,
-          }}
-        >📎 {busy ? '上传中…' : '附件'}</button>
+        <Button variant="ghost" size="sm" onClick={() => inputRef.current?.click()} disabled={busy}>
+          📎 {busy ? '上传中…' : '附件'}
+        </Button>
         <span style={{ fontSize: 11, opacity: 0.6, flex: 1 }}>
           拖拽图片到此 · png/jpg/gif/webp · ≤5MB
         </span>
