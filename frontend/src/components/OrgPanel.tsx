@@ -232,14 +232,13 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', minHeight: 480 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-        <button onClick={onBack} style={btnStyle}>← 返回</button>
+        <Button variant="secondary" size="sm" onClick={onBack}>← 返回</Button>
         <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 'var(--font-lg)', flex: 1 }}>
           {org.name}
         </span>
-        <button onClick={() => tab === 'members' ? void load() : tab === 'lakes' ? void loadLakes() : void loadQuota()} disabled={loading || lakesLoading || quotaLoading}
-          style={{ ...btnStyle, marginLeft: 'auto' }}>
+        <Button variant="secondary" size="sm" onClick={() => tab === 'members' ? void load() : tab === 'lakes' ? void loadLakes() : void loadQuota()} disabled={loading || lakesLoading || quotaLoading} style={{ marginLeft: 'auto' }}>
           {(loading || lakesLoading || quotaLoading) ? '加载中…' : '刷新'}
-        </button>
+        </Button>
       </div>
 
       {error && <ErrorMsg>{error}</ErrorMsg>}
@@ -247,13 +246,14 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
       {/* Tab switcher */}
       <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
         {(['members', 'lakes', 'quota', 'subscription'] as const).map(t => (
-          <button
+          <Button
             key={t}
+            variant={tab === t ? 'primary' : 'ghost'}
+            size="sm"
             onClick={() => setTab(t)}
-            style={{ ...btnStyle, ...(tab === t ? { background: 'var(--accent-subtle)', color: 'var(--accent)', borderColor: 'var(--accent)' } : {}) }}
           >
             {t === 'members' ? '成员' : t === 'lakes' ? '湖' : t === 'quota' ? '配额' : '订阅'}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -277,13 +277,14 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
                         <option key={r} value={r}>{r === 'ADMIN' ? '管理员' : '成员'}</option>
                       ))}
                     </select>
-                    <button
+                    <Button
+                      variant="danger"
+                      size="sm"
                       disabled={updating === m.user_id}
                       onClick={() => void handleRemove(m.user_id)}
-                      style={{ ...btnStyle, color: 'var(--status-danger)', borderColor: 'var(--border-subtle)' }}
                     >
                       移除
-                    </button>
+                    </Button>
                   </>
                 ) : (
                   <span style={{
@@ -316,9 +317,9 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
                 <select value={addRole} onChange={e => setAddRole(e.target.value as OrgRole)} style={selectStyle}>
                   {INVITE_ROLE_OPTIONS.map(r => <option key={r} value={r}>{r === 'ADMIN' ? '管理员' : '成员'}</option>)}
                 </select>
-                <button onClick={() => void handleAdd()} disabled={adding || !addUserId.trim()} style={btnStyle}>
+                <Button variant="primary" size="sm" onClick={() => void handleAdd()} disabled={adding || !addUserId.trim()}>
                   {adding ? '添加中…' : '添加'}
-                </button>
+                </Button>
               </div>
               <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
                 <input
@@ -329,14 +330,15 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
                   onKeyDown={e => { if (e.key === 'Enter') void handleAddByEmail() }}
                   style={{ ...inputStyle, flex: 1, minWidth: 160 }}
                 />
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => void handleAddByEmail()}
                   disabled={addingEmail || !addEmail.trim()}
-                  style={btnStyle}
                   title="邀请已注册用户"
                 >
                   {addingEmail ? '邀请中…' : '邮件邀请'}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -402,9 +404,9 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
                 <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', marginBottom: 'var(--space-xs)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
                     <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-sm)', fontWeight: 600, flex: 1 }}>最近配额变更记录</span>
-                    <button onClick={() => setShowQuotaAuditLog(prev => !prev)} style={btnStyle}>
+                    <Button variant="ghost" size="sm" onClick={() => setShowQuotaAuditLog(prev => !prev)}>
                       {showQuotaAuditLog ? '收起详情' : '查看全部'}
-                    </button>
+                    </Button>
                   </div>
                   {recentQuotaAudits.length > 0 ? recentQuotaAudits.slice(0, 3).map(log => (
                     <div key={log.id} style={{
@@ -450,9 +452,9 @@ function OrgMemberList({ org, currentUserId, onBack }: MemberListProps) {
                   更新于 {new Date(quota.updated_at).toLocaleString('zh-CN')}
                 </span>
                 {isAdmin ? (
-                  <button onClick={() => void handleSaveQuota()} disabled={quotaSaving} style={btnStyle}>
+                  <Button variant="primary" size="sm" onClick={() => void handleSaveQuota()} disabled={quotaSaving}>
                     {quotaSaving ? '保存中…' : '保存配额'}
-                  </button>
+                  </Button>
                 ) : (
                   <span style={{ color: 'var(--text-tertiary)', fontSize: 'var(--font-sm)' }}>只读</span>
                 )}
@@ -537,10 +539,9 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
         <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 'var(--font-xl)', flex: 1 }}>组织管理</span>
-        <button onClick={() => void load()} disabled={loading}
-          style={{ ...btnStyle, marginRight: 'var(--space-sm)' }}>
+        <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading} style={{ marginRight: 'var(--space-sm)' }}>
           {loading ? '加载中…' : '刷新'}
-        </button>
+        </Button>
         <Button variant="ghost" size="sm" onClick={onClose} icon="✕" aria-label="关闭" />
       </div>
 
@@ -579,7 +580,7 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
                       </div>
                     )}
                   </div>
-                  <button onClick={() => setSelectedOrg(org)} style={btnStyle}>管理</button>
+                  <Button variant="secondary" size="sm" onClick={() => setSelectedOrg(org)}>管理</Button>
                 </div>
               )
             })}
@@ -592,9 +593,9 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
 
           {/* Create form toggle */}
           {!creating ? (
-            <button onClick={() => setCreating(true)} style={{ ...btnStyle, width: '100%' }}>
+            <Button variant="primary" size="sm" onClick={() => setCreating(true)} style={{ width: '100%' }}>
               + 新建组织
-            </button>
+            </Button>
           ) : (
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)',
@@ -621,14 +622,16 @@ export default function OrgPanel({ currentUserId, onClose }: Props) {
                 style={inputStyle}
               />
               <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => void handleCreate()}
                   disabled={creating2 || !newName.trim() || !newSlug.trim()}
-                  style={{ ...btnStyle, flex: 1, background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+                  style={{ flex: 1 }}
                 >
                   {creating2 ? '创建中…' : '创建'}
-                </button>
-                <button onClick={() => setCreating(false)} style={btnStyle}>取消</button>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setCreating(false)}>取消</Button>
               </div>
             </div>
           )}
@@ -662,15 +665,6 @@ const memberRowStyle: React.CSSProperties = {
   border: '1px solid var(--border-subtle)',
 }
 
-const btnStyle: React.CSSProperties = {
-  background: 'none',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-md)',
-  color: 'var(--text-secondary)',
-  cursor: 'pointer',
-  padding: 'var(--space-xs) var(--space-md)',
-  fontSize: 'var(--font-sm)',
-}
 
 const inputStyle: React.CSSProperties = {
   background: 'var(--bg-input)',

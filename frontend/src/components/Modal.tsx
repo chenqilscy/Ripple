@@ -10,6 +10,7 @@
  * 修复：scroll lock + CSS 变量
  */
 import React, { useEffect, useRef, useState } from 'react'
+import { Button } from './ui'
 
 export type PromptOptions = {
     title: string
@@ -223,13 +224,13 @@ export function ModalHost(): React.ReactElement | null {
                 {err ? <div style={{ color: 'var(--status-danger)', fontSize: 'var(--font-sm)' }}>{err}</div> : null}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)', marginTop: 'var(--space-xs)' }}>
                     {showCancel && (
-                        <button onClick={() => close(null)} style={btnStyle(false, false)}>
+                        <Button variant="secondary" onClick={() => close(null)}>
                             {opts.cancelText ?? '取消'}
-                        </button>
+                        </Button>
                     )}
-                    <button onClick={submit} style={btnStyle(true, !!opts.danger)}>
+                    <Button variant={opts.danger ? 'danger' : 'primary'} onClick={submit}>
                         {opts.confirmText ?? '确定'}
-                    </button>
+                    </Button>
                 </div>
                 {showInput && opts.multiline ? (
                     <div style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)', marginTop: -4 }}>
@@ -241,14 +242,3 @@ export function ModalHost(): React.ReactElement | null {
     )
 }
 
-function btnStyle(primary: boolean, danger: boolean): React.CSSProperties {
-    return {
-        padding: 'var(--space-sm) var(--space-lg)',
-        borderRadius: 'var(--radius-md)',
-        border: 0,
-        cursor: 'pointer',
-        background: primary ? (danger ? 'var(--status-danger)' : 'var(--accent)') : 'var(--bg-tertiary)',
-        color: primary ? 'var(--text-inverse)' : 'var(--text-secondary)',
-        fontSize: 'var(--font-md)',
-    }
-}
