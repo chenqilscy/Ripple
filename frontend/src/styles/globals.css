@@ -74,6 +74,8 @@
   --shadow-card:   0 4px 24px rgba(0,0,0,0.5);
   --shadow-overlay: 0 16px 48px rgba(0,0,0,0.6);
   --shadow-modal:  0 18px 48px rgba(0,0,0,0.4);
+  --shadow-bottom-sheet: 0 -8px 32px rgba(0,0,0,0.5);
+  --shadow-sidebar: -4px 0 16px rgba(0,0,0,0.4);
 
   /* 字体 */
   --font-body: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;

@@ -101,7 +101,7 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
         height: '65vh', background: 'var(--bg-primary)',
         borderTop: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
-        zIndex: 400, boxShadow: '0 -8px 32px rgba(0,0,0,0.5)',
+        zIndex: 400, boxShadow: 'var(--shadow-bottom-sheet)',
         borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
         fontFamily: 'var(--font-body)', color: 'var(--text-primary)',
       }
@@ -110,7 +110,7 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
         width: 300, background: 'var(--bg-primary)',
         borderLeft: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
-        zIndex: 400, boxShadow: '-4px 0 16px rgba(0,0,0,0.4)',
+        zIndex: 400, boxShadow: 'var(--shadow-sidebar)',
         fontFamily: 'var(--font-body)', color: 'var(--text-primary)',
       }
 
