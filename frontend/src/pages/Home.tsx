@@ -1136,38 +1136,35 @@ export function Home({ onLogout }: Props) {
               boxShadow: wsOnline ? '0 0 6px #7fdbb6' : 'none',
             }} />
           </strong>
-          <button onClick={onLogout} style={ghostBtn}>退出</button>
+          <Button variant="ghost" size="sm" onClick={onLogout}>退出</Button>
           {active && (
-            <button
+            <Button variant="ghost" size="sm"
               onClick={() => setSearchOpen(true)}
               title="搜索节点 (Cmd+K)"
-              style={ghostBtn}
-            >🔍</button>
+            >🔍</Button>
           )}
           {active && (
-            <button
+            <Button variant="ghost" size="sm"
               onClick={() => setImportOpen(true)}
               title="批量导入结构化 JSON / Markdown 节点"
-              style={ghostBtn}
-            >📥</button>
+            >📥</Button>
           )}
           {active && (
-            <button
+            <Button variant="ghost" size="sm"
               onClick={() => setImportTextOpen(true)}
               title="文本转图谱（Paste-to-Graph）"
-              style={ghostBtn}
-            >✨</button>
+            >✨</Button>
           )}
-          <button
+          <Button variant="ghost" size="sm"
             onClick={() => setMainTab(t => t === 'settings' ? 'lakes' : 'settings')}
             title="系统设置"
-            style={{ ...ghostBtn, color: mainTab === 'settings' ? '#89b4fa' : undefined }}
-          >⚙</button>
-          <button
+            style={{ color: mainTab === 'settings' ? '#89b4fa' : undefined }}
+          >⚙</Button>
+          <Button variant="ghost" size="sm"
             onClick={() => setOrgOpen(o => !o)}
             title="组织管理"
-            style={{ ...ghostBtn, color: orgOpen ? '#89b4fa' : undefined }}
-          >🏢</button>
+            style={{ color: orgOpen ? '#89b4fa' : undefined }}
+          >🏢</Button>
           <NotificationBell />
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
@@ -1175,7 +1172,7 @@ export function Home({ onLogout }: Props) {
             value={newLakeName} onChange={e => setNewLakeName(e.target.value)}
             placeholder="新湖名…" style={inputSmall}
           />
-          <button onClick={createLake} disabled={busy} style={primaryBtnSmall} title="创建新湖">+</button>
+          <Button variant="primary" size="sm" onClick={createLake} disabled={busy} title="创建新湖">+</Button>
         </div>
         <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 0' }}>
           {/* P2-05：湖泊概念说明 */}
@@ -1217,13 +1214,13 @@ export function Home({ onLogout }: Props) {
             <div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
                 {settingsTabs.map(tab => (
-                  <button
+                  <Button variant="ghost" size="sm"
                     key={tab.key}
                     onClick={() => setSettingsTab(tab.key)}
-                    style={{ ...ghostBtn, color: settingsTab === tab.key ? '#89b4fa' : undefined, borderColor: settingsTab === tab.key ? '#89b4fa' : '#313244' }}
+                    style={{ color: settingsTab === tab.key ? '#89b4fa' : undefined, borderColor: settingsTab === tab.key ? '#89b4fa' : '#313244' }}
                   >
                     {tab.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               {settingsTab === 'overview' && <AdminOverviewPanel />}
@@ -1366,9 +1363,9 @@ export function Home({ onLogout }: Props) {
                 <input type="number" min={1} max={10} value={n}
                   onChange={e => setN(Number(e.target.value))}
                   style={{ ...inputSmall, width: 60 }} />
-                <button onClick={generate} disabled={busy || !prompt.trim()} style={primaryBtn}>
+                <Button variant="primary" onClick={generate} disabled={busy || !prompt.trim()}>
                   {busy ? '...' : '造云'}
-                </button>
+                </Button>
                 {!streaming ? (
                   <Button variant="primary" size="sm" onClick={startWeaveStream} disabled={!prompt.trim()}
                     title="SSE 流式预览（不落盘）">
@@ -1670,12 +1667,12 @@ export function Home({ onLogout }: Props) {
                           </div>
                         ))}
                       </div>
-                      <button
+                      <Button variant="primary" size="sm"
                         onClick={() => void createManualNode()}
                         disabled={busy}
-                        style={{ ...primaryBtnSmall, margin: '8px 0 12px' }}
+                        style={{ margin: '8px 0 12px' }}
                         title="创建当前湖里的第一个文本节点"
-                      >添加第一个节点</button>
+                      >添加第一个节点</Button>
                       {/* P1-04：跳过引导 */}
                       <button
                         onClick={dismissGuide}
@@ -1782,49 +1779,48 @@ export function Home({ onLogout }: Props) {
                               }}
                             >
                               {n.state === 'MIST' && (
-                                <button onClick={() => { condense(n.id); setOpenMoreId(null) }} style={moreMenuItemStyle} title="凝露：将节点从雾态降为水滴">凝露 ↓</button>
+                                <Button variant="ghost" size="sm" onClick={() => { condense(n.id); setOpenMoreId(null) }} title="凝露：将节点从雾态降为水滴">凝露 ↓</Button>
                               )}
                               {(n.state === 'DROP' || n.state === 'FROZEN') && (
-                                <button onClick={() => { evaporate(n.id); setOpenMoreId(null) }} style={moreMenuItemStyle} title="蒸发：将节点上升为蒸发态">蒸发 ↑</button>
+                                <Button variant="ghost" size="sm" onClick={() => { evaporate(n.id); setOpenMoreId(null) }} title="蒸发：将节点上升为蒸发态">蒸发 ↑</Button>
                               )}
-                              <button onClick={() => { handleNodeClickForLink(n.id); setOpenMoreId(null) }} style={moreMenuItemStyle}
-                                title={isLinkSrc ? '取消连线' : '连线（先选起点再选终点）'}>
+                              <Button variant="ghost" size="sm" onClick={() => { handleNodeClickForLink(n.id); setOpenMoreId(null) }}
+                                title={isLinkSrc ? '取消连线' : '连线（先选起点再选终点）'}
+                              >
                                 {isLinkSrc ? '✕ 取消连线' : '🔗 连线'}
-                              </button>
-                              <button onClick={() => { showHistory(n); setOpenMoreId(null) }} style={moreMenuItemStyle} title="历史版本（溯源：回望节点的演变轨迹）">⟲ 历史版本</button>
-                              <button onClick={() => { void showDiff(n); setOpenMoreId(null) }} style={moreMenuItemStyle} title="版本对比 diff">⇄ 版本对比</button>
-                              <button
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => { showHistory(n); setOpenMoreId(null) }} title="历史版本（溯源：回望节点的演变轨迹）">⟲ 历史版本</Button>
+                              <Button variant="ghost" size="sm" onClick={() => { void showDiff(n); setOpenMoreId(null) }} title="版本对比 diff">⇄ 版本对比</Button>
+                              <Button variant="ghost" size="sm"
                                 onClick={() => {
                                   setOpenMoreId(null)
                                   const fmt = window.confirm('确认导出格式？\n确定 = Markdown，取消 = JSON') ? 'md' : 'json'
                                   exportNode(n, fmt)
                                 }}
-                                style={moreMenuItemStyle}
                                 title="导出节点（析出：将节点内容提取为文件）"
-                              >⬇ 导出节点</button>
-                              <button
+                              >⬇ 导出节点</Button>
+                              <Button variant="ghost" size="sm"
                                 onClick={() => { void requestAiSummary(n); setOpenMoreId(null) }}
                                 disabled={aiSummaryBusy.has(n.id)}
-                                style={moreMenuItemStyle}
                                 title="为当前节点生成 AI 摘要"
-                              >{aiSummaryBusy.has(n.id) ? '… AI摘要' : 'AI摘要'}</button>
-                              <button
+                              >{aiSummaryBusy.has(n.id) ? '… AI摘要' : 'AI摘要'}</Button>
+                              <Button variant="ghost" size="sm"
                                 onClick={() => { void loadRelated(n.id); setOpenMoreId(null) }}
                                 disabled={relatedLoading === n.id}
-                                style={{ ...moreMenuItemStyle, color: '#89dceb' }}
+                                style={{ color: '#89dceb' }}
                                 title="查找关联节点"
-                              >{relatedLoading === n.id ? '… 关联推荐' : '⚡ 关联推荐'}</button>
-                              <button
+                              >{relatedLoading === n.id ? '… 关联推荐' : '⚡ 关联推荐'}</Button>
+                              <Button variant="ghost" size="sm"
                                 onClick={() => { setShareNode(n); setOpenMoreId(null) }}
-                                style={{ ...moreMenuItemStyle, color: '#f9e2af' }}
+                                style={{ color: '#f9e2af' }}
                                 title="分享节点：生成外链分享给他人"
-                              >🔗 分享节点</button>
+                              >🔗 分享节点</Button>
                               {canCrystal && (
-                                <button
+                                <Button variant="ghost" size="sm"
                                   onClick={() => { toggleCrystalSel(n.id); setOpenMoreId(null) }}
-                                  style={{ ...moreMenuItemStyle, background: isSelected ? '#4a8eff' : undefined, color: isSelected ? '#fff' : undefined }}
+                                  style={{ background: isSelected ? '#4a8eff' : undefined, color: isSelected ? '#fff' : undefined }}
                                   title="凝结：选入节点并提炼为永久知识卡片"
-                                >❄ 凝结</button>
+                                >❄ 凝结</Button>
                               )}
                             </div>
                           )}
@@ -2334,8 +2330,8 @@ function NodeTagEditor({ nodeId, tags, onChanged }: {
           placeholder="逗号分隔标签"
           style={{ flex: 1, minWidth: 100, fontSize: 11, padding: '2px 6px', background: '#2a2d3a', border: '1px solid #555', borderRadius: 4, color: '#cdd6f4' }}
         />
-        <button onClick={() => void save()} disabled={saving} style={tagChipBtn}>{saving ? '…' : '✓'}</button>
-        <button onClick={() => setEditing(false)} style={tagChipBtn}>✕</button>
+        <Button variant="ghost" size="sm" onClick={() => void save()} disabled={saving} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10 }}>{saving ? '…' : '✓'}</Button>
+        <Button variant="ghost" size="sm" onClick={() => setEditing(false)} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10 }}>✕</Button>
       </div>
     )
   }
@@ -2345,7 +2341,7 @@ function NodeTagEditor({ nodeId, tags, onChanged }: {
       {tags.map(t => (
         <span key={t} style={tagChip}>{t}</span>
       ))}
-      <button onClick={openEditor} style={tagChipBtn} title="编辑标签">+标签</button>
+      <Button variant="ghost" size="sm" onClick={openEditor} title="编辑标签" style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10 }}>+标签</Button>
     </div>
   )
 }
@@ -2354,12 +2350,6 @@ const tagChip: React.CSSProperties = {
   display: 'inline-block', fontSize: 10, padding: '1px 7px',
   background: 'rgba(137,220,235,0.15)', color: '#89dceb',
   borderRadius: 10, border: '1px solid rgba(137,220,235,0.3)',
-}
-
-const tagChipBtn: React.CSSProperties = {
-  fontSize: 10, padding: '1px 6px', cursor: 'pointer',
-  background: 'rgba(255,255,255,0.05)', color: '#cdd6f4',
-  border: '1px solid #555', borderRadius: 10,
 }
 
 const tplInput: React.CSSProperties = {
@@ -2407,17 +2397,6 @@ const textarea: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.15)', borderRadius: 4,
   color: '#fff', padding: 8, fontSize: 13,
   fontFamily: 'inherit', resize: 'vertical',
-}
-const primaryBtn: React.CSSProperties = {
-  padding: '8px 20px', background: '#4a90e2',
-  border: 'none', borderRadius: 4, color: 'white',
-  fontSize: 13, cursor: 'pointer',
-}
-const primaryBtnSmall: React.CSSProperties = { ...primaryBtn, padding: '6px 12px' }
-const ghostBtn: React.CSSProperties = {
-  background: 'none', border: '1px solid rgba(255,255,255,0.2)',
-  color: 'rgba(255,255,255,0.6)', borderRadius: 4,
-  padding: '4px 10px', fontSize: 11, cursor: 'pointer',
 }
 const taskRow: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0',
@@ -2473,10 +2452,4 @@ const errBanner: React.CSSProperties = {
   border: '1px solid rgba(255,80,80,0.4)',
   borderRadius: 4, color: '#ffb0b0', fontSize: 13,
   maxWidth: 400,
-}
-const moreMenuItemStyle: React.CSSProperties = {
-  display: 'block', width: '100%', background: 'transparent',
-  border: 'none', color: '#cde', padding: '6px 14px',
-  textAlign: 'left', fontSize: 12, cursor: 'pointer',
-  borderRadius: 0,
 }

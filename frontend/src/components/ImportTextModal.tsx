@@ -6,6 +6,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { api } from '../api/client'
 import type { ImportTextResult } from '../api/types'
+import { Button } from './ui'
 
 // 注入 spin keyframe（全局一次）
 let spinStyleInjected = false
@@ -55,23 +56,6 @@ const textareaStyle: React.CSSProperties = {
   padding: '10px 12px',
   resize: 'vertical',
   boxSizing: 'border-box',
-}
-const btnPrimary: React.CSSProperties = {
-  background: '#89b4fa',
-  color: '#0d1526',
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 20px',
-  cursor: 'pointer',
-  fontWeight: 700,
-}
-const btnSecondary: React.CSSProperties = {
-  background: 'transparent',
-  color: '#6c7086',
-  border: '1px solid #313244',
-  borderRadius: 8,
-  padding: '8px 20px',
-  cursor: 'pointer',
 }
 const resultCard: React.CSSProperties = {
   background: '#0a0f1e',
@@ -138,7 +122,7 @@ export default function ImportTextModal({ lakeId, onClose, onImported }: Props) 
       <div style={modal} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: 16, color: '#cdd6f4' }}>✨ 文本转图谱</h3>
-          <button onClick={onClose} style={{ ...btnSecondary, padding: '4px 10px' }}>✕</button>
+          <Button variant="ghost" size="sm" onClick={onClose} style={{ padding: '4px 10px' }}>✕</Button>
         </div>
 
         {!result ? (
@@ -190,9 +174,9 @@ export default function ImportTextModal({ lakeId, onClose, onImported }: Props) 
             )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button style={btnSecondary} onClick={onClose} disabled={loading}>取消</button>
-            <button
-                style={{ ...btnPrimary, opacity: loading || !text.trim() ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
+              <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>取消</Button>
+            <Button
+                variant="primary"
                 onClick={handleSubmit}
                 disabled={loading || !text.trim()}
               >
@@ -202,7 +186,7 @@ export default function ImportTextModal({ lakeId, onClose, onImported }: Props) 
                     解析中…
                   </span>
                 ) : '🚀 生成图谱'}
-              </button>
+              </Button>
             </div>
           </>
         ) : (
@@ -254,8 +238,8 @@ export default function ImportTextModal({ lakeId, onClose, onImported }: Props) 
             )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button style={btnSecondary} onClick={() => setResult(null)}>继续导入</button>
-              <button style={btnPrimary} onClick={onClose}>完成</button>
+              <Button variant="ghost" size="sm" onClick={() => setResult(null)}>继续导入</Button>
+              <Button variant="primary" onClick={onClose}>完成</Button>
             </div>
           </>
         )}

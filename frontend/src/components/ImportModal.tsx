@@ -2,6 +2,7 @@
 // 修复：scroll lock + 预览区固定高度分配 + CSS 变量
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { api } from '../api/client'
+import { Button } from './ui'
 
 interface ImportItem {
   content: string
@@ -158,7 +159,7 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
           <strong style={{ fontSize: 'var(--font-xl)' }}>
             批量导入节点{lakeName ? ` · ${lakeName}` : ''}
           </strong>
-          <button onClick={onClose} aria-label="关闭" style={btnSecondary}>✕</button>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="关闭">✕</Button>
         </div>
 
         {done ? (
@@ -167,32 +168,34 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
             <div style={{ color: 'var(--status-success)', fontSize: 'var(--font-lg)' }}>
               成功导入 {doneCount} 个节点
             </div>
-            <button onClick={onClose} aria-label="关闭成功" style={{ ...btnPrimary, marginTop: 'var(--space-lg)' }}>
+            <Button variant="primary" onClick={onClose} style={{ marginTop: 'var(--space-lg)' }}>
               关闭
-            </button>
+            </Button>
           </div>
         ) : (
           <>
             {/* Tab 切换 */}
             <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
               {(['json', 'csv'] as const).map(t => (
-                <button
-                  key={t}
-                  onClick={() => { setTab(t); setPreview(null); setParseError('') }}
-                  aria-pressed={tab === t}
-                  aria-label={`${t.toUpperCase()} 格式`}
-                  style={tab === t ? { ...btnPrimary, padding: 'var(--space-sm) var(--space-lg)' } : { ...btnSecondary, padding: 'var(--space-sm) var(--space-lg)' }}
-                >
-                  {t.toUpperCase()}
-                </button>
+                tab === t
+                  ? <Button variant="primary" key={t} onClick={() => { setTab(t); setPreview(null); setParseError('') }}
+                      aria-pressed={tab === t}
+                      aria-label={`${t.toUpperCase()} 格式`}
+                      style={{ padding: 'var(--space-sm) var(--space-lg)' }}
+                    >{t.toUpperCase()}</Button>
+                  : <Button variant="ghost" size="sm" key={t} onClick={() => { setTab(t); setPreview(null); setParseError('') }}
+                      aria-pressed={tab === t}
+                      aria-label={`${t.toUpperCase()} 格式`}
+                      style={{ padding: 'var(--space-sm) var(--space-lg)' }}
+                    >{t.toUpperCase()}</Button>
               ))}
-              <button
+              <Button variant="ghost" size="sm"
                 onClick={() => fileRef.current?.click()}
                 aria-label="选择文件"
-                style={{ ...btnSecondary, marginLeft: 'auto', padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--font-sm)' }}
+                style={{ marginLeft: 'auto', padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--font-sm)' }}
               >
                 📂 选择文件
-              </button>
+              </Button>
               <input ref={fileRef} type="file" accept=".json,.csv,.txt" style={{ display: 'none' }} onChange={handleFileUpload} />
             </div>
 
@@ -230,10 +233,10 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
 
             {!preview && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)' }}>
-                <button onClick={onClose} aria-label="取消导入" style={btnSecondary}>取消</button>
-                <button onClick={handleParse} aria-label="解析预览" style={btnPrimary} disabled={!raw.trim()}>
+                <Button variant="ghost" size="sm" onClick={onClose} aria-label="取消导入">取消</Button>
+                <Button variant="primary" onClick={handleParse} aria-label="解析预览" disabled={!raw.trim()}>
                   解析预览
-                </button>
+                </Button>
               </div>
             )}
 
@@ -283,21 +286,19 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
                   )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)' }}>
-                  <button
+                  <Button variant="ghost" size="sm"
                     onClick={() => { setPreview(null); setParseError('') }}
                     aria-label="重新编辑"
-                    style={btnSecondary}
                   >
                     重新编辑
-                  </button>
-                  <button
+                  </Button>
+                  <Button variant="primary"
                     onClick={handleConfirm}
                     aria-label="确认导入"
-                    style={btnPrimary}
                     disabled={loading || preview.length > 100}
                   >
                     {loading ? '导入中…' : `确认导入 ${preview.length} 个节点`}
-                  </button>
+                  </Button>
                 </div>
               </>
             )}
@@ -308,14 +309,3 @@ export default function ImportModal({ lakeId, lakeName, onClose, onImported }: P
   )
 }
 
-const btnPrimary: React.CSSProperties = {
-  background: 'var(--accent)', color: 'var(--text-inverse)',
-  border: 'none', borderRadius: 'var(--radius-md)',
-  padding: 'var(--space-sm) var(--space-xl)', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--font-base)',
-}
-const btnSecondary: React.CSSProperties = {
-  background: 'transparent', color: 'var(--text-tertiary)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-md)', padding: 'var(--space-sm) var(--space-lg)',
-  cursor: 'pointer', fontSize: 'var(--font-base)',
-}
