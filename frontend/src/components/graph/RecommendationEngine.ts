@@ -152,10 +152,7 @@ export function useGraphAnalysis(lakeId: string) {
   }, [])
 
   const acceptRecommendation = useCallback(async (rec: Recommendation) => {
-    await api.acceptRecommendation(rec.id)
-    try {
-      await api.createEdge(rec.source_node_id, rec.target_node_id, 'relates', rec.reason)
-    } catch { /* 边可能已存在 */ }
+    await api.acceptRecommendation(rec.id, rec.source_node_id, rec.target_node_id)
     dispatch({ type: 'UPDATE_RECOMMENDATION_STATUS', id: rec.id, status: 'accepted' })
   }, [])
 
@@ -167,6 +164,10 @@ export function useGraphAnalysis(lakeId: string) {
   const ignoreRecommendation = useCallback(async (id: string) => {
     await api.ignoreRecommendation(id)
     dispatch({ type: 'REMOVE_RECOMMENDATION', id })
+  }, [])
+
+  const acceptPlanningSuggestion = useCallback(async (s: PlanningSuggestion) => {
+    await api.acceptPlanningSuggestion(s.id)
   }, [])
 
   // 面板切换：使用 stateRef 避免 stale closure
@@ -209,6 +210,7 @@ export function useGraphAnalysis(lakeId: string) {
     acceptRecommendation,
     rejectRecommendation,
     ignoreRecommendation,
+    acceptPlanningSuggestion,
     setActivePanel,
     focusCluster,
     closePath,

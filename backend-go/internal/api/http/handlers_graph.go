@@ -10,14 +10,16 @@ import (
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
+	"github.com/chenqilscy/ripple/backend-go/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
 // GraphAnalysisHandlers 图谱分析端点（推荐/路径/聚类/规划）
 type GraphAnalysisHandlers struct {
-	Nodes      *service.NodeService
-	Edges      *service.EdgeService
+	Nodes       *service.NodeService
+	Edges       *service.EdgeService
 	Recommender *service.RecommenderService
+	Feedback    store.FeedbackRepository
 }
 
 // ---- 推荐 ----
@@ -498,22 +500,81 @@ func (h *GraphAnalysisHandlers) GetPlanning(w http.ResponseWriter, r *http.Reque
 
 // AcceptRecommendation POST /api/v1/lakes/{lake_id}/recommendations/{id}/accept
 func (h *GraphAnalysisHandlers) AcceptRecommendation(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
 	recID := chi.URLParam(r, "id")
-	// TODO: 将推荐状态持久化为 accepted，后续 GetRecommendations 过滤已接受推荐
-	writeJSON(w, http.StatusOK, map[string]any{"id": recID, "status": "accepted"})
+
+	// 从请求体读取 source_node_id 和 target_node_id
+	var body struct {
+		SourceNodeID string `json:"source_node_id"`
+		TargetNodeID string `json:"target_node_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if body.SourceNodeID == "" || body.TargetNodeID == "" {
+		writeError(w, http.StatusBadRequest, "source_node_id and target_node_id required")
+		return
+	}
+
+	// 调用 EdgeService.Create 创建关联
+	edge, err := h.Edges.Create(r.Context(), u, service.CreateEdgeInput{
+		SrcNodeID: body.SourceNodeID,
+		DstNodeID: body.TargetNodeID,
+		Kind:      domain.EdgeKindRelates,
+		Strength:  0.5,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// 同时写一条 positive feedback 事件（用于改进后续推荐质量）
+	if h.Feedback != nil {
+		h.Feedback.AddEvent(r.Context(), store.FeedbackEvent{
+			ID:         uuid.NewString(),
+			UserID:     u.ID,
+			TargetType: "recommendation",
+			TargetID:   recID,
+			EventType:  "accept",
+			Payload:    fmt.Sprintf(`{"accepted_edge_id":"%s"}`, edge.ID),
+		})
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{"id": edge.ID, "status": "accepted"})
 }
 
 // RejectRecommendation POST /api/v1/lakes/{lake_id}/recommendations/{id}/reject
 func (h *GraphAnalysisHandlers) RejectRecommendation(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
 	recID := chi.URLParam(r, "id")
-	// TODO: 将推荐状态持久化为 rejected，后续 GetRecommendations 过滤已拒绝推荐
+	if h.Feedback != nil {
+		h.Feedback.AddEvent(r.Context(), store.FeedbackEvent{
+			ID:         uuid.NewString(),
+			UserID:     u.ID,
+			TargetType: "recommendation",
+			TargetID:   recID,
+			EventType:  "reject",
+			Payload:    "",
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": recID, "status": "rejected"})
 }
 
 // IgnoreRecommendation POST /api/v1/lakes/{lake_id}/recommendations/{id}/ignore
 func (h *GraphAnalysisHandlers) IgnoreRecommendation(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
 	recID := chi.URLParam(r, "id")
-	// TODO: 将推荐状态持久化为 ignored，后续 GetRecommendations 过滤已忽略推荐
+	if h.Feedback != nil {
+		h.Feedback.AddEvent(r.Context(), store.FeedbackEvent{
+			ID:         uuid.NewString(),
+			UserID:     u.ID,
+			TargetType: "recommendation",
+			TargetID:   recID,
+			EventType:  "ignore",
+			Payload:    "",
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": recID, "status": "ignored"})
 }
 

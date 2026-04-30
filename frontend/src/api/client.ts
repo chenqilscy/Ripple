@@ -671,6 +671,9 @@ export const api = {
   getPlanningSuggestions(lakeId: string): Promise<{ suggestions: import('./types').PlanningSuggestion[] }> {
     return request('GET', `/api/v1/lakes/${lakeId}/planning`)
   },
+  acceptPlanningSuggestion(id: string): Promise<void> {
+    return request('POST', `/api/v1/planning/${id}/accept`)
+  },
 
   // 推荐列表
   getRecommendations(lakeId: string): Promise<{ recommendations: import('./types').Recommendation[] }> {
@@ -678,13 +681,16 @@ export const api = {
   },
 
   // 推荐操作
-  acceptRecommendation(id: string): Promise<void> {
-    return request('POST', `/api/v1/recommendations/${id}/accept`)
+  acceptRecommendation(id: string, sourceNodeId: string, targetNodeId: string): Promise<{ id: string; status: string }> {
+    return request('POST', `/api/v1/recommendations/${id}/accept`, {
+      source_node_id: sourceNodeId,
+      target_node_id: targetNodeId,
+    })
   },
-  rejectRecommendation(id: string): Promise<void> {
+  rejectRecommendation(id: string): Promise<{ id: string; status: string }> {
     return request('POST', `/api/v1/recommendations/${id}/reject`)
   },
-  ignoreRecommendation(id: string): Promise<void> {
+  ignoreRecommendation(id: string): Promise<{ id: string; status: string }> {
     return request('POST', `/api/v1/recommendations/${id}/ignore`)
   },
 }

@@ -206,11 +206,23 @@ func NewRouter(d Deps) http.Handler {
 
 			// 图谱分析端点（推荐/路径/聚类/规划）
 			if d.Nodes != nil && d.Edges != nil {
-				graphH := &GraphAnalysisHandlers{Nodes: d.Nodes, Edges: d.Edges}
+				graphH := &GraphAnalysisHandlers{
+					Nodes:       d.Nodes,
+					Edges:       d.Edges,
+					Recommender: d.Recommender,
+					Feedback:    d.Feedback,
+				}
 				r.Get("/lakes/{id}/recommendations", graphH.GetRecommendations)
+				r.Post("/lakes/{id}/recommendations/{id}/accept", graphH.AcceptRecommendation)
+				r.Post("/lakes/{id}/recommendations/{id}/reject", graphH.RejectRecommendation)
+				r.Post("/lakes/{id}/recommendations/{id}/ignore", graphH.IgnoreRecommendation)
+				r.Post("/recommendations/{id}/accept", graphH.AcceptRecommendation)
+				r.Post("/recommendations/{id}/reject", graphH.RejectRecommendation)
+				r.Post("/recommendations/{id}/ignore", graphH.IgnoreRecommendation)
 				r.Post("/graph/path", graphH.GetPath)
 				r.Get("/lakes/{id}/clusters", graphH.GetClusters)
 				r.Get("/lakes/{id}/planning", graphH.GetPlanning)
+				r.Post("/planning/{id}/accept", graphH.AcceptPlanning)
 			}
 
 			if inviteH != nil {
