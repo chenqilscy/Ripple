@@ -233,6 +233,8 @@ interface AnimNodeProps {
   isDragging: boolean
   recCount?: number
   dimmed?: boolean
+  /** P2-02: 编辑状态 — 当前谁在编辑此节点 */
+  editingInfo?: { name: string; color: string }
 }
 
 const STATE_LABEL: Record<NodeState, string> = {
@@ -251,11 +253,13 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
-function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, simNode, highlighted, isDragging, recCount = 0, dimmed = false }: AnimNodeProps) {
+function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, simNode, highlighted, isDragging, recCount = 0, dimmed = false, editingInfo }: AnimNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const scaleRef = useRef(isNew ? 0 : 1)
   const color = STATE_COLOR[node.state] ?? '#888888'
   const [hovered, setHovered] = useState(false)
+  // P2-02: 编辑状态光环引用（用于旋转动画）
+  const ringRef = useRef<THREE.Mesh>(null)
 
   // P0-04 fix: 将 mesh ref 附加到 simNode 上，供 GraphScene 全局拖动事件使用
   useEffect(() => {
@@ -283,6 +287,10 @@ function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew,
     // 拖动中的位置由 GraphScene 全局事件处理器更新
     if (!isDragging) {
       meshRef.current.position.set(simNode.x ?? 0, simNode.y ?? 0, 0)
+    }
+    // P2-02: 编辑状态光环旋转动画
+    if (ringRef.current && editingInfo) {
+      ringRef.current.rotation.z += delta * 1.5
     }
   })
 
@@ -357,6 +365,37 @@ function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew,
             {new Date(node.created_at).toLocaleDateString('zh-CN')}
           </div>
         </Html>
+      )}
+      {/* P2-02: 编辑状态指示器 — 旋转光环 */}
+      {editingInfo && (
+        <>
+          {/* 发光球体 */}
+          <mesh>
+            <sphereGeometry args={[8, 12, 12]} />
+            <meshBasicMaterial color={editingInfo.color} transparent opacity={0.12} />
+          </mesh>
+          {/* 旋转光环 */}
+          <mesh ref={ringRef} scale={1.8}>
+            <torusGeometry args={[5, 0.7, 8, 24]} />
+            <meshBasicMaterial color={editingInfo.color} transparent opacity={0.7} />
+          </mesh>
+          <Html
+            position={[0, -13, 0]}
+            style={{ pointerEvents: 'none' }}
+          >
+            <div style={{
+              background: editingInfo.color,
+              color: '#fff',
+              fontSize: 9,
+              padding: '2px 6px',
+              borderRadius: 4,
+              whiteSpace: 'nowrap',
+              opacity: 0.9,
+            }}>
+              {editingInfo.name} 正在编辑
+            </div>
+          </Html>
+        </>
       )}
       {selected && (
         <Html
@@ -551,9 +590,11 @@ interface SceneProps {
   /** 图谱价值增强：聚类高亮 */
   clusters?: Cluster[]
   focusedClusterId?: string | null
+  /** P2-02: 正在编辑某节点的用户信息 — Map<nodeId, {name, color, userId}> */
+  editingUsers?: Map<string, { name: string; color: string; userId: string }>
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover, crystallizeIds, recCountByNode, clusters, focusedClusterId }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover, crystallizeIds, recCountByNode, clusters, focusedClusterId, editingUsers }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
@@ -817,6 +858,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       {!useLOD && displayNodes.map(node => {
         const pos3 = positions.get(node.id) ?? new THREE.Vector3()
         const sn = simNodeMap.get(node.id)!
+        const nodeEditingInfo = editingUsers?.get(node.id)
         return (
           <AnimatedNode
             key={node.id}
@@ -832,6 +874,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
             isDragging={draggingNodeIdRef.current === node.id}
             recCount={recCountByNode?.get(node.id) ?? 0}
             dimmed={dimmedIds.has(node.id)}
+            editingInfo={nodeEditingInfo}
           />
         )
       })}
@@ -934,6 +977,8 @@ export interface LakeGraphProps {
   /** P2-02: 协作者头像列表 */
   onlineUsers?: string[]
   currentUserId?: string
+  /** P2-02: 正在编辑某节点的用户信息 — Map<nodeId, {name, color, userId}> */
+  editingUsers?: Map<string, { name: string; color: string; userId: string }>
 }
 
 // P19-C：协作光标颜色（按 user_id hash 分配）
@@ -951,7 +996,7 @@ export default function LakeGraph({
   recCountByNode, onToggleDiscovery, onAcceptRec, onIgnoreRec, onTracePath, onClosePath,
   showCluster, clusters, focusedClusterId, loadingClusters, onFocusCluster, onRefreshClusters, onCloseCluster,
   showPlanning, planningSuggestions, loadingPlanning, onAcceptPlanning, onRefreshPlanning, onClosePlanning,
-  onlineUsers, currentUserId,
+  onlineUsers, currentUserId, editingUsers,
 }: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
@@ -1089,6 +1134,7 @@ export default function LakeGraph({
             recCountByNode={recCountByNode}
             clusters={clusters}
             focusedClusterId={focusedClusterId}
+            editingUsers={editingUsers}
           />
         </React.Suspense>
         <CameraController onZoomIn={zoomInRef} onZoomOut={zoomOutRef} onFit={fitRef} />
