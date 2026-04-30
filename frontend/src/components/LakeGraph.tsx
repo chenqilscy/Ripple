@@ -21,7 +21,7 @@ import {
   type SimulationNodeDatum,
   type SimulationLinkDatum,
 } from 'd3-force'
-import type { EdgeItem, NodeItem, NodeState, Recommendation, PathResult, Cluster, PlanningSuggestion } from '../api/types'
+import type { EdgeItem, NodeItem, NodeState, Recommendation, PathResult, Cluster, PlanningSuggestion, HeatNode } from '../api/types'
 import DiscoveryPanel from './graph/DiscoveryPanel'
 import PresencePanel from './graph/PresencePanel'
 import PathTracePanel from './graph/PathTracePanel'
@@ -235,6 +235,8 @@ interface AnimNodeProps {
   dimmed?: boolean
   /** P2-02: 编辑状态 — 当前谁在编辑此节点 */
   editingInfo?: { name: string; color: string }
+  /** 图谱价值增强：热度分数 */
+  heatScore?: number
 }
 
 const STATE_LABEL: Record<NodeState, string> = {
@@ -253,7 +255,7 @@ function easeOutBack(x: number): number {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
-function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, simNode, highlighted, isDragging, recCount = 0, dimmed = false, editingInfo }: AnimNodeProps) {
+function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew, onDragStart, simNode, highlighted, isDragging, recCount = 0, dimmed = false, editingInfo, heatScore = 0 }: AnimNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const scaleRef = useRef(isNew ? 0 : 1)
   const color = STATE_COLOR[node.state] ?? '#888888'
@@ -336,6 +338,17 @@ function AnimatedNode({ node, position, selected, multiSelected, onClick, isNew,
         <mesh position={[6, 6, 0]}>
           <sphereGeometry args={[2.5, 6, 6]} />
           <meshBasicMaterial color="#faad14" />
+        </mesh>
+      )}
+      {/* 图谱价值增强：热度指示器 */}
+      {heatScore > 0 && !selected && (
+        <mesh scale={2.0}>
+          <torusGeometry args={[5, 0.5, 8, 24]} />
+          <meshBasicMaterial
+            color={heatScore > 0.6 ? '#ef4444' : (heatScore > 0.3 ? '#f59e0b' : '#6b7280')}
+            transparent
+            opacity={0.6 + heatScore * 0.3}
+          />
         </mesh>
       )}
       {/* P16-A: 悬停详情 tooltip */}
@@ -592,9 +605,11 @@ interface SceneProps {
   focusedClusterId?: string | null
   /** P2-02: 正在编辑某节点的用户信息 — Map<nodeId, {name, color, userId}> */
   editingUsers?: Map<string, { name: string; color: string; userId: string }>
+  /** 图谱价值增强：热度节点 map */
+  heatMap?: Map<string, HeatNode>
 }
 
-function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover, crystallizeIds, recCountByNode, clusters, focusedClusterId, editingUsers }: SceneProps) {
+function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectChange, newNodeIds, resetToken, searchQuery, snapshotLayout, onEdgeHover, crystallizeIds, recCountByNode, clusters, focusedClusterId, editingUsers, heatMap }: SceneProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
@@ -876,6 +891,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
             recCount={recCountByNode?.get(node.id) ?? 0}
             dimmed={dimmedIds.has(node.id)}
             editingInfo={nodeEditingInfo}
+            heatScore={(heatMap ?? new Map<string, HeatNode>()).get(node.id)?.heat_score ?? 0}
           />
         )
       })}
@@ -980,6 +996,10 @@ export interface LakeGraphProps {
   currentUserId?: string
   /** P2-02: 正在编辑某节点的用户信息 — Map<nodeId, {name, color, userId}> */
   editingUsers?: Map<string, { name: string; color: string; userId: string }>
+  /** 图谱价值增强：热度趋势 */
+  heatNodes?: HeatNode[]
+  loadingHeat?: boolean
+  onTraceHeat?: (nodeId: string) => void
 }
 
 // P19-C：协作光标颜色（按 user_id hash 分配）
@@ -998,6 +1018,7 @@ export default function LakeGraph({
   showCluster, clusters, focusedClusterId, loadingClusters, onFocusCluster, onRefreshClusters, onCloseCluster,
   showPlanning, planningSuggestions, loadingPlanning, onAcceptPlanning, onRefreshPlanning, onClosePlanning,
   onlineUsers, currentUserId, editingUsers,
+  heatNodes, loadingHeat, onTraceHeat,
 }: LakeGraphProps) {
   const displayNodes = useMemo(
     () => nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').slice(0, MAX_NODES),
@@ -1005,6 +1026,12 @@ export default function LakeGraph({
   )
   const tooMany =
     nodes.filter(n => n.state !== 'ERASED' && n.state !== 'GHOST').length > MAX_NODES
+
+  // 图谱价值增强：热度节点 map
+  const heatMap = useMemo(() => {
+    if (!heatNodes || heatNodes.length === 0) return new Map<string, HeatNode>()
+    return new Map(heatNodes.map((n: HeatNode) => [n.node_id, n]))
+  }, [heatNodes])
 
   // 缩放控制 refs
   const zoomInRef = useRef<() => void>(() => undefined)
@@ -1136,6 +1163,7 @@ export default function LakeGraph({
             clusters={clusters}
             focusedClusterId={focusedClusterId}
             editingUsers={editingUsers}
+            heatMap={heatMap}
           />
         </React.Suspense>
         <CameraController onZoomIn={zoomInRef} onZoomOut={zoomOutRef} onFit={fitRef} />
@@ -1178,6 +1206,9 @@ export default function LakeGraph({
           onTracePath={onTracePath ?? (() => {})}
           onClosePath={onClosePath ?? (() => {})}
           onClose={onToggleDiscovery ?? (() => {})}
+          heatNodes={heatNodes}
+          loadingHeat={loadingHeat}
+          onTraceHeat={onTraceHeat ?? ((_id: string) => {})}
         />
       )}
 
