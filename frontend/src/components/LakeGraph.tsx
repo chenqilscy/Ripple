@@ -843,7 +843,8 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
 
       {/* P3-03: LOD — simplified 2D circles at zoom ≤ 10% */}
       {useLOD && displayNodes.map(node => {
-        const pos3 = positions.get(node.id) ?? new THREE.Vector3()
+        const sn = simNodeMap.get(node.id)
+        const pos3 = sn ? new THREE.Vector3(sn.x ?? 0, sn.y ?? 0, 0) : new THREE.Vector3()
         return (
           <LODNode
             key={node.id}
