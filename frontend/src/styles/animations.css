@@ -1,0 +1,145 @@
+/**
+ * Ripple 动效系统
+ * 用法：在组件 CSS 中 @import '../../../styles/animations.css'
+ */
+
+/* ─── 涟漪动效（Ripple Effect）─── */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.ripple-effect {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(46, 139, 144, 0.4);
+  width: 100px;
+  height: 100px;
+  margin-left: -50px;
+  margin-top: -50px;
+  pointer-events: none;
+  animation: ripple 600ms ease-out forwards;
+}
+
+/* ─── 滑入动效（Slide In）─── */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight var(--transition-slow, 300ms) ease-out forwards;
+}
+
+.slide-out-right {
+  animation: slideOutRight var(--transition-slow, 300ms) ease-out forwards;
+}
+
+/* ─── Modal 缩放淡入 ── */
+@keyframes modalFadeIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes modalFadeOut {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+}
+
+.modal-enter {
+  animation: modalFadeIn var(--transition-base, 200ms) ease-out forwards;
+}
+
+.modal-exit {
+  animation: modalFadeOut var(--transition-base, 200ms) ease-out forwards;
+}
+
+/* ─── 呼吸动效（Breathe Glow）─── */
+@keyframes breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(46,139,144,0.4);
+  }
+  50% {
+    box-shadow: 0 0 12px 4px rgba(46,139,144,0.2);
+  }
+}
+
+.breathe {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+/* ─── 淡入上移（Fade In Up）─── */
+@keyframes fadeInUp {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp var(--transition-base, 200ms) ease-out forwards;
+}
+
+/* ─── 旋转（Spin）─── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ─── Reduce Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .ripple-effect,
+  .slide-in-right,
+  .slide-out-right,
+  .modal-enter,
+  .modal-exit,
+  .breathe,
+  .fade-in-up,
+  .spin {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
