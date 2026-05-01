@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -619,11 +620,235 @@ func (h *GraphAnalysisHandlers) IgnoreRecommendation(w http.ResponseWriter, r *h
 	writeJSON(w, http.StatusOK, map[string]any{"id": recID, "status": "ignored"})
 }
 
-// AcceptPlanning POST /api/v1/planning/{id}/accept
+// AcceptPlanning POST|PUT /api/v1/planning/{id}/accept
 func (h *GraphAnalysisHandlers) AcceptPlanning(w http.ResponseWriter, r *http.Request) {
 	suggestionID := chi.URLParam(r, "id")
-	// TODO: 根据 suggestion type 执行对应操作（如创建关联节点）
-	writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "status": "accepted"})
+	u, _ := CurrentUser(r.Context())
+
+	// 解析请求体（支持 PUT body 或空 body 的 GET fallback）
+	var body struct {
+		Type           string   `json:"type"`
+		Title          string   `json:"title"`
+		Description    string   `json:"description"`
+		Priority       string   `json:"priority"`
+		RelatedNodeIDs []string `json:"related_node_ids"`
+		LakeID         string   `json:"lake_id"`
+	}
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+	}
+
+	// 空 body 时走 GET fallback：仅记录 accepted
+	if body.Type == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "status": "accepted"})
+		return
+	}
+
+	switch body.Type {
+	case "add_node":
+		h.acceptAddNode(w, r, u, suggestionID, body)
+		return
+	case "connect":
+		h.acceptConnect(w, r, u, suggestionID, body)
+		return
+	case "explore":
+		writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "type": "explore", "status": "accepted"})
+		return
+	default:
+		writeError(w, http.StatusBadRequest, "unsupported suggestion type: "+body.Type)
+		return
+	}
+}
+
+// acceptAddNode 处理 add_node 类型建议
+func (h *GraphAnalysisHandlers) acceptAddNode(w http.ResponseWriter, r *http.Request, u *domain.User, suggestionID string, body struct {
+	Type           string
+	Title          string
+	Description    string
+	Priority       string
+	RelatedNodeIDs []string
+	LakeID         string
+}) {
+	lakeID := body.LakeID
+	description := body.Description
+	if description == "" {
+		description = body.Title
+	}
+
+	// 获取湖内已有节点作为 context
+	nodes, err := h.Nodes.ListByLake(r.Context(), u, lakeID, false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list nodes: "+err.Error())
+		return
+	}
+
+	// 构建已有节点标题列表
+	var nodeTitles []string
+	for _, n := range nodes {
+		title := strings.TrimSpace(n.Content)
+		if len(title) > 30 {
+			title = title[:30] + "..."
+		}
+		if title != "" {
+			nodeTitles = append(nodeTitles, title)
+		}
+	}
+	existingNodesStr := strings.Join(nodeTitles, "、")
+	if existingNodesStr == "" {
+		existingNodesStr = "（暂无）"
+	}
+
+	// 准备默认值（LLM 不可用时的 fallback）
+	title := description
+	content := description
+
+	// 调用 LLM 生成标题/内容/标签
+	if h.LLM != nil {
+		prompt := fmt.Sprintf(`建议主题：%s
+湖内已有节点：%s
+请用 JSON 格式生成一个知识节点，格式：{"title":"标题","content":"内容摘要（100字以内）","tags":["标签1","标签2"]}。`, description, existingNodesStr)
+		cands, llmErr := h.LLM.Generate(r.Context(), llm.GenerateRequest{
+			Prompt:   prompt,
+			N:        1,
+			Modality: llm.ModalityText,
+		})
+		if llmErr == nil && len(cands) > 0 && cands[0].Text != "" {
+			var gen struct {
+				Title   string   `json:"title"`
+				Content string   `json:"content"`
+				Tags    []string `json:"tags"`
+			}
+			if jsonErr := json.Unmarshal([]byte(cands[0].Text), &gen); jsonErr == nil {
+				if gen.Title != "" {
+					title = gen.Title
+				}
+				if gen.Content != "" {
+					content = gen.Content
+				}
+			}
+		}
+	}
+
+	// 创建节点
+	node, createErr := h.Nodes.Create(r.Context(), u, service.CreateNodeInput{
+		LakeID:  lakeID,
+		Content: content,
+		Type:    domain.NodeTypeText,
+	})
+	if createErr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create node: "+createErr.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "type": "add_node", "status": "accepted", "nodeId": node.ID})
+}
+
+// acceptConnect 处理 connect 类型建议
+func (h *GraphAnalysisHandlers) acceptConnect(w http.ResponseWriter, r *http.Request, u *domain.User, suggestionID string, body struct {
+	Type           string
+	Title          string
+	Description    string
+	Priority       string
+	RelatedNodeIDs []string
+	LakeID         string
+}) {
+	lakeID := body.LakeID
+	if len(body.RelatedNodeIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "related_node_ids required for connect")
+		return
+	}
+
+	sourceID := body.RelatedNodeIDs[0]
+
+	// 确定 target：优先用 relatedNodeIds[1]，否则搜索
+	var targetID string
+	if len(body.RelatedNodeIDs) >= 2 {
+		targetID = body.RelatedNodeIDs[1]
+	} else {
+		// 搜索湖内节点，找关键词重叠最高的（排除 source）
+		nodes, err := h.Nodes.ListByLake(r.Context(), u, lakeID, false)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list nodes: "+err.Error())
+			return
+		}
+		targetID, err = findBestTargetNode(r.Context(), nodes, sourceID, body.Title, body.Description)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "target node not found")
+			return
+		}
+	}
+
+	// 尝试创建边（幂等处理）
+	edge, err := h.Edges.Create(r.Context(), u, service.CreateEdgeInput{
+		SrcNodeID: sourceID,
+		DstNodeID: targetID,
+		Kind:      domain.EdgeKindRelates,
+		Strength:  0,
+	})
+	if err != nil {
+		if errors.Is(err, domain.ErrAlreadyExists) {
+			// 边已存在，查找已有边的 ID
+			edges, _ := h.Edges.ListByLake(r.Context(), u, lakeID, false)
+			for _, e := range edges {
+				if e.SrcNodeID == sourceID && e.DstNodeID == targetID && e.DeletedAt == nil {
+					writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "type": "connect", "status": "accepted", "edgeId": e.ID})
+					return
+				}
+			}
+		}
+		writeError(w, http.StatusInternalServerError, "failed to create edge: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "type": "connect", "status": "accepted", "edgeId": edge.ID})
+}
+
+// findBestTargetNode 在湖内节点中搜索与关键词重叠最高的节点（排除 source）
+func findBestTargetNode(ctx context.Context, nodes []domain.Node, sourceID, title, description string) (string, error) {
+	if title == "" && description == "" {
+		return "", fmt.Errorf("no keywords to search")
+	}
+
+	// 构建搜索文本
+	searchText := strings.ToLower(title + " " + description)
+	words := strings.Fields(searchText)
+	if len(words) == 0 {
+		return "", fmt.Errorf("no keywords")
+	}
+
+	var bestNodeID string
+	bestScore := 0
+
+	for _, node := range nodes {
+		if node.ID == sourceID {
+			continue
+		}
+		nodeText := strings.ToLower(node.Content)
+
+		// 计算词组重叠分数
+		score := 0
+		for _, word := range words {
+			if len(word) < 2 {
+				continue
+			}
+			if strings.Contains(nodeText, word) {
+				score++
+			}
+		}
+
+		if score > bestScore {
+			bestScore = score
+			bestNodeID = node.ID
+		}
+	}
+
+	if bestScore == 0 || bestNodeID == "" {
+		return "", fmt.Errorf("target node not found")
+	}
+	return bestNodeID, nil
 }
 
 // GetHeatTrend GET /api/v1/lakes/{lake_id}/heat-trend
