@@ -3,6 +3,7 @@
 // 修复：scroll lock + 键盘导航 + 响应式 + 统一样式
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { Button } from './ui'
 import type { SearchHit } from '../api/types'
 
 interface Props {
@@ -139,19 +140,15 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
             }}
           />
           {/* 语义搜索切换 */}
-          <button
+          <Button
+            variant={semantic ? 'primary' : 'ghost'}
+            size="sm"
             onClick={handleModeToggle}
             title={semantic ? '当前：语义搜索（点击切换为关键词）' : '当前：关键词搜索（点击切换为语义）'}
             aria-pressed={semantic}
-            style={{
-              background: semantic ? 'var(--accent-subtle)' : 'transparent',
-              border: `1px solid ${semantic ? 'var(--border-active)' : 'var(--border)'}`,
-              borderRadius: 'var(--radius-sm)', color: semantic ? 'var(--accent)' : 'var(--text-tertiary)',
-              fontSize: 'var(--font-sm)', padding: '3px var(--space-sm)', cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
           >
             {semantic ? '✦ 语义' : '关键词'}
-          </button>
+          </Button>
           {loading && (
             <span style={{ color: semantic ? 'var(--accent)' : 'var(--text-tertiary)', fontSize: 'var(--font-md)' }}>
               {semantic ? '✦ AI 理解中…' : '搜索中…'}
@@ -196,14 +193,12 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
               <option value="AUDIO">音频</option>
             </select>
             {(stateFilter || typeFilter) && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => { setStateFilter(''); setTypeFilter(''); handleFilterChange('', '') }}
                 aria-label="清除过滤"
-                style={{
-                  background: 'none', border: 'none', color: 'var(--status-danger)',
-                  fontSize: 'var(--font-sm)', cursor: 'pointer', padding: '2px var(--space-xs)',
-                }}
-              >✕ 清除</button>
+              >✕ 清除</Button>
             )}
           </div>
         )}
@@ -227,22 +222,19 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
             </div>
           )}
           {results.map((hit, idx) => (
-            <button
+            <Button
               key={hit.node_id}
-              role="option"
-              aria-selected={focusedIndex === idx}
+              variant="ghost"
               onClick={() => { onSelect?.(hit); onClose() }}
               style={{
                 display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)',
                 width: '100%', textAlign: 'left',
                 background: focusedIndex === idx ? 'var(--accent-subtle)' : 'transparent',
-                border: 'none', cursor: 'pointer',
                 padding: 'var(--space-md) var(--space-lg)',
-                color: 'var(--text-primary)',
-                borderBottom: '1px solid var(--border-subtle)',
+                borderRadius: 0,
               }}
-              onMouseEnter={e => { if (focusedIndex !== idx) (e.currentTarget as HTMLElement).style.background = 'var(--bg-secondary)' }}
-              onMouseLeave={e => { if (focusedIndex !== idx) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              onMouseEnter={e => { if (focusedIndex !== idx) e.currentTarget.style.background = 'var(--bg-secondary)' }}
+              onMouseLeave={e => { if (focusedIndex !== idx) e.currentTarget.style.background = 'transparent' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-sm)' }}>
                 <code style={{ fontSize: 'var(--font-sm)', color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
@@ -255,7 +247,7 @@ export default function SearchModal({ lakeId, lakeName, onClose, onSelect }: Pro
               <div style={{ fontSize: 'var(--font-base)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {hit.snippet || '（无内容）'}
               </div>
-            </button>
+            </Button>
           ))}
         </div>
       </div>

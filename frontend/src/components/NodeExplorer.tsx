@@ -5,6 +5,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { Button } from './ui'
 
 interface ExploreNode {
   node_id: string
@@ -85,14 +86,9 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
       {/* 标题栏 */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
         <span style={{ fontWeight: 700, fontSize: 'var(--font-lg)', flex: 1, color: 'var(--accent)' }}>🔍 AI 图谱探索</span>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'none', border: 'none', color: 'var(--text-secondary)',
-            cursor: 'pointer', fontSize: 'var(--font-lg)', lineHeight: 1,
-          }}
-          aria-label="关闭"
-        >×</button>
+        <Button variant="ghost" size="sm" onClick={onClose} aria-label="关闭" style={{ fontSize: 'var(--font-lg)' }}>
+          ×
+        </Button>
       </div>
 
       {/* 搜索框 */}
@@ -110,19 +106,19 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
             color: 'var(--text-primary)', outline: 'none', fontSize: 'var(--font-base)',
           }}
         />
-        <button
+        <Button
+          variant="primary"
+          size="sm"
           onClick={() => void handleExplore()}
           disabled={loading || !query.trim()}
           style={{
-            padding: 'var(--space-sm) var(--space-lg)', borderRadius: 'var(--radius-md)',
-            border: 'none',
+            padding: 'var(--space-sm) var(--space-lg)',
             background: loading ? 'var(--bg-tertiary)' : 'var(--accent)',
             color: 'var(--text-inverse)', cursor: loading || !query.trim() ? 'not-allowed' : 'pointer',
-            fontWeight: 600, fontSize: 'var(--font-base)', whiteSpace: 'nowrap',
           }}
         >
           {loading ? '探索中…' : '探索'}
-        </button>
+        </Button>
       </div>
 
       {/* 错误提示 */}
@@ -208,16 +204,9 @@ export default function NodeExplorer({ lakeId, onHighlight, onClose }: Props) {
           <span style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>
             共 {results.length} 个相关节点已高亮
           </span>
-          <button
-            onClick={handleClear}
-            style={{
-              background: 'none', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)', padding: 'var(--space-xs) var(--space-md)',
-              color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 'var(--font-sm)',
-            }}
-          >
+          <Button variant="ghost" size="sm" onClick={handleClear}>
             清除
-          </button>
+          </Button>
         </div>
       )}
     </div>
