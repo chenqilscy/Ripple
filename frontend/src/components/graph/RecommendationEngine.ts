@@ -109,6 +109,7 @@ export function useGraphAnalysis(lakeId: string) {
 
   // 用 ref 避免 stale closure：最新 state 始终在 ref 中
   const stateRef = useRef(state)
+  // eslint-disable-next-line react-hooks/refs -- stale-closure pattern 必需：每次渲染同步最新 state 到 ref
   stateRef.current = state
 
   const loadRecommendations = useCallback(async () => {

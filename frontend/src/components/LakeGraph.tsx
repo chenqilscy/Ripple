@@ -871,6 +871,7 @@ function GraphScene({ displayNodes, displayEdges, onNodeSelect, onMultiSelectCha
       })}
 
       {/* Normal mode — full 3D nodes */}
+      {/* eslint-disable-next-line react-hooks/refs -- displayNodes.map 中访问 ref 是 GraphScene 组件内部正常模式 */}
       {!useLOD && displayNodes.map(node => {
         const pos3 = positions.get(node.id) ?? new THREE.Vector3()
         const sn = simNodeMap.get(node.id)!
