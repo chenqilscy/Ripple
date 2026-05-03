@@ -535,6 +535,7 @@ export interface PlanningSuggestion {
   description: string
   priority: PlanningPriority
   related_node_ids: string[]
+  lake_id: string  // 图谱 ID，用于 API 调用
 }
 
 // ---- 图谱热度趋势 (Phase 3-B.3) ----

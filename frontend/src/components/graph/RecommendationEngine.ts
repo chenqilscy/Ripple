@@ -167,8 +167,10 @@ export function useGraphAnalysis(lakeId: string) {
   }, [])
 
   const acceptPlanningSuggestion = useCallback(async (s: PlanningSuggestion) => {
-    await api.acceptPlanningSuggestion(s.id)
-  }, [])
+    const res = await api.acceptPlanningSuggestion(s)
+    if (res.status !== 'accepted') throw new Error('accept failed')
+    return res
+}, [])
 
   // 面板切换：使用 stateRef 避免 stale closure
   const setActivePanel = useCallback((panel: GraphAnalysisState['activePanel']) => {

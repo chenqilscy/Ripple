@@ -671,8 +671,12 @@ export const api = {
   getPlanningSuggestions(lakeId: string): Promise<{ suggestions: import('./types').PlanningSuggestion[] }> {
     return request('GET', `/api/v1/lakes/${lakeId}/planning`)
   },
-  acceptPlanningSuggestion(id: string): Promise<void> {
-    return request('POST', `/api/v1/planning/${id}/accept`)
+  acceptPlanningSuggestion(suggestion: import('./types').PlanningSuggestion): Promise<{
+    id: string; type: string; status: string; nodeId?: string; edgeId?: string;
+  }> {
+    return request('PUT', `/api/v1/planning/${suggestion.id}/accept`, {
+      lake_id: suggestion.lake_id, type: suggestion.type, title: suggestion.title, description: suggestion.description,
+    })
   },
 
   // 推荐列表

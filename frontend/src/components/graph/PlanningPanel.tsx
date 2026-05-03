@@ -1,13 +1,21 @@
 // PlanningPanel.tsx — 规划面板：知识缺口分析 + 行动建议
+import { useState } from 'react'
 import type { PlanningSuggestion } from '../../api/types'
 import { Button } from '../ui'
 
 interface PlanningPanelProps {
   suggestions: PlanningSuggestion[]
   loading: boolean
-  onAccept: (s: PlanningSuggestion) => void
+  onAccept: (s: PlanningSuggestion) => Promise<{ nodeId?: string; edgeId?: string }>
   onRefresh: () => void
   onClose: () => void
+  /** 采纳成功后，通知父组件刷新图谱（新增节点/边） */
+  onSuccess?: (nodeId?: string, edgeId?: string) => void
+}
+
+interface CardState {
+  status: 'idle' | 'loading' | 'success' | 'error'
+  errorMsg?: string
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -22,7 +30,40 @@ const TYPE_LABEL: Record<string, string> = {
   explore: '深入探索',
 }
 
-export default function PlanningPanel({ suggestions, loading, onAccept, onRefresh, onClose }: PlanningPanelProps) {
+export default function PlanningPanel({ suggestions, loading, onAccept, onClose, onRefresh, onSuccess }: PlanningPanelProps) {
+  const [cardStates, setCardStates] = useState<Map<string, CardState>>(new Map())
+
+  const getCardState = (id: string): CardState =>
+    cardStates.get(id) ?? { status: 'idle' }
+
+  const setCardState = (id: string, state: CardState) =>
+    setCardStates(prev => new Map(prev).set(id, state))
+
+  const handleAccept = async (s: PlanningSuggestion) => {
+    // explore 类型直接跳转到相关节点，不走后端
+    if (s.type === 'explore') {
+      onSuccess?.(s.related_node_ids[0])
+      return
+    }
+    setCardState(s.id, { status: 'loading' })
+    try {
+      const result = await onAccept(s)
+      setCardState(s.id, { status: 'success' })
+      // 成功后 1.5s 移除卡片
+      setTimeout(() => {
+        setCardStates(prev => {
+          const next = new Map(prev)
+          next.delete(s.id)
+          return next
+        })
+        onSuccess?.(result?.nodeId, result?.edgeId)
+      }, 1500)
+    } catch {
+      setCardState(s.id, { status: 'error', errorMsg: '采纳失败，请重试' })
+      setTimeout(() => setCardState(s.id, { status: 'idle' }), 3000)
+    }
+  }
+
   const byPriority = ['high', 'medium', 'low']
 
   return (
@@ -91,10 +132,11 @@ export default function PlanningPanel({ suggestions, loading, onAccept, onRefres
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => onAccept(s)}
-                  style={{ width: '100%', marginTop: 6 }}
+                  disabled={getCardState(s.id).status === 'loading' || getCardState(s.id).status === 'success'}
+                  onClick={() => handleAccept(s)}
+                  style={{ width: '100%', marginTop: 6, ...(getCardState(s.id).status === 'success' ? { opacity: 0.6, pointerEvents: 'none' } : {}) }}
                 >
-                  一键采纳
+                  {getCardState(s.id).status === 'loading' ? '采纳中…' : getCardState(s.id).status === 'success' ? '✓ 已采纳' : getCardState(s.id).status === 'error' ? '采纳失败' : '一键采纳'}
                 </Button>
               </div>
             ))}

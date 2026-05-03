@@ -988,7 +988,7 @@ export interface LakeGraphProps {
   showPlanning?: boolean
   planningSuggestions?: PlanningSuggestion[]
   loadingPlanning?: boolean
-  onAcceptPlanning?: (s: PlanningSuggestion) => void
+  onAcceptPlanning?: (s: PlanningSuggestion) => Promise<{ nodeId?: string; edgeId?: string }>
   onRefreshPlanning?: () => void
   onClosePlanning?: () => void
   /** P2-02: 协作者头像列表 */
@@ -1238,7 +1238,7 @@ export default function LakeGraph({
         <PlanningPanel
           suggestions={planningSuggestions ?? []}
           loading={loadingPlanning ?? false}
-          onAccept={onAcceptPlanning ?? (() => {})}
+          onAccept={onAcceptPlanning ?? (async () => ({}))}
           onRefresh={onRefreshPlanning ?? (() => {})}
           onClose={onClosePlanning ?? (() => {})}
         />
