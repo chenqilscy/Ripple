@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -665,12 +666,12 @@ func (h *GraphAnalysisHandlers) AcceptPlanning(w http.ResponseWriter, r *http.Re
 
 // acceptAddNode 处理 add_node 类型建议
 func (h *GraphAnalysisHandlers) acceptAddNode(w http.ResponseWriter, r *http.Request, u *domain.User, suggestionID string, body struct {
-	Type           string
-	Title          string
-	Description    string
-	Priority       string
-	RelatedNodeIDs []string
-	LakeID         string
+	Type           string   `json:"type"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description"`
+	Priority       string   `json:"priority"`
+	RelatedNodeIDs []string `json:"related_node_ids"`
+	LakeID         string   `json:"lake_id"`
 }) {
 	lakeID := body.LakeID
 	description := body.Description
@@ -702,7 +703,6 @@ func (h *GraphAnalysisHandlers) acceptAddNode(w http.ResponseWriter, r *http.Req
 	}
 
 	// 准备默认值（LLM 不可用时的 fallback）
-	title := description
 	content := description
 
 	// 调用 LLM 生成标题/内容/标签
@@ -723,7 +723,7 @@ func (h *GraphAnalysisHandlers) acceptAddNode(w http.ResponseWriter, r *http.Req
 			}
 			if jsonErr := json.Unmarshal([]byte(cands[0].Text), &gen); jsonErr == nil {
 				if gen.Title != "" {
-					title = gen.Title
+					content = gen.Title + "：" + content
 				}
 				if gen.Content != "" {
 					content = gen.Content
@@ -748,12 +748,12 @@ func (h *GraphAnalysisHandlers) acceptAddNode(w http.ResponseWriter, r *http.Req
 
 // acceptConnect 处理 connect 类型建议
 func (h *GraphAnalysisHandlers) acceptConnect(w http.ResponseWriter, r *http.Request, u *domain.User, suggestionID string, body struct {
-	Type           string
-	Title          string
-	Description    string
-	Priority       string
-	RelatedNodeIDs []string
-	LakeID         string
+	Type           string   `json:"type"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description"`
+	Priority       string   `json:"priority"`
+	RelatedNodeIDs []string `json:"related_node_ids"`
+	LakeID         string   `json:"lake_id"`
 }) {
 	lakeID := body.LakeID
 	if len(body.RelatedNodeIDs) == 0 {

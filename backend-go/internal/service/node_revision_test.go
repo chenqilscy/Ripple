@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/platform"
@@ -73,6 +74,21 @@ func (r *memNodeRevisionRepo) LatestRevNumber(_ context.Context, nodeID string) 
 		}
 	}
 	return maxRev, nil
+}
+
+func (r *memNodeRevisionRepo) CountByNodeIDsSince(_ context.Context, nodeIDs []string, since time.Time) (map[string]int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	counts := make(map[string]int, len(nodeIDs))
+	for _, id := range nodeIDs {
+		counts[id] = 0
+	}
+	for _, rev := range r.data {
+		if rev.CreatedAt.After(since) {
+			counts[rev.NodeID]++
+		}
+	}
+	return counts, nil
 }
 
 // --- 用例 ---

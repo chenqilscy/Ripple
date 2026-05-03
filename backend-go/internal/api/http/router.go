@@ -123,7 +123,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	authH := &AuthHandlers{Auth: d.Auth}
-	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces, Orgs: d.Orgs, Nodes: d.Nodes, Edges: d.Edges, Presence: d.Presence}
+	lakeH := &LakeHandlers{Lakes: d.Lakes, Spaces: d.Spaces, Orgs: d.Orgs, Nodes: d.Nodes, Edges: d.Edges}
 	nodeH := &NodeHandlers{Nodes: d.Nodes}
 	cloudH := &CloudHandlers{Clouds: d.Clouds}
 	var edgeH *EdgeHandlers
@@ -160,7 +160,6 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/lakes", lakeH.Create)
 			r.Get("/lakes", lakeH.ListMine)
 			r.Get("/lakes/{id}", lakeH.Get)
-			r.Get("/lakes/{id}/health", lakeH.GetHealth)
 			r.Patch("/lakes/{id}/space", lakeH.Move)
 			r.Get("/lakes/{id}/nodes", nodeH.ListByLake)
 			r.Post("/lakes/{id}/nodes/batch", nodeH.BatchImport)
