@@ -3,6 +3,7 @@
  * 显示当前节点的分享链接列表，支持创建新链接和撤销已有链接。
  */
 import { useState, useEffect, useCallback } from 'react'
+import { Button } from './ui'
 import { api } from '../api/client'
 import type { NodeItem, NodeShare } from '../api/types'
 
@@ -94,10 +95,13 @@ export default function NodeShareButton({ node, onClose }: Props) {
           <span style={{ fontWeight: 600, fontSize: 14, color: '#c8d8e8' }}>
             分享节点 — {node.id.slice(0, 8)}
           </span>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#9ec5ee',
-            fontSize: 20, cursor: 'pointer', lineHeight: 1,
-          }}>✕</button>
+          <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+            >
+              ✕
+            </Button>
         </div>
 
         {err && (
@@ -128,17 +132,14 @@ export default function NodeShareButton({ node, onClose }: Props) {
               <option value={168}>7 天</option>
               <option value={720}>30 天</option>
             </select>
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleCreate}
               disabled={creating}
-              style={{
-                background: '#2a5caa', border: 'none', borderRadius: 6,
-                color: '#fff', fontSize: 12, padding: '6px 14px', cursor: 'pointer',
-                opacity: creating ? 0.5 : 1,
-              }}
             >
               {creating ? '创建中...' : '生成链接'}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -169,30 +170,25 @@ export default function NodeShareButton({ node, onClose }: Props) {
                     }}
                     onClick={e => (e.target as HTMLInputElement).select()}
                   />
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => handleCopy(url, share.id)}
-                    style={{
-                      background: copied === share.id ? '#1a6b3c' : '#1e3050',
-                      border: 'none', borderRadius: 4, color: '#9ec5ee',
-                      fontSize: 11, padding: '4px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
-                    }}
                   >
                     {copied === share.id ? '✓ 已复制' : '复制'}
-                  </button>
+                  </Button>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: '#5a7a9e' }}>
                     过期时间：{formatExpiry(share.expires_at)}
                   </span>
-                  <button
-                    onClick={() => handleRevoke(share.id)}
-                    style={{
-                      background: 'none', border: 'none', color: '#e06060',
-                      fontSize: 11, cursor: 'pointer', padding: '0 4px',
-                    }}
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => void handleRevoke(share.id)}
                   >
                     撤销
-                  </button>
+                  </Button>
                 </div>
               </div>
             )

@@ -181,7 +181,9 @@ function SpaceRow(p: {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
         {p.onMembers && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={e => { e.stopPropagation(); p.onMembers!() }}
             title="管理成员"
             aria-label="管理成员"
@@ -191,10 +193,12 @@ function SpaceRow(p: {
             }}
           >
             👥
-          </button>
+          </Button>
         )}
         {p.isOwner && p.onDelete && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={e => { e.stopPropagation(); p.onDelete!() }}
             title="删除空间"
             aria-label="删除空间"
@@ -204,7 +208,7 @@ function SpaceRow(p: {
             }}
           >
             🗑
-          </button>
+          </Button>
         )}
       </div>
     </li>

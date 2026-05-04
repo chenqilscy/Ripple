@@ -4,6 +4,7 @@
  * 修复：scroll lock + CSS 变量（Deep Ocean Dark 主题）
  */
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from './ui'
 import { api } from '../api/client'
 import type { BillingCycle, OrgLLMUsage, OrgSubscription, OrgUsage, SubscriptionPlan } from '../api/types'
 
@@ -145,21 +146,14 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
         <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 'var(--font-xl)', fontWeight: 600 }}>订阅套餐</h3>
         <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
           {(['monthly', 'yearly'] as BillingCycle[]).map(c => (
-            <button
+            <Button
               key={c}
+              variant={selectedCycle === c ? 'primary' : 'secondary'}
+              size="sm"
               onClick={() => setSelectedCycle(c)}
-              style={{
-                padding: 'var(--space-xs) var(--space-md)',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                cursor: 'pointer',
-                background: selectedCycle === c ? 'var(--accent)' : 'var(--bg-tertiary)',
-                color: selectedCycle === c ? 'var(--text-inverse)' : 'var(--text-secondary)',
-                fontSize: 'var(--font-md)',
-              }}
             >
               {c === 'monthly' ? '月付' : '年付'}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -336,25 +330,14 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
                   <div>存储：{plan.quotas.max_storage_mb === -1 ? '不限' : `${plan.quotas.max_storage_mb} MB`}</div>
                 </div>
                 {isOwner && (
-                  <button
-                    data-testid={`plan-select-${plan.id}`}
+                  <Button
+                    variant={isCurrent && current?.billing_cycle === selectedCycle ? 'secondary' : 'primary'}
+                    size="md"
                     disabled={isSubmitting || (isCurrent && current?.billing_cycle === selectedCycle)}
                     onClick={() => handleSelect(plan)}
-                    style={{
-                      marginTop: 'var(--space-xs)',
-                      padding: 'var(--space-sm) 0',
-                      borderRadius: 'var(--radius-md)',
-                      border: 'none',
-                      cursor: isSubmitting || (isCurrent && current?.billing_cycle === selectedCycle) ? 'not-allowed' : 'pointer',
-                      background: isCurrent && current?.billing_cycle === selectedCycle ? 'var(--bg-tertiary)' : planColorVal,
-                      color: 'var(--text-inverse)',
-                      fontWeight: 600,
-                      fontSize: 'var(--font-md)',
-                      opacity: isSubmitting ? 0.7 : 1,
-                    }}
                   >
                     {isSubmitting ? '处理中…' : isCurrent && current?.billing_cycle === selectedCycle ? '当前套餐' : '选择'}
-                  </button>
+                  </Button>
                 )}
               </div>
             )

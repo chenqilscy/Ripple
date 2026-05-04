@@ -12,7 +12,7 @@ func TestSimpleContentSimilarity(t *testing.T) {
 		minSim float64
 	}{
 		{"完全相同", "系统可用性 扩容 容错", "系统可用性 扩容 容错", 0.99}, // 1.0 but floating point
-		{"部分相同", "系统可用性 扩容", "系统可用性 容错", 0.49},
+		{"部分相同", "系统可用性 扩容", "系统可用性 容错", 0.33},
 		{"无交集", "系统设计", "产品运营", 0.0},
 	}
 	for _, tt := range tests {

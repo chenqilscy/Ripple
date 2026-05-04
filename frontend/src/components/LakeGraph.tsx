@@ -22,6 +22,7 @@ import {
   type SimulationLinkDatum,
 } from 'd3-force'
 import type { EdgeItem, NodeItem, NodeState, Recommendation, PathResult, Cluster, PlanningSuggestion, HeatNode } from '../api/types'
+import { Button } from './ui'
 import DiscoveryPanel from './graph/DiscoveryPanel'
 import PresencePanel from './graph/PresencePanel'
 import PathTracePanel from './graph/PathTracePanel'
@@ -992,6 +993,8 @@ export interface LakeGraphProps {
   onAcceptPlanning?: (s: PlanningSuggestion) => Promise<{ nodeId?: string; edgeId?: string }>
   onRefreshPlanning?: () => void
   onClosePlanning?: () => void
+  /** 采纳成功后刷新图谱 */
+  onPlanSuccess?: (nodeId?: string, edgeId?: string) => void
   /** P2-02: 协作者头像列表 */
   onlineUsers?: string[]
   currentUserId?: string
@@ -1017,7 +1020,7 @@ export default function LakeGraph({
   showDiscovery, recommendations, loadingRecommendations, activePath, loadingPath,
   recCountByNode, onToggleDiscovery, onAcceptRec, onIgnoreRec, onTracePath, onClosePath,
   showCluster, clusters, focusedClusterId, loadingClusters, onFocusCluster, onRefreshClusters, onCloseCluster,
-  showPlanning, planningSuggestions, loadingPlanning, onAcceptPlanning, onRefreshPlanning, onClosePlanning,
+  showPlanning, planningSuggestions, loadingPlanning, onAcceptPlanning, onRefreshPlanning, onClosePlanning, onPlanSuccess,
   onlineUsers, currentUserId, editingUsers,
   heatNodes, loadingHeat, onTraceHeat,
 }: LakeGraphProps) {
@@ -1129,23 +1132,20 @@ export default function LakeGraph({
         </div>
       )}
       {/* P15-C: 重置布局按钮 */}
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
+        style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 10 }}
         onClick={() => setResetToken(t => t + 1)}
         title="重排布局：重新计算节点位置"
-        style={{
-          position: 'absolute', bottom: 12, right: 12, zIndex: 10,
-          background: 'rgba(0,0,0,0.6)', border: '1px solid #2a4a7e',
-          color: '#9ec5ee', borderRadius: 4, padding: '3px 10px',
-          fontSize: 12, cursor: 'pointer',
-        }}
       >
         重排布局 ↻
-      </button>
+      </Button>
       {/* P0-04: 缩放控制按钮组 */}
       <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <button onClick={() => zoomInRef.current()} title="放大" style={zoomBtnStyle}>+</button>
-        <button onClick={() => zoomOutRef.current()} title="缩小" style={zoomBtnStyle}>−</button>
-        <button onClick={() => fitRef.current()} title="适配画布：恢复默认视角" style={zoomBtnStyle}>⊡</button>
+        <Button variant="ghost" size="sm" onClick={() => zoomInRef.current()} title="放大">+</Button>
+        <Button variant="ghost" size="sm" onClick={() => zoomOutRef.current()} title="缩小">−</Button>
+        <Button variant="ghost" size="sm" onClick={() => fitRef.current()} title="适配画布：恢复默认视角">⊡</Button>
       </div>
       <Canvas camera={{ position: [0, 0, 600], fov: 50 }} gl={{ antialias: true }} frameloop="demand">
         <React.Suspense fallback={null}>
@@ -1172,27 +1172,15 @@ export default function LakeGraph({
 
       {/* 图谱价值增强：面板切换按钮 */}
       <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, display: 'flex', gap: 4 }}>
-        <button onClick={onToggleDiscovery ?? (() => {})} style={{
-          background: showDiscovery ? 'rgba(46,139,144,0.3)' : 'rgba(0,0,0,0.6)',
-          border: '1px solid #2e8b90', color: '#9ec5ee', borderRadius: 4,
-          padding: '3px 8px', fontSize: 11, cursor: 'pointer',
-        }}>
+        <Button variant="ghost" size="sm" onClick={onToggleDiscovery ?? (() => {})} style={{ background: showDiscovery ? 'rgba(46,139,144,0.3)' : undefined }}>
           💡 发现
-        </button>
-        <button onClick={onCloseCluster ?? (() => {})} style={{
-          background: showCluster ? 'rgba(46,74,126,0.3)' : 'rgba(0,0,0,0.6)',
-          border: '1px solid #2a4a7e', color: '#9ec5ee', borderRadius: 4,
-          padding: '3px 8px', fontSize: 11, cursor: 'pointer',
-        }}>
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCloseCluster ?? (() => {})} style={{ background: showCluster ? 'rgba(46,74,126,0.3)' : undefined }}>
           🗂 领域
-        </button>
-        <button onClick={onClosePlanning ?? (() => {})} style={{
-          background: showPlanning ? 'rgba(46,74,126,0.3)' : 'rgba(0,0,0,0.6)',
-          border: '1px solid #2a4a7e', color: '#9ec5ee', borderRadius: 4,
-          padding: '3px 8px', fontSize: 11, cursor: 'pointer',
-        }}>
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onClosePlanning ?? (() => {})} style={{ background: showPlanning ? 'rgba(46,74,126,0.3)' : undefined }}>
           📋 规划
-        </button>
+        </Button>
       </div>
 
       {/* === 发现面板 === */}
@@ -1242,6 +1230,7 @@ export default function LakeGraph({
           onAccept={onAcceptPlanning ?? (async () => ({}))}
           onRefresh={onRefreshPlanning ?? (() => {})}
           onClose={onClosePlanning ?? (() => {})}
+          onSuccess={onPlanSuccess}
         />
       )}
       {/* P2-02: 协作者头像列表 */}
@@ -1322,10 +1311,4 @@ export default function LakeGraph({
       )}
     </div>
   )
-}
-
-const zoomBtnStyle: React.CSSProperties = {
-  background: 'rgba(0,0,0,0.6)', border: '1px solid #2a4a7e',
-  color: '#9ec5ee', borderRadius: 4, padding: '3px 8px',
-  fontSize: 14, cursor: 'pointer', lineHeight: 1, fontWeight: 600,
 }

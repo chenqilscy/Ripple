@@ -3,6 +3,7 @@
  * 以竖向时间线可视化展示所有快照，支持点击选中并恢复。
  */
 import { useState, useEffect, useCallback } from 'react'
+import { Button } from './ui'
 import { api } from '../api/client'
 import type { LakeSnapshot } from '../api/types'
 
@@ -74,10 +75,7 @@ export default function SnapshotTimeline({ lakeId, onRestore, onClose }: Props) 
         flexShrink: 0,
       }}>
         <span style={{ fontWeight: 600, fontSize: 14, color: '#c8d8e8' }}>🕐 版本历史时间线</span>
-        <button onClick={onClose} style={{
-          background: 'none', border: 'none', color: '#9ec5ee',
-          fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '2px 4px',
-        }}>✕</button>
+        <Button variant="ghost" size="sm" onClick={onClose} style={{ fontSize: 18, padding: '2px 4px' }}>✕</Button>
       </div>
 
       {err && (
@@ -173,24 +171,20 @@ export default function SnapshotTimeline({ lakeId, onRestore, onClose }: Props) 
             已选：<strong style={{ color: '#89b4fa' }}>{selectedSnap.name}</strong>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
+            <Button
+              variant="primary"
+              size="sm"
+              style={{ flex: 1 }}
               onClick={handleRestore}
               disabled={!onRestore || restoring}
-              style={{
-                flex: 1, background: '#2a5caa', border: 'none', borderRadius: 6,
-                color: '#fff', fontSize: 12, padding: '8px 0', cursor: 'pointer',
-                opacity: !onRestore || restoring ? 0.5 : 1,
-              }}
             >
               {restoring ? '恢复中...' : '⟳ 恢复此版本'}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setSelected(null)}
-              style={{
-                background: 'rgba(255,255,255,0.06)', border: '1px solid #2a4060',
-                borderRadius: 6, color: '#9ec5ee', fontSize: 12, padding: '8px 12px', cursor: 'pointer',
-              }}
-            >取消</button>
+            >取消</Button>
           </div>
         </div>
       )}

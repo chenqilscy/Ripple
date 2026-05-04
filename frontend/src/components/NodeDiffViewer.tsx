@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { Button } from './ui'
 import { NodeRevision } from '../api/types'
 
 // -------- LCS 逐行 diff --------
@@ -86,10 +87,13 @@ export function NodeDiffViewer({ nodeId: _nodeId, revisions, onClose }: NodeDiff
         {/* 标题行 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, color: '#c8d8e8' }}>版本对比</span>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#9ec5ee',
-            fontSize: 18, cursor: 'pointer', padding: '0 4px',
-          }}>✕</button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+          >
+            ✕
+          </Button>
         </div>
 
         {/* 版本选择器 */}

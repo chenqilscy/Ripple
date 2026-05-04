@@ -4,6 +4,7 @@
  * Allows changing roles of other members (not to OWNER).
  */
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from './ui'
 import { api } from '../api/client'
 import type { LakeMember, LakeRole } from '../api/types'
 
@@ -95,21 +96,14 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
         <span style={{ color: '#c0d8f0', fontWeight: 600, fontSize: 14 }}>
           湖成员管理
         </span>
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => void load()}
           disabled={loading}
-          style={{
-            background: 'none',
-            border: '1px solid #2a4a7e',
-            borderRadius: 4,
-            color: '#6a9ab0',
-            cursor: 'pointer',
-            padding: '2px 8px',
-            fontSize: 11,
-          }}
         >
           {loading ? '…' : '刷新'}
-        </button>
+        </Button>
       </div>
 
       {error && (
@@ -208,18 +202,14 @@ export default function LakeMemberManager({ lakeId, currentUserId, currentRole }
               {isOwner && (
                 <td style={{ padding: '6px 6px' }}>
                   {m.role !== 'OWNER' && m.user_id !== currentUserId && (
-                    <button
+                    <Button
+                      variant="danger"
+                      size="sm"
                       disabled={removing === m.user_id}
                       onClick={() => void handleRemove(m.user_id)}
-                      style={{
-                        background: 'rgba(220,53,69,0.12)',
-                        border: '1px solid rgba(220,53,69,0.3)',
-                        borderRadius: 3, color: '#ff6b7a',
-                        cursor: 'pointer', padding: '1px 6px', fontSize: 11,
-                      }}
                     >
                       {removing === m.user_id ? '…' : '移除'}
-                    </button>
+                    </Button>
                   )}
                 </td>
               )}

@@ -27,7 +27,7 @@ type NodeRevisionRepository interface {
 	ListByNode(ctx context.Context, nodeID string, limit int) ([]domain.NodeRevision, error)
 	// LatestRevNumber 返回节点最新 rev_number；无记录返回 0（不报错）。
 	LatestRevNumber(ctx context.Context, nodeID string) (int, error)
-	// CountByNodeIDsSince 返回指定节点在 since 之后的 revision 数量。
+// CountByNodeIDsSince 返回指定节点列表中，每个节点在 since 之后的 revision 数量。
 	CountByNodeIDsSince(ctx context.Context, nodeIDs []string, since time.Time) (map[string]int, error)
 }
 

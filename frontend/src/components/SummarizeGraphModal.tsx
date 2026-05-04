@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react'
+import { Button } from './ui'
 import { api } from '../api/client'
 import type { SummarizeGraphResult } from '../api/types'
 
@@ -84,34 +85,23 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
               </div>
             )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handleClose}
                 disabled={loading}
-                style={{
-                  background: 'transparent', border: '1px solid #2a4a7e',
-                  color: '#7a9ab0', borderRadius: 6, padding: '7px 18px',
-                  fontSize: 13, cursor: 'pointer',
-                }}
               >
                 取消
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleSubmit}
                 disabled={loading}
-                style={{
-                  background: loading ? '#1a3a6a' : '#1e4d9e',
-                  border: 'none', color: '#9ec5ee', borderRadius: 6,
-                  padding: '7px 18px', fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}
+                icon={loading ? <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid #4a8eff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /> : undefined}
               >
-                {loading ? (
-                  <>
-                    <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid #4a8eff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                    AI 分析 {nodeIds.length} 个节点…
-                  </>
-                ) : `生成整理结果 (${nodeIds.length} 节点)`}
-              </button>
+                {loading ? `AI 分析 ${nodeIds.length} 个节点…` : `生成整理结果 (${nodeIds.length} 节点)`}
+              </Button>
             </div>
           </>
         ) : (
@@ -179,15 +169,13 @@ export default function SummarizeGraphModal({ lakeId, nodeIds, onClose, onSucces
             )}
 
             <div style={{ textAlign: 'right' }}>
-              <button
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleClose}
-                style={{
-                  background: '#1e4d9e', border: 'none', color: '#9ec5ee',
-                  borderRadius: 6, padding: '7px 18px', fontSize: 13, cursor: 'pointer',
-                }}
               >
                 关闭并刷新图谱
-              </button>
+              </Button>
             </div>
           </>
         )}

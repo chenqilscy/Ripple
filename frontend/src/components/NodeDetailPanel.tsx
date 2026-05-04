@@ -7,6 +7,7 @@ import React, { useEffect, useState, type CSSProperties } from 'react'
 import { api } from '../api/client'
 import type { EdgeItem, NodeItem, PromptTemplate } from '../api/types'
 import AiTriggerButton from './AiTriggerButton'
+import { Button } from './ui'
 
 interface Props {
   node: NodeItem
@@ -144,16 +145,9 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
               ● {onlineUsers.filter(u => u !== meId).length} 人同在
             </span>
           )}
-          <button
-            onClick={onClose}
-            aria-label="关闭节点详情"
-            style={{
-              background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer',
-              fontSize: 'var(--font-lg)', lineHeight: 1, padding: '2px 6px', borderRadius: 'var(--radius-sm)',
-            }}
-          >
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="关闭节点详情">
             ×
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -285,7 +279,9 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
             这个节点对你有帮助吗？
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => void sendFeedback('LIKE')}
               disabled={feedbackBusy || feedbackSent === 'LIKE'}
               aria-label="有帮助"
@@ -297,8 +293,10 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
                 color: feedbackSent === 'LIKE' ? 'var(--status-success)' : 'var(--text-primary)',
                 fontSize: 'var(--font-md)', transition: 'background 0.2s, border-color 0.2s',
               }}
-            >👍{feedbackSent === 'LIKE' ? ' 已反馈' : ''}</button>
-            <button
+            >👍{feedbackSent === 'LIKE' ? ' 已反馈' : ''}</Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => void sendFeedback('DISLIKE')}
               disabled={feedbackBusy || feedbackSent === 'DISLIKE'}
               aria-label="没帮助"
@@ -310,8 +308,10 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
                 color: feedbackSent === 'DISLIKE' ? 'var(--status-danger)' : 'var(--text-primary)',
                 fontSize: 'var(--font-md)', transition: 'background 0.2s, border-color 0.2s',
               }}
-            >👎{feedbackSent === 'DISLIKE' ? ' 已反馈' : ''}</button>
-            <button
+            >👎{feedbackSent === 'DISLIKE' ? ' 已反馈' : ''}</Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setFeedbackCommentOpen(v => !v)}
               aria-expanded={feedbackCommentOpen}
               style={{
@@ -319,7 +319,7 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
                 border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px var(--space-md)',
                 cursor: 'pointer', color: 'var(--text-primary)', fontSize: 'var(--font-md)',
               }}
-            >✏ 留言</button>
+            >✏ 留言</Button>
           </div>
           {feedbackCommentOpen && (
             <div style={{ marginTop: 'var(--space-sm)', display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
@@ -335,16 +335,15 @@ export default function NodeDetailPanel({ node, allNodes, edges, onClose, onAiDo
                   fontSize: 'var(--font-md)', resize: 'vertical', boxSizing: 'border-box',
                 }}
               />
-              <button
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={() => void submitComment()}
                 disabled={feedbackBusy || !feedbackComment.trim()}
                 style={{
-                  alignSelf: 'flex-end', background: 'var(--accent)', border: 'none',
-                  borderRadius: 'var(--radius-sm)', padding: '4px var(--space-lg)',
-                  color: 'var(--text-inverse)', fontSize: 'var(--font-md)',
-                  cursor: feedbackComment.trim() ? 'pointer' : 'not-allowed',
+                  alignSelf: 'flex-end',
                 }}
-              >提交</button>
+              >提交</Button>
             </div>
           )}
         </div>
@@ -385,7 +384,9 @@ function selectStyle(): CSSProperties {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="sm"
       onClick={() => {
         void navigator.clipboard.writeText(text).then(() => {
           setCopied(true)
@@ -402,6 +403,6 @@ function CopyButton({ text }: { text: string }) {
       }}
     >
       {copied ? '已复制' : '复制'}
-    </button>
+    </Button>
   )
 }

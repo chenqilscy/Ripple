@@ -4,6 +4,7 @@
  * 修复：CSS 变量（Deep Ocean Dark 主题）
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from './ui'
 import { api } from '../api/client'
 import type { AiJob, AiJobStatus, ApiError } from '../api/types'
 
@@ -143,29 +144,16 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
 
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 'var(--space-sm)', alignItems: 'flex-start' }}>
-      <button
+      <Button
+        variant="primary"
+        size="sm"
         onClick={() => void handleTrigger()}
         disabled={disabled}
         title="触发 AI 处理当前节点"
-        style={{
-          padding: 'var(--space-sm) var(--space-lg)',
-          borderRadius: 'var(--radius-md)',
-          border: 'none',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          background: disabled ? 'var(--bg-tertiary)' : 'var(--accent)',
-          color: 'var(--text-inverse)',
-          fontWeight: 600,
-          fontSize: 'var(--font-md)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-sm)',
-          opacity: disabled ? 0.7 : 1,
-          transition: 'opacity 0.2s, background 0.2s',
-        }}
       >
         <span style={{ fontSize: 'var(--font-lg)' }}>✦</span>
         {isRunning ? 'AI 处理中…' : 'AI 触发'}
-      </button>
+      </Button>
 
       {job && (
         <div style={{
@@ -198,19 +186,13 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
             </span>
           )}
           {!isRunning && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => void handleTrigger()}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--accent)',
-                cursor: 'pointer',
-                fontSize: 'var(--font-sm)',
-                padding: '0 2px',
-              }}
             >
               重试
-            </button>
+            </Button>
           )}
         </div>
       )}

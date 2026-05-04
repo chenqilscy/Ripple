@@ -269,13 +269,15 @@ export default function PromptTemplateManager() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-md)', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div style={{ minWidth: 0, flex: '1 1 360px' }}>
                     <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center', flexWrap: 'wrap', marginBottom: 'var(--space-xs)' }}>
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setExpandedId(prev => prev === template.id ? null : template.id)}
-                        style={{ ...linkBtnStyle, fontWeight: 600 }}
+                        style={{ fontWeight: 600, padding: 0, background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', textAlign: 'left' }}
                         aria-expanded={isExpanded}
                       >
                         {template.name}
-                      </button>
+                      </Button>
                       <span style={badgeStyleVar(template.scope === 'org' ? 'var(--status-warning)' : 'var(--accent)')}>
                         {template.scope === 'org' ? '组织共享' : '私有'}
                       </span>
@@ -351,13 +353,4 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--text-primary)',
   padding: 'var(--space-sm) var(--space-md)',
   fontSize: 'var(--font-base)',
-}
-
-const linkBtnStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  color: 'var(--text-primary)',
-  padding: 0,
-  cursor: 'pointer',
-  textAlign: 'left',
 }

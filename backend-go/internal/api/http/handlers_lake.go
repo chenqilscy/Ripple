@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
+	"github.com/chenqilscy/ripple/backend-go/internal/presence"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -19,6 +21,8 @@ type LakeHandlers struct {
 	Orgs   *service.OrgService // P13-A：组织归属校验
 	Nodes  *service.NodeService // P13-D：内容导出
 	Edges  *service.EdgeService // P13-D：内容导出（边，可选）
+	// Presence 可选：用于湖健康度在线人数统计。
+	Presence *presence.Service
 }
 
 type createLakeReq struct {
@@ -79,6 +83,104 @@ func (h *LakeHandlers) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, lakeResp{
 		ID: l.ID, Name: l.Name, Description: l.Description,
 		IsPublic: l.IsPublic, OwnerID: l.OwnerID, SpaceID: l.SpaceID, OrgID: l.OrgID, Role: string(role),
+	})
+}
+
+type lakeHealthResp struct {
+	LakeID      string         `json:"lake_id"`
+	Score       int            `json:"score"`
+	Grade       string         `json:"grade"`
+	Trend       string         `json:"trend"`
+	Thresholds  map[string]any `json:"thresholds"`
+	Summary     map[string]any `json:"summary"`
+	StateCounts map[string]int `json:"state_counts"`
+}
+
+// GetHealth GET /api/v1/lakes/{id}/health
+// 3-P2-02：湖健康度仪表盘 API（实时快照，无历史回放）。
+func (h *LakeHandlers) GetHealth(w http.ResponseWriter, r *http.Request) {
+	u, _ := CurrentUser(r.Context())
+	id := chi.URLParam(r, "id")
+	if h.Nodes == nil || h.Edges == nil {
+		writeError(w, http.StatusServiceUnavailable, "lake health not available")
+		return
+	}
+
+	nodes, err := h.Nodes.ListByLake(r.Context(), u, id, false)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+	edges, err := h.Edges.ListByLake(r.Context(), u, id, false)
+	if err != nil {
+		writeError(w, mapDomainError(err), err.Error())
+		return
+	}
+
+	stateCounts := map[string]int{
+		"DROP": 0, "MIST": 0, "CLOUD": 0, "PERMA": 0,
+		"VAPOR": 0, "ERASED": 0, "FROZEN": 0,
+	}
+	for i := range nodes {
+		state := string(nodes[i].State)
+		if _, ok := stateCounts[state]; ok {
+			stateCounts[state]++
+		}
+	}
+
+	totalNodes := len(nodes)
+	activeNodes := totalNodes - stateCounts["VAPOR"] - stateCounts["ERASED"]
+	edgeCount := len(edges)
+	density := 0.0
+	if totalNodes > 1 {
+		density = float64(edgeCount) / (float64(totalNodes*(totalNodes-1)) / 2.0)
+	}
+	permaRatio := 0.0
+	if totalNodes > 0 {
+		permaRatio = float64(stateCounts["PERMA"]) / float64(totalNodes)
+	}
+
+	onlineUsers := 0
+	if h.Presence != nil {
+		if users, perr := h.Presence.List(r.Context(), id); perr == nil {
+			onlineUsers = len(users)
+		}
+	}
+	// collaboration: 归一化在线人数；目标为 5 人满分（见 thresholds.collaboration_goal）
+	collaboration := math.Min(float64(onlineUsers)/5.0, 1.0)
+	score := int(math.Round(math.Min(100.0, 45.0*permaRatio+35.0*math.Min(density/0.35, 1.0)+20.0*collaboration)))
+
+	grade := "偏弱"
+	trend := "weak"
+	switch {
+	case score >= 80:
+		grade, trend = "优秀", "rising"
+	case score >= 60:
+		grade, trend = "健康", "steady"
+	case score >= 40:
+		grade, trend = "一般", "steady"
+	}
+
+	writeJSON(w, http.StatusOK, lakeHealthResp{
+		LakeID: id,
+		Score:  score,
+		Grade:  grade,
+		Trend:  trend,
+		Thresholds: map[string]any{
+			"excellent_score":   80,
+			"healthy_score":     60,
+			"density_target":    0.35,
+			"collaboration_goal": 5,
+		},
+		Summary: map[string]any{
+			"total_nodes":   totalNodes,
+			"active_nodes":  activeNodes,
+			"edge_count":    edgeCount,
+			"density":       density,
+			"perma_ratio":   permaRatio,
+			"online_users":  onlineUsers,
+		},
+		StateCounts: stateCounts,
 	})
 }
 

@@ -6,6 +6,7 @@
  * 修复：scroll lock + CSS 变量
  */
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { Button } from './ui'
 import { api } from '../api/client'
 import type { NodeItem, NodeRevision } from '../api/types'
 
@@ -77,20 +78,23 @@ export default function NodeVersionHistory({ node, revisions, onClose, onRolledB
           </span>
           <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
             {revisions.length >= 2 && (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setDiffOpen(true)}
-                style={{
-                  background: 'var(--accent-subtle)', border: '1px solid var(--accent)',
-                  color: 'var(--accent)', borderRadius: 'var(--radius-sm)',
-                  padding: '3px var(--space-md)', fontSize: 'var(--font-sm)', cursor: 'pointer',
-                }}
                 title="左右版本对比"
-              >⇄ 版本对比</button>
+              >
+                ⇄ 版本对比
+              </Button>
             )}
-            <button onClick={onClose} style={{
-              background: 'none', border: 'none', color: 'var(--text-secondary)',
-              fontSize: 'var(--font-lg)', cursor: 'pointer', lineHeight: 1,
-            }} aria-label="关闭">✕</button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              aria-label="关闭"
+            >
+              ✕
+            </Button>
           </div>
         </div>
 
@@ -183,17 +187,14 @@ export default function NodeVersionHistory({ node, revisions, onClose, onRolledB
                   {/* rollback action — only for non-latest revs */}
                   {!isLatest && (
                     <div style={{ marginTop: 'var(--space-sm)' }}>
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => void handleRollback(rev)}
                         disabled={rolling !== null}
-                        style={{
-                          fontSize: 'var(--font-sm)', padding: '3px var(--space-md)',
-                          background: 'var(--accent-subtle)', color: 'var(--accent)',
-                          border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                        }}
                       >
                         {rolling === rev.rev_number ? '回滚中…' : '⟲ 回滚到此版本'}
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>

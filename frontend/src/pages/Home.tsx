@@ -217,6 +217,15 @@ export function Home({ onLogout }: Props) {
     setRelationshipBusy(active?.id ? relationshipBusyLakesRef.current.has(active.id) : false)
   }, [active?.id])
 
+  // poll() unmount 保护：清理所有轮询的 busy flag
+  useEffect(() => {
+    return () => {
+      for (const key of pollBusyRef.current) {
+        pollBusyRef.current.delete(key)
+      }
+    }
+  }, [])
+
   // P12-E：PWA shortcut 处理 — ?action=search|import（需等 active 湖加载完毕）
   useEffect(() => {
     const action = readInitialShortcutAction()
@@ -241,6 +250,8 @@ export function Home({ onLogout }: Props) {
   const [streamText, setStreamText] = useState('')
   const [streaming, setStreaming] = useState(false)
   const streamAbortRef = useRef<(() => void) | null>(null)
+  // 防止 unmount 后 poll 回调更新已卸载组件
+  const pollBusyRef = useRef<Set<string>>(new Set())
   // P9-C：节点视图模式（列表 | 图谱）
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list')
   // P11：主区 Tab（lakes=主流程 | settings=API Key+审计日志）
@@ -759,20 +770,30 @@ export function Home({ onLogout }: Props) {
   }
 
   async function poll(taskId: string, lakeId: string) {
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1500))
-      try {
-        const t = await api.getCloud(taskId)
-        setTasks(prev => prev.map(x => x.id === taskId ? t : x))
-        if (t.status === 'done' || t.status === 'failed') {
-          const taskLakeId = t.lake_id || lakeId
-          if (activeLakeIdRef.current === taskLakeId) await loadNodes(taskLakeId)
-          if (activeLakeIdRef.current === taskLakeId && t.status === 'done' && t.result_node_ids?.length) {
-            void analyzeRelationships(t.result_node_ids, { silent: true, lakeId: taskLakeId })
+    const key = `${lakeId}:${taskId}`
+    if (pollBusyRef.current.has(key)) return
+    pollBusyRef.current.add(key)
+    try {
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1500))
+        if (!pollBusyRef.current.has(key)) return  // unmounted
+        try {
+          const t = await api.getCloud(taskId)
+          setTasks(prev => prev.map(x => x.id === taskId ? t : x))
+          if (t.status === 'done' || t.status === 'failed') {
+            const taskLakeId = t.lake_id || lakeId
+            if (activeLakeIdRef.current === taskLakeId) await loadNodes(taskLakeId)
+            if (activeLakeIdRef.current === taskLakeId && t.status === 'done' && t.result_node_ids?.length) {
+              void analyzeRelationships(t.result_node_ids, { silent: true, lakeId: taskLakeId })
+            }
+            return
           }
-          return
+        } catch {
+          // 短暂网络错误，继续轮询
         }
-      } catch { /* ignore */ }
+      }
+    } finally {
+      pollBusyRef.current.delete(key)
     }
   }
 
@@ -1112,11 +1133,7 @@ export function Home({ onLogout }: Props) {
       )}
       {/* P1-05：移动端汉堡按钮 */}
       {isMobile && !sidebarOpen && (
-        <button
-          onClick={() => setSidebarOpen(true)}
-          title="打开导航"
-          style={{ position: 'fixed', top: 14, left: 14, zIndex: 101, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: '#9ec5ee', padding: '6px 10px', fontSize: 18, cursor: 'pointer' }}
-        >☰</button>
+        <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(true)} title="打开导航" style={{ position: 'fixed', top: 14, left: 14, zIndex: 101 }}>☰</Button>
       )}
       <aside style={isMobile ? { ...sidebar, position: 'fixed', top: 0, left: 0, height: '100%', zIndex: 100, transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.25s ease', background: '#0e1e30' } : sidebar}>
         {isMobile && (
@@ -1610,22 +1627,30 @@ export function Home({ onLogout }: Props) {
                       onAcceptPlanning={s => graphAnalysis.acceptPlanningSuggestion(s)}
                       onRefreshPlanning={() => graphAnalysis.loadPlanning()}
                       onClosePlanning={() => graphAnalysis.closePanel()}
+                      onPlanSuccess={(nodeId, edgeId) => {
+                        if (active) {
+                          void loadNodes(active.id)
+                          if (edgeId) void loadEdges(active.id)
+                        }
+                        if (nodeId) {
+                          const node = nodes.find(n => n.id === nodeId)
+                          if (node) setSelectedNode(node)
+                        }
+                      }}
                       onlineUsers={onlineUsers}
                       currentUserId={meId ?? undefined}
                     />
                     {multiSelectedNodeIds.size >= 2 && (
                       <div style={{ textAlign: 'center', marginTop: 8 }}>
-                        <button
-                          onClick={() => setSummarizeOpen(true)}
-                          title="点击生成 AI 摘要节点与 summarizes 关联（Ctrl/Cmd+点击节点可多选）"
-                          style={{
-                            background: '#1e4d9e', border: '1px solid #4a8eff', color: '#9ec5ee',
-                            borderRadius: 6, padding: '6px 18px', fontSize: 13,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          ✦ AI 整理所选节点 ({multiSelectedNodeIds.size})
-                        </button>
+                        <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setSummarizeOpen(true)}
+                        title="点击生成 AI 摘要节点与 summarizes 关联（Ctrl/Cmd+点击节点可多选）"
+                        style={{ background: '#1e4d9e', border: '1px solid #4a8eff', color: '#9ec5ee', borderRadius: 6, padding: '6px 18px', fontSize: 13 }}
+                      >
+                        ✦ AI 整理所选节点 ({multiSelectedNodeIds.size})
+                      </Button>
                         <span style={{ marginLeft: 8, color: '#4a6a8e', fontSize: 11 }}>
                           Ctrl/Cmd+点击继续添加
                         </span>
@@ -1674,10 +1699,12 @@ export function Home({ onLogout }: Props) {
                         title="创建当前湖里的第一个文本节点"
                       >添加第一个节点</Button>
                       {/* P1-04：跳过引导 */}
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={dismissGuide}
                         style={{ background: 'transparent', border: 'none', color: '#666', fontSize: 11, cursor: 'pointer', textDecoration: 'underline', marginTop: 4 }}
-                      >跳过引导</button>
+                      >跳过引导</Button>
                     </div>
                   )}
                   {/* P14-C：批量操作工具栏 */}

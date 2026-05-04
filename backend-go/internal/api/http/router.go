@@ -235,6 +235,7 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/lakes/{id}/clusters", graphH.GetClusters)
 				r.Get("/lakes/{id}/planning", graphH.GetPlanning)
 				r.Post("/planning/{id}/accept", graphH.AcceptPlanning)
+				r.Put("/planning/{id}/accept", graphH.AcceptPlanning)
 				// Phase 3-B.3: 热度趋势端点
 				if graphH.Heat != nil {
 					r.Get("/lakes/{id}/heat-trend", graphH.GetHeatTrend)

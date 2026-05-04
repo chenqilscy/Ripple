@@ -95,13 +95,9 @@ export default function SpaceMembersDrawer(props: SpaceMembersDrawerProps) {
 
       {isOwner && (
         <div style={{ padding: '8px 16px', borderBottom: '1px solid #2a2a2a' }}>
-          <button
-            onClick={handleAdd}
-            style={{
-              width: '100%', padding: '8px', background: '#1d2433', border: '1px solid #4a8eff',
-              color: '#4a8eff', borderRadius: 4, cursor: 'pointer', fontSize: 13,
-            }}
-          >+ 邀请成员</button>
+          <Button variant="primary" size="sm" onClick={handleAdd} style={{ width: '100%' }}>
+            + 邀请成员
+          </Button>
         </div>
       )}
 
@@ -124,11 +120,9 @@ export default function SpaceMembersDrawer(props: SpaceMembersDrawerProps) {
               <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>{m.role}</div>
             </div>
             {isOwner && m.role !== 'OWNER' && (
-              <button
-                onClick={() => handleRemove(m.user_id)}
-                title="移除成员"
-                style={{ background: 'transparent', border: 'none', color: '#e66', cursor: 'pointer', fontSize: 13 }}
-              >移除</button>
+              <Button variant="ghost" size="sm" onClick={() => handleRemove(m.user_id)} title="移除成员" style={{ color: '#e66' }}>
+                移除
+              </Button>
             )}
           </li>
         ))}

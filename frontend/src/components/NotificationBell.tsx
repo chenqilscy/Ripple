@@ -98,7 +98,9 @@ export default function NotificationBell() {
 
   return (
     <div ref={dropRef} style={{ position: 'relative', display: 'inline-block' }}>
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={toggleOpen}
         title="通知"
         style={{
@@ -119,7 +121,7 @@ export default function NotificationBell() {
             {count > 99 ? '99+' : count}
           </span>
         )}
-      </button>
+      </Button>
 
       {open && (
         <div style={{

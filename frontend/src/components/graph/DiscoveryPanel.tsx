@@ -45,16 +45,6 @@ export default function DiscoveryPanel({
   const pending = recommendations.filter(r => r.status === 'pending')
   const [activeTab, setActiveTab] = React.useState<'discover' | 'heat'>('discover')
 
-  const tabStyle: React.CSSProperties = {
-    padding: '2px 10px',
-    fontSize: 13,
-    borderRadius: 4,
-    border: 'none',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-    background: 'transparent',
-  }
-
   return (
     <div style={{
       position: 'absolute', top: 12, right: 70, width: 280,
@@ -71,31 +61,22 @@ export default function DiscoveryPanel({
         justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button
+          <Button
+            variant={activeTab === 'discover' ? 'primary' : 'ghost'}
+            size="sm"
             onClick={() => setActiveTab('discover')}
-            style={{
-              ...tabStyle,
-              background: activeTab === 'discover' ? 'rgba(46,139,144,0.3)' : 'transparent',
-              color: activeTab === 'discover' ? '#9ec5ee' : '#6b7280',
-            }}
           >
             发现
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={activeTab === 'heat' ? 'primary' : 'ghost'}
+            size="sm"
             onClick={() => setActiveTab('heat')}
-            style={{
-              ...tabStyle,
-              background: activeTab === 'heat' ? 'rgba(46,139,144,0.3)' : 'transparent',
-              color: activeTab === 'heat' ? '#9ec5ee' : '#6b7280',
-            }}
           >
             热点
-          </button>
+          </Button>
         </div>
-        <button onClick={onClose} style={{
-          background: 'none', border: 'none', color: '#6b7280',
-          cursor: 'pointer', fontSize: 16, padding: '0 4px',
-        }}>✕</button>
+        <Button variant="ghost" size="sm" onClick={onClose} aria-label="关闭">✕</Button>
       </div>
 
       {/* Content */}

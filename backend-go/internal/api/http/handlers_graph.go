@@ -25,7 +25,7 @@ type GraphAnalysisHandlers struct {
 	Edges       *service.EdgeService
 	Recommender *service.RecommenderService
 	Feedback    store.FeedbackRepository
-	LLM         llm.Router // AI 标签生成（可选；nil 时回退到 "领域 N" 占位符）
+	LLM         llm.Router           // AI 标签生成（可选；nil 时回退到 "领域 N" 占位符）
 	Heat        *service.HeatService // 热度计算（Phase 3-B.3）
 }
 
@@ -512,6 +512,7 @@ func (h *GraphAnalysisHandlers) GetPlanning(w http.ResponseWriter, r *http.Reque
 		Description    string   `json:"description"`
 		Priority       string   `json:"priority"`
 		RelatedNodeIDs []string `json:"related_node_ids"`
+		LakeID         string   `json:"lake_id"` // 图谱 ID
 	}
 
 	// 孤岛检测
@@ -527,6 +528,7 @@ func (h *GraphAnalysisHandlers) GetPlanning(w http.ResponseWriter, r *http.Reque
 				Description    string   `json:"description"`
 				Priority       string   `json:"priority"`
 				RelatedNodeIDs []string `json:"related_node_ids"`
+				LakeID         string   `json:"lake_id"`
 			}{
 				ID:             uuid.New().String(),
 				Type:           "explore",
@@ -534,6 +536,7 @@ func (h *GraphAnalysisHandlers) GetPlanning(w http.ResponseWriter, r *http.Reque
 				Description:    "该节点没有关联，考虑与其他节点建立关联以丰富知识网络",
 				Priority:       "medium",
 				RelatedNodeIDs: []string{n.ID},
+				LakeID:         lakeID,
 			})
 		}
 	}
@@ -626,8 +629,8 @@ func (h *GraphAnalysisHandlers) AcceptPlanning(w http.ResponseWriter, r *http.Re
 	suggestionID := chi.URLParam(r, "id")
 	u, _ := CurrentUser(r.Context())
 
-	// 解析请求体（支持 PUT body 或空 body 的 GET fallback）
-	var body struct {
+	// 请求体结构
+	type acceptBody struct {
 		Type           string   `json:"type"`
 		Title          string   `json:"title"`
 		Description    string   `json:"description"`
@@ -635,6 +638,9 @@ func (h *GraphAnalysisHandlers) AcceptPlanning(w http.ResponseWriter, r *http.Re
 		RelatedNodeIDs []string `json:"related_node_ids"`
 		LakeID         string   `json:"lake_id"`
 	}
+
+	// 解析请求体（支持 PUT body 或空 body 的 GET fallback）
+	var body acceptBody
 	if r.ContentLength > 0 {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid json")
@@ -721,7 +727,7 @@ func (h *GraphAnalysisHandlers) acceptAddNode(w http.ResponseWriter, r *http.Req
 				Content string   `json:"content"`
 				Tags    []string `json:"tags"`
 			}
-			if jsonErr := json.Unmarshal([]byte(cands[0].Text), &gen); jsonErr == nil {
+			if err := json.Unmarshal([]byte(cands[0].Text), &gen); err == nil {
 				if gen.Title != "" {
 					content = gen.Title + "：" + content
 				}
@@ -730,9 +736,8 @@ func (h *GraphAnalysisHandlers) acceptAddNode(w http.ResponseWriter, r *http.Req
 				}
 			}
 		}
-	}
 
-	// 创建节点
+	}
 	node, createErr := h.Nodes.Create(r.Context(), u, service.CreateNodeInput{
 		LakeID:  lakeID,
 		Content: content,
@@ -745,8 +750,6 @@ func (h *GraphAnalysisHandlers) acceptAddNode(w http.ResponseWriter, r *http.Req
 
 	writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "type": "add_node", "status": "accepted", "nodeId": node.ID})
 }
-
-// acceptConnect 处理 connect 类型建议
 func (h *GraphAnalysisHandlers) acceptConnect(w http.ResponseWriter, r *http.Request, u *domain.User, suggestionID string, body struct {
 	Type           string   `json:"type"`
 	Title          string   `json:"title"`
@@ -806,6 +809,7 @@ func (h *GraphAnalysisHandlers) acceptConnect(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, map[string]any{"id": suggestionID, "type": "connect", "status": "accepted", "edgeId": edge.ID})
 }
 
+// findBestTargetNode
 // findBestTargetNode 在湖内节点中搜索与关键词重叠最高的节点（排除 source）
 func findBestTargetNode(ctx context.Context, nodes []domain.Node, sourceID, title, description string) (string, error) {
 	if title == "" && description == "" {

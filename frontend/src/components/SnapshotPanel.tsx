@@ -4,6 +4,7 @@
  * P21 扩展：保存时附带图谱内容快照，支持与历史快照进行内容 diff。
  */
 import { useState, useEffect, useCallback } from 'react'
+import { Button } from './ui'
 import { api } from '../api/client'
 import type { LakeSnapshot, SnapshotGraphState, SnapshotNodeEntry, SnapshotEdgeEntry } from '../api/types'
 
@@ -144,10 +145,7 @@ export default function SnapshotPanel({ lakeId, currentLayout, currentGraphState
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, fontSize: 14, color: '#c8d8e8' }}>图谱版本快照</span>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#9ec5ee',
-            fontSize: 20, cursor: 'pointer', lineHeight: 1,
-          }}>✕</button>
+          <Button variant="ghost" size="sm" onClick={onClose} style={{ fontSize: 20, padding: '2px 4px' }}>✕</Button>
         </div>
 
         {err && (
@@ -175,17 +173,14 @@ export default function SnapshotPanel({ lakeId, currentLayout, currentGraphState
                 padding: '6px 10px', outline: 'none',
               }}
             />
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleSave}
               disabled={saving || !name.trim()}
-              style={{
-                background: '#2a5caa', border: 'none', borderRadius: 6,
-                color: '#fff', fontSize: 12, padding: '6px 14px', cursor: 'pointer',
-                opacity: saving || !name.trim() ? 0.5 : 1, whiteSpace: 'nowrap',
-              }}
             >
               {saving ? '保存中...' : '保存快照'}
-            </button>
+            </Button>
           </div>
           <div style={{ fontSize: 11, color: '#5a7a9e' }}>
             当前 {Object.keys(currentLayout).length} 个节点位置{currentGraphState ? `，含内容快照（${currentGraphState.nodes.length} 节点 / ${currentGraphState.edges.length} 边）` : ' — 无内容快照'}
@@ -213,38 +208,33 @@ export default function SnapshotPanel({ lakeId, currentLayout, currentGraphState
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {currentGraphState && (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => diffSnap?.id === snap.id ? (setDiffSnap(null), setDiffResult(null)) : handleDiff(snap)}
                     disabled={diffLoading}
-                    style={{
-                      background: diffSnap?.id === snap.id ? '#2a5caa' : '#1e3050',
-                      border: '1px solid #2a4060', borderRadius: 4,
-                      color: '#7ab8ff', fontSize: 11, padding: '4px 10px', cursor: 'pointer',
-                    }}
+                    style={{ background: diffSnap?.id === snap.id ? '#2a5caa' : undefined }}
                   >
                     {diffLoading && diffSnap?.id === snap.id ? '对比中…' : '与现在对比'}
-                  </button>
+                  </Button>
                 )}
                 {onRestore && (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleRestore(snap)}
-                    style={{
-                      background: '#1e3050', border: 'none', borderRadius: 4,
-                      color: '#9ec5ee', fontSize: 11, padding: '4px 10px', cursor: 'pointer',
-                    }}
                   >
                     恢复
-                  </button>
+                  </Button>
                 )}
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => handleDelete(snap)}
-                  style={{
-                    background: 'none', border: 'none',
-                    color: '#e06060', fontSize: 11, padding: '4px 6px', cursor: 'pointer',
-                  }}
+                  style={{ color: '#e06060' }}
                 >
                   删除
-                </button>
+                </Button>
               </div>
             </div>
           ))}
@@ -260,10 +250,12 @@ export default function SnapshotPanel({ lakeId, currentLayout, currentGraphState
               <span style={{ fontSize: 12, color: '#9ec5ee', fontWeight: 600 }}>
                 与「{diffSnap.name}」对比结果
               </span>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => { setDiffSnap(null); setDiffResult(null) }}
-                style={{ background: 'none', border: 'none', color: '#5a7a9e', cursor: 'pointer', fontSize: 16 }}
-              >✕</button>
+                style={{ fontSize: 16, padding: '2px 6px' }}
+              >✕</Button>
             </div>
             {diffResult.addedNodes.length + diffResult.removedNodes.length + diffResult.addedEdges.length + diffResult.removedEdges.length === 0 ? (
               <div style={{ fontSize: 12, color: '#5a9e7a', textAlign: 'center', padding: 8 }}>
