@@ -452,6 +452,13 @@ export interface OrgLLMUsage {
 // ---- Phase 15-C：AI Job ----
 export type AiJobStatus = 'pending' | 'processing' | 'done' | 'failed'
 
+export interface AiTriggerRequest {
+  prompt_template_id?: string
+  input_node_ids?: string[]
+  override_vars?: Record<string, string>
+  idempotency_key?: string
+}
+
 export interface AiJob {
   ai_job_id?: string
   job_id: string

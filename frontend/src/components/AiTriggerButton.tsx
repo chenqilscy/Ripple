@@ -26,6 +26,16 @@ const STATUS_LABEL: Record<AiJobStatus, string> = {
   failed:     '失败',
 }
 
+// Generate session-based idempotency key to prevent duplicate AI trigger requests
+function generateIdempotencyKey(): string {
+  const stored = sessionStorage.getItem('ai_trigger_idem_key')
+  if (stored) return stored
+
+  const key = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  sessionStorage.setItem('ai_trigger_idem_key', key)
+  return key
+}
+
 const POLL_INTERVAL_MS = 2000
 const POLL_MAX = 30 // 60 seconds total
 
@@ -94,9 +104,11 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
     pollCount.current = 0
     setPollCountDisplay(0)
     try {
+      const idempotencyKey = generateIdempotencyKey()
       const newJob = await api.aiTrigger(lakeId, nodeId, {
         prompt_template_id: promptTemplateId,
         input_node_ids: inputNodeIds,
+        idempotency_key: idempotencyKey,
       })
       setJob(newJob)
       if (newJob.status !== 'done' && newJob.status !== 'failed') {
@@ -109,10 +121,12 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
     } catch (e) {
       const err = e as ApiError
       if (err.status === 409) {
+        // Duplicate request - continue tracking existing job
+        const existingNodeId = (err as { data?: { existing_ai_node_id?: string } }).data?.existing_ai_node_id
+        setError(existingNodeId ? '该请求已处理，继续跟踪当前任务。' : '该节点已有 AI 任务，继续跟踪当前任务状态。')
         try {
           const existing = await api.aiStatus(lakeId, nodeId)
           setJob(existing)
-          setError('该节点已有 AI 任务，已继续跟踪当前任务状态。')
           if (existing.status !== 'done' && existing.status !== 'failed') {
             pollTimer.current = setTimeout(() => poll(existing), POLL_INTERVAL_MS)
           } else if (existing.status === 'done') {

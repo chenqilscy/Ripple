@@ -639,7 +639,7 @@ export const api = {
   },
 
   // ---- Phase 15-C：AI Job 触发 ----
-  aiTrigger(lakeId: string, nodeId: string, opts?: { prompt_template_id?: string; input_node_ids?: string[]; override_vars?: Record<string, string> }): Promise<import('./types').AiJob> {
+  aiTrigger(lakeId: string, nodeId: string, opts?: { prompt_template_id?: string; input_node_ids?: string[]; override_vars?: Record<string, string>; idempotency_key?: string }): Promise<import('./types').AiJob> {
     return request('POST', `/api/v1/lakes/${lakeId}/nodes/${nodeId}/ai_trigger`, opts ?? {})
   },
   aiStatus(lakeId: string, nodeId: string): Promise<import('./types').AiJob> {
