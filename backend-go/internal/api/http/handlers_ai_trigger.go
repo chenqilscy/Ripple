@@ -36,6 +36,7 @@ type aiTriggerReq struct {
 	PromptTemplateID string            `json:"prompt_template_id"`
 	InputNodeIDs     []string          `json:"input_node_ids"`
 	OverrideVars     map[string]string `json:"override_vars"`
+	IdempotencyKey   string            `json:"idempotency_key"`
 }
 
 type aiTriggerResp struct {
@@ -137,6 +138,29 @@ func (h *AiTriggerHandlers) Trigger(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 幂等性检查：如果提供了 idempotency_key，60 分钟内相同 key 返回已有的 job
+	if strings.TrimSpace(in.IdempotencyKey) != "" {
+		idempKey := strings.TrimSpace(in.IdempotencyKey)
+		existingNodeID, err := h.Jobs.GetByIdempotencyKey(r.Context(), lakeID, idempKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to check idempotency key")
+			return
+		}
+		if existingNodeID != "" {
+			// 已存在幂等 key，返回 409 + existing job 信息
+			w.Header().Set("Location", "/api/v1/lakes/"+lakeID+"/nodes/"+nodeID+"/ai_status")
+			writeJSON(w, http.StatusConflict, aiTriggerResp{
+				JobID:            "",
+				AIJobID:          "",
+				NodeID:           existingNodeID,
+				Status:           "idempotent_repeat",
+				ProgressPct:      0,
+				EstimatedSeconds: 0,
+			})
+			return
+		}
+	}
+
 	job := domain.AiJob{
 		ID:               uuid.New().String(),
 		NodeID:           nodeID,
@@ -162,6 +186,11 @@ func (h *AiTriggerHandlers) Trigger(w http.ResponseWriter, r *http.Request) {
 	if created == nil {
 		writeError(w, http.StatusInternalServerError, "failed to create ai job")
 		return
+	}
+
+	// 保存幂等性 key（忽略错误，仅用于去重，不影响主流程）
+	if strings.TrimSpace(in.IdempotencyKey) != "" {
+		_ = h.Jobs.SetIdempotencyKey(r.Context(), lakeID, strings.TrimSpace(in.IdempotencyKey), nodeID)
 	}
 
 	w.Header().Set("Location", "/api/v1/lakes/"+lakeID+"/nodes/"+nodeID+"/ai_status")

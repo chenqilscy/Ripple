@@ -33,6 +33,13 @@ type AiJobRepository interface {
 
 	// RecoverProcessing 启动时把"卡住的 processing"重置为 pending。
 	RecoverProcessing(ctx context.Context) (int64, error)
+
+	// GetByIdempotencyKey 查询 60 分钟内是否已存在该 key。
+	// 若存在返回关联的 nodeID（用于幂等返回），不存在则返回 ("", nil)。
+	GetByIdempotencyKey(ctx context.Context, lakeID, key string) (string, error)
+
+	// SetIdempotencyKey 写入幂等性 key（ON CONFLICT DO NOTHING）。
+	SetIdempotencyKey(ctx context.Context, lakeID, key, nodeID string) error
 }
 
 type aiJobRepoPG struct{ pool *pgxpool.Pool }
@@ -169,6 +176,34 @@ func (r *aiJobRepoPG) RecoverProcessing(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("ai_jobs recover: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+const sqlGetAiJobByIdempotencyKey = `
+SELECT ai_node_id FROM ai_node_idempotency_keys
+WHERE lake_id = $1 AND idempotency_key = $2 AND created_at > NOW() - INTERVAL '60 minutes'
+`
+
+func (r *aiJobRepoPG) GetByIdempotencyKey(ctx context.Context, lakeID, key string) (string, error) {
+	var nodeID string
+	err := r.pool.QueryRow(ctx, sqlGetAiJobByIdempotencyKey, lakeID, key).Scan(&nodeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return nodeID, err
+}
+
+const sqlSetIdempotencyKey = `
+INSERT INTO ai_node_idempotency_keys (lake_id, idempotency_key, ai_node_id)
+VALUES ($1, $2, $3)
+ON CONFLICT DO NOTHING
+`
+
+func (r *aiJobRepoPG) SetIdempotencyKey(ctx context.Context, lakeID, key, nodeID string) error {
+	_, err := r.pool.Exec(ctx, sqlSetIdempotencyKey, lakeID, key, nodeID)
+	if err != nil {
+		return fmt.Errorf("ai_node_idempotency_keys insert: %w", err)
+	}
+	return nil
 }
 
 // scanAiJob 扫描 QueryRow 结果。

@@ -28,11 +28,14 @@ func (s *aiTriggerNodeGetterStub) Get(_ context.Context, _ *domain.User, nodeID 
 }
 
 type aiTriggerJobsStub struct {
-	created   *domain.AiJob
-	createErr error
-	conflict  bool
-	byNode    *domain.AiJob
-	getErr    error
+	created            *domain.AiJob
+	createErr          error
+	conflict           bool
+	byNode             *domain.AiJob
+	getErr             error
+	getByIdempErr      error
+	idempKeyNodeID     string
+	setIdempErr        error
 }
 
 func (s *aiTriggerJobsStub) CreateWithConflictCheck(_ context.Context, job domain.AiJob) (*domain.AiJob, bool, error) {
@@ -71,6 +74,17 @@ func (s *aiTriggerJobsStub) UpdateStatus(_ context.Context, _ string, _ domain.A
 
 func (s *aiTriggerJobsStub) RecoverProcessing(_ context.Context) (int64, error) {
 	return 0, nil
+}
+
+func (s *aiTriggerJobsStub) GetByIdempotencyKey(_ context.Context, _, _ string) (string, error) {
+	if s.getByIdempErr != nil {
+		return "", s.getByIdempErr
+	}
+	return s.idempKeyNodeID, nil
+}
+
+func (s *aiTriggerJobsStub) SetIdempotencyKey(_ context.Context, _, _, _ string) error {
+	return s.setIdempErr
 }
 
 func aiTriggerRequest(method, body, lakeID, nodeID string) *http.Request {
@@ -191,5 +205,77 @@ func TestAiStatusSanitizesInternalError(t *testing.T) {
 	}
 	if strings.Contains(resp.Error, "pq:") || strings.Contains(resp.Error, "fn.cky") {
 		t.Fatalf("status error leaked internal detail: %q", resp.Error)
+	}
+}
+
+func TestAiTriggerIdempotencyReturnsConflict(t *testing.T) {
+	jobs := &aiTriggerJobsStub{
+		idempKeyNodeID: "node-existing",
+	}
+	h := &AiTriggerHandlers{
+		Jobs: jobs,
+		Nodes: &aiTriggerNodeGetterStub{nodes: map[string]*domain.Node{
+			"node-1": {ID: "node-1", LakeID: "lake-1", OwnerID: "u-test", Content: "target", Type: domain.NodeTypeText},
+		}},
+	}
+
+	w := httptest.NewRecorder()
+	body := `{"idempotency_key":"my-request-123"}`
+	h.Trigger(w, aiTriggerRequest(http.MethodPost, body, "lake-1", "node-1"))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", w.Code, w.Body.String())
+	}
+	if jobs.created != nil {
+		t.Fatalf("job should not be created for idempotent request")
+	}
+	var resp aiTriggerResp
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.NodeID != "node-existing" {
+		t.Fatalf("expected NodeID=node-existing, got %q", resp.NodeID)
+	}
+	if resp.Status != "idempotent_repeat" {
+		t.Fatalf("expected status=idempotent_repeat, got %q", resp.Status)
+	}
+}
+
+func TestAiTriggerWithoutIdempotencyKeySucceeds(t *testing.T) {
+	jobs := &aiTriggerJobsStub{}
+	h := &AiTriggerHandlers{
+		Jobs: jobs,
+		Nodes: &aiTriggerNodeGetterStub{nodes: map[string]*domain.Node{
+			"node-1": {ID: "node-1", LakeID: "lake-1", OwnerID: "u-test", Content: "target", Type: domain.NodeTypeText},
+		}},
+	}
+
+	w := httptest.NewRecorder()
+	body := `{"idempotency_key":""}`
+	h.Trigger(w, aiTriggerRequest(http.MethodPost, body, "lake-1", "node-1"))
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d body=%s", w.Code, w.Body.String())
+	}
+	if jobs.created == nil {
+		t.Fatalf("job should be created when no idempotency key")
+	}
+}
+
+func TestAiTriggerIdempotencyKeySavedAfterJobCreation(t *testing.T) {
+	jobs := &aiTriggerJobsStub{}
+	h := &AiTriggerHandlers{
+		Jobs: jobs,
+		Nodes: &aiTriggerNodeGetterStub{nodes: map[string]*domain.Node{
+			"node-1": {ID: "node-1", LakeID: "lake-1", OwnerID: "u-test", Content: "target", Type: domain.NodeTypeText},
+		}},
+	}
+
+	w := httptest.NewRecorder()
+	body := `{"idempotency_key":"save-key-456"}`
+	h.Trigger(w, aiTriggerRequest(http.MethodPost, body, "lake-1", "node-1"))
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d body=%s", w.Code, w.Body.String())
+	}
+	if jobs.created == nil {
+		t.Fatalf("job should be created")
 	}
 }
