@@ -2,11 +2,12 @@
  * Phase 15-C: AI Trigger button for a node.
  * Sends a trigger request and polls job status until done/failed (60s timeout).
  * 修复：CSS 变量（Deep Ocean Dark 主题）
+ * Phase 15.2: Add template selection dropdown
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from './ui'
 import { api } from '../api/client'
-import type { AiJob, AiJobStatus, ApiError } from '../api/types'
+import type { AiJob, AiJobStatus, ApiError, PromptTemplate } from '../api/types'
 
 interface Props {
   lakeId: string
@@ -46,6 +47,39 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
   const pollCount = useRef(0)
   const [pollCountDisplay, setPollCountDisplay] = useState(0)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Phase 15.2: Template selection dropdown state
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [templates, setTemplates] = useState<PromptTemplate[]>([])
+  const [selectedTemplate, setSelectedTemplate] = useState<PromptTemplate | null>(null)
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Load templates when dropdown opens
+  useEffect(() => {
+    if (showDropdown && templates.length === 0) {
+      setLoadingTemplates(true)
+      api.listPromptTemplates()
+        .then(res => setTemplates(res.items))
+        .catch(() => setTemplates([]))
+        .finally(() => setLoadingTemplates(false))
+    }
+  }, [showDropdown, templates.length])
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Group templates by scope
+  const privateTemplates = templates.filter(t => t.scope === 'private')
+  const orgTemplates = templates.filter(t => t.scope === 'org')
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current !== null) {
@@ -96,7 +130,7 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
     setPollCountDisplay(0)
   }, [lakeId, nodeId, stopPolling])
 
-  const handleTrigger = useCallback(async () => {
+  const handleTrigger = useCallback(async (templateIdOverride?: string) => {
     if (triggering || (job && (job.status === 'pending' || job.status === 'processing'))) return
     setError(null)
     setTriggering(true)
@@ -105,8 +139,10 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
     setPollCountDisplay(0)
     try {
       const idempotencyKey = generateIdempotencyKey()
+      // Use override templateId (from dropdown), prop templateId, or dropdown-selected template
+      const templateId = templateIdOverride || promptTemplateId || selectedTemplate?.id
       const newJob = await api.aiTrigger(lakeId, nodeId, {
-        prompt_template_id: promptTemplateId,
+        prompt_template_id: templateId,
         input_node_ids: inputNodeIds,
         idempotency_key: idempotencyKey,
       })
@@ -144,7 +180,7 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
     } finally {
       setTriggering(false)
     }
-  }, [triggering, job, lakeId, nodeId, promptTemplateId, inputNodeIds, poll, stopPolling, onDone, onFail])
+  }, [triggering, job, lakeId, nodeId, promptTemplateId, selectedTemplate, inputNodeIds, poll, stopPolling, onDone, onFail])
 
   const isRunning = job?.status === 'pending' || job?.status === 'processing'
   const disabled = triggering || isRunning
@@ -157,17 +193,142 @@ export default function AiTriggerButton({ lakeId, nodeId, promptTemplateId, inpu
   }
 
   return (
-    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 'var(--space-sm)', alignItems: 'flex-start' }}>
+    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 'var(--space-sm)', alignItems: 'flex-start', position: 'relative' }}>
       <Button
         variant="primary"
         size="sm"
-        onClick={() => void handleTrigger()}
+        onClick={() => setShowDropdown(!showDropdown)}
         disabled={disabled}
-        title="触发 AI 处理当前节点"
+        title="选择Prompt模板并触发AI处理"
       >
         <span style={{ fontSize: 'var(--font-lg)' }}>✦</span>
-        {isRunning ? 'AI 处理中…' : 'AI 触发'}
+        {isRunning ? 'AI 处理中…' : (selectedTemplate ? selectedTemplate.name : 'AI 触发')}
       </Button>
+
+      {/* Phase 15.2: Template selection dropdown */}
+      {showDropdown && (
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            zIndex: 1000,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-lg)',
+            minWidth: 280,
+            maxHeight: 320,
+            overflow: 'auto',
+            marginTop: 'var(--space-xs)',
+          }}
+        >
+          {loadingTemplates ? (
+            <div style={{ padding: 'var(--space-md)', color: 'var(--text-tertiary)' }}>
+              加载中…
+            </div>
+          ) : (
+            <>
+              {privateTemplates.length > 0 && (
+                <div>
+                  <div style={{
+                    padding: 'var(--space-sm) var(--space-md)',
+                    fontSize: 'var(--font-sm)',
+                    color: 'var(--text-tertiary)',
+                    fontWeight: 600,
+                    borderBottom: '1px solid var(--border)',
+                  }}>
+                    📋 私有模板
+                  </div>
+                  {privateTemplates.map(t => (
+                    <div
+                      key={t.id}
+                      style={{
+                        padding: 'var(--space-sm) var(--space-md)',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid var(--border)',
+                      }}
+                      onClick={() => {
+                        setSelectedTemplate(t)
+                        setShowDropdown(false)
+                        // Immediately trigger with selected template
+                        void handleTrigger(t.id)
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {t.name}
+                      </div>
+                      <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>
+                        {t.description || '无描述'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {orgTemplates.length > 0 && (
+                <div>
+                  <div style={{
+                    padding: 'var(--space-sm) var(--space-md)',
+                    fontSize: 'var(--font-sm)',
+                    color: 'var(--text-tertiary)',
+                    fontWeight: 600,
+                    borderBottom: '1px solid var(--border)',
+                  }}>
+                    📂 组织共享
+                  </div>
+                  {orgTemplates.map(t => (
+                    <div
+                      key={t.id}
+                      style={{
+                        padding: 'var(--space-sm) var(--space-md)',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid var(--border)',
+                      }}
+                      onClick={() => {
+                        setSelectedTemplate(t)
+                        setShowDropdown(false)
+                        // Immediately trigger with selected template
+                        void handleTrigger(t.id)
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {t.name}
+                      </div>
+                      <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>
+                        {t.description || '无描述'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {templates.length === 0 && (
+                <div style={{ padding: 'var(--space-md)', color: 'var(--text-tertiary)' }}>
+                  暂无可用模板，请在设置中创建
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Show selected template info below button */}
+      {selectedTemplate && !showDropdown && (
+        <div style={{
+          fontSize: 'var(--font-sm)',
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-xs)',
+        }}>
+          <span>✓</span>
+          <span>已选择: {selectedTemplate.name}</span>
+        </div>
+      )}
 
       {job && (
         <div style={{
