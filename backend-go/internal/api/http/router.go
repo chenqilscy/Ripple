@@ -88,6 +88,9 @@ type Deps struct {
 	LLMUsage *service.LLMUsageService
 	// StubPaymentEnabled 透传 config.StubPaymentEnabled 给 SubscriptionHandlers。
 	StubPaymentEnabled bool
+	// Phase 15.2: 用量告警
+	// UsageAlert 非 nil 时挂载 /organizations/{id}/usage-alert 端点。
+	UsageAlert *service.UsageAlertService
 }
 
 // NewRouter 装配 Chi 路由。
@@ -506,6 +509,13 @@ func NewRouter(d Deps) http.Handler {
 			if d.LLMUsage != nil {
 				usageH := &LLMUsageHandlers{Svc: d.LLMUsage, Orgs: d.Orgs}
 				r.Get("/organizations/{id}/llm_usage", usageH.GetUsage)
+			}
+
+			// Phase 15.2: 用量告警
+			if d.UsageAlert != nil {
+				usageAlertH := &UsageAlertHandlers{Svc: d.UsageAlert, Orgs: d.Orgs}
+				r.Get("/organizations/{id}/usage-alert", usageAlertH.GetUsageAlert)
+				r.Put("/organizations/{id}/usage-alert", usageAlertH.UpdateUsageAlert)
 			}
 		})
 
