@@ -279,3 +279,136 @@ func TestAiTriggerIdempotencyKeySavedAfterJobCreation(t *testing.T) {
 		t.Fatalf("job should be created")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Rate Limiter Tests
+// ---------------------------------------------------------------------------
+
+// mockHandler 用于测试中间件的最小 handler。
+type mockHandler struct{ called int }
+
+func (m *mockHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	m.called++
+	w.WriteHeader(http.StatusOK)
+}
+
+// createTestRateLimiter 创建一个独立的测试限流器（避免污染全局 aiTriggerLimiter）。
+func createTestRateLimiter(rps float64, burst int) *userRateLimiter {
+	return newUserRateLimiter(rps, burst)
+}
+
+func TestUserRateLimiterRespectsBurst(t *testing.T) {
+	// burst=5 意味着最多 5 个请求可以同时通过
+	lim := createTestRateLimiter(1.0, 5)
+
+	// 前 5 个请求应允许（burst 容量）
+	for i := 0; i < 5; i++ {
+		if !lim.allow("user-1") {
+			t.Errorf("request %d should be allowed (within burst)", i+1)
+		}
+	}
+
+	// 第 6 个请求应被拒绝（burst 已耗尽，rate=1.0 即每秒补充 1 个 token，等待时间不足）
+	if lim.allow("user-1") {
+		t.Error("request 6 should be blocked (burst exhausted)")
+	}
+}
+
+func TestUserRateLimiterBlocksOverLimit(t *testing.T) {
+	lim := createTestRateLimiter(1.0, 1) // burst=1
+
+	// 第一个请求应允许（burst=1）
+	if !lim.allow("user-2") {
+		t.Fatal("first request should be allowed")
+	}
+
+	// 后续请求应被拒绝（rate 限制，未到补充时间）
+	if lim.allow("user-2") {
+		t.Fatal("second request should be blocked by rate limit")
+	}
+}
+
+func TestUserRateLimiterPerUserIsolation(t *testing.T) {
+	lim := createTestRateLimiter(1.0, 1) // burst=1
+
+	// user-3 消耗所有额度
+	if !lim.allow("user-3") {
+		t.Fatal("first request for user-3 should be allowed")
+	}
+	if lim.allow("user-3") {
+		t.Fatal("second request for user-3 should be blocked")
+	}
+
+	// user-4 是独立用户，仍应有额度
+	if !lim.allow("user-4") {
+		t.Fatal("user-4 should have independent quota")
+	}
+}
+
+func TestRateLimitMiddlewareAllowsWithinBurst(t *testing.T) {
+	// 创建局部限流器用于测试（burst=10）
+	testLimiter := createTestRateLimiter(10.0, 10)
+
+	// 临时替换（仅测试用）
+	origLimiter := aiTriggerLimiter
+	defer func() { aiTriggerLimiter = origLimiter }()
+	aiTriggerLimiter = testLimiter
+
+	mw := AITriggerRateLimitMiddleware()
+	handler := &mockHandler{}
+	wrapped := mw(handler)
+
+	// 前 10 个请求在 burst 范围内应通过
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest("POST", "/test", nil)
+		req = req.WithContext(context.WithValue(req.Context(), ctxUserKey, &domain.User{ID: "rate-test-user"}))
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("request %d: expected 200, got %d", i+1, w.Code)
+		}
+	}
+}
+
+func TestRateLimitMiddlewareReturns429WhenExceeded(t *testing.T) {
+	// 创建严格限流器（burst=0，几乎不允许任何请求）
+	testLimiter := createTestRateLimiter(0.001, 0)
+
+	origLimiter := aiTriggerLimiter
+	defer func() { aiTriggerLimiter = origLimiter }()
+	aiTriggerLimiter = testLimiter
+
+	mw := AITriggerRateLimitMiddleware()
+	handler := &mockHandler{}
+	wrapped := mw(handler)
+
+	req := httptest.NewRequest("POST", "/test", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ctxUserKey, &domain.User{ID: "rate-test-user-2"}))
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429, got %d", w.Code)
+	}
+	if handler.called != 0 {
+		t.Errorf("handler should not be called when rate limited, got called=%d", handler.called)
+	}
+}
+
+func TestRateLimitMiddlewareSkipsWhenNoUser(t *testing.T) {
+	mw := AITriggerRateLimitMiddleware()
+	handler := &mockHandler{}
+	wrapped := mw(handler)
+
+	// 无用户上下文的请求应跳过限流，直接通过
+	req := httptest.NewRequest("POST", "/test", nil)
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for no-user request, got %d", w.Code)
+	}
+	if handler.called != 1 {
+		t.Errorf("handler should be called once, got %d", handler.called)
+	}
+}

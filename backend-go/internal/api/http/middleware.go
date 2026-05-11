@@ -7,7 +7,10 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/chenqilscy/ripple/backend-go/internal/domain"
 	"github.com/chenqilscy/ripple/backend-go/internal/service"
@@ -157,5 +160,78 @@ func mapDomainError(err error) int {
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Rate Limiting
+// ---------------------------------------------------------------------------
+
+// userRateLimiter 基于用户维度的内存限流器（Redis 不可用时的兜底方案）。
+// 每个用户一个 rate.Limiter，支持动态创建和清理。
+type userRateLimiter struct {
+	limiters map[string]*rate.Limiter
+	mu       sync.RWMutex
+	rps      rate.Limit
+	burst    int
+}
+
+// newUserRateLimiter 创建限流器。
+// rps: 每秒允许的请求数；burst: 突发容量。
+func newUserRateLimiter(rps float64, burst int) *userRateLimiter {
+	return &userRateLimiter{
+		limiters: make(map[string]*rate.Limiter),
+		rps:      rate.Limit(rps),
+		burst:    burst,
+	}
+}
+
+// getLimiter 返回或创建指定用户的限流器（双重检查锁定）。
+func (u *userRateLimiter) getLimiter(userID string) *rate.Limiter {
+	u.mu.RLock()
+	lim, ok := u.limiters[userID]
+	u.mu.RUnlock()
+	if ok {
+		return lim
+	}
+
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	// 再次检查（防止并发创建）
+	if lim, ok = u.limiters[userID]; ok {
+		return lim
+	}
+	lim = rate.NewLimiter(u.rps, u.burst)
+	u.limiters[userID] = lim
+	return lim
+}
+
+// allow 检查是否允许该用户的请求。
+func (u *userRateLimiter) allow(userID string) bool {
+	return u.getLimiter(userID).Allow()
+}
+
+// aiTriggerLimiter: 每用户每分钟最多 10 次 AI 触发请求。
+// 10/60 = ~0.167 req/s，突发容量 1（确保平滑限流）。
+var aiTriggerLimiter = newUserRateLimiter(10.0/60.0, 1)
+
+// AITriggerRateLimitMiddleware 返回限流中间件：限制 AI 触发接口调用频率。
+func AITriggerRateLimitMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, _ := CurrentUser(r.Context())
+			if u == nil {
+				// 无用户信息时跳过限流（不应出现在鉴权路由中）
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if !aiTriggerLimiter.allow(u.ID) {
+				writeError(w, http.StatusTooManyRequests, "rate limit exceeded: max 10 AI triggers per minute")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
 	}
 }

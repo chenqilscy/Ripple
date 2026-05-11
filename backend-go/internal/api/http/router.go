@@ -478,7 +478,11 @@ func NewRouter(d Deps) http.Handler {
 					PromptTemplates: d.PromptTemplates,
 					Orgs:            d.Orgs,
 				}
-				r.Post("/lakes/{lake_id}/nodes/{node_id}/ai_trigger", aiTriggerH.Trigger)
+				// AI 触发需限流（每用户每分钟最多 10 次）
+				r.Group(func(r chi.Router) {
+					r.Use(AITriggerRateLimitMiddleware())
+					r.Post("/lakes/{lake_id}/nodes/{node_id}/ai_trigger", aiTriggerH.Trigger)
+				})
 				r.Get("/lakes/{lake_id}/nodes/{node_id}/ai_status", aiTriggerH.Status)
 
 				promptTplH := &PromptTemplateHandlers{Repo: d.PromptTemplates, Orgs: d.Orgs}
