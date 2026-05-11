@@ -62,6 +62,7 @@ export interface CloudTask {
 export interface ApiError extends Error {
   status: number
   code?: string
+  data?: unknown
 }
 
 // ---- Notification (P13-B) ----
@@ -391,6 +392,14 @@ export interface PromptTemplate {
 // ---- Phase 15-B：订阅套餐 ----
 export type BillingCycle = 'monthly' | 'yearly'
 export type SubscriptionStatus = 'active' | 'cancelled' | 'expired' | 'trial'
+
+// ---- Phase 15.2：用量告警 ----
+export interface UsageAlert {
+  org_id: string
+  threshold_percent: number
+  enabled: boolean
+  last_triggered_at?: string
+}
 
 export interface PlanQuotas {
   max_members: number

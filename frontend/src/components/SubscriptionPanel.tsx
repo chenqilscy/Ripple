@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from './ui'
 import { api } from '../api/client'
-import type { BillingCycle, OrgLLMUsage, OrgSubscription, OrgUsage, SubscriptionPlan } from '../api/types'
+import type { BillingCycle, OrgLLMUsage, OrgSubscription, OrgUsage, SubscriptionPlan, UsageAlert } from '../api/types'
 
 interface Props {
   orgId: string
@@ -32,6 +32,153 @@ function formatDate(iso: string) {
 
 function formatMoney(amount: number) {
   return `¥${amount.toFixed(amount >= 1 ? 2 : 3)}`
+}
+
+// UsageAlertBanner - Warning banner when usage exceeds threshold
+function UsageAlertBanner({
+  usedPercent,
+  threshold,
+  onConfigClick
+}: {
+  usedPercent: number
+  threshold: number
+  onConfigClick: () => void
+}) {
+  if (usedPercent < threshold) {
+    return null
+  }
+
+  return (
+    <div style={{
+      background: 'var(--status-danger-subtle)',
+      border: '1px solid var(--status-danger)',
+      borderRadius: 'var(--radius-md)',
+      padding: 'var(--space-md)',
+      marginBottom: 'var(--space-md)',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    }}>
+      <div>
+        <strong style={{ color: 'var(--status-danger)' }}>⚠ AI用量告警</strong>
+        <p style={{ margin: 'var(--space-xs) 0 0', color: 'var(--text-secondary)', fontSize: 'var(--font-sm)' }}>
+          您的AI调用量已达到配额的 {usedPercent}%，建议升级套餐
+        </p>
+      </div>
+      <Button variant="primary" size="sm" onClick={onConfigClick}>
+        设置告警
+      </Button>
+    </div>
+  )
+}
+
+// UsageAlertConfigModal - Settings dialog for alert configuration
+function UsageAlertConfigModal({
+  orgId,
+  currentSettings,
+  onSave,
+  onClose
+}: {
+  orgId: string
+  currentSettings: { threshold_percent: number; enabled: boolean }
+  onSave: (settings: { threshold_percent: number; enabled: boolean }) => void
+  onClose: () => void
+}) {
+  const [threshold, setThreshold] = useState(currentSettings.threshold_percent)
+  const [enabled, setEnabled] = useState(currentSettings.enabled)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      const updated = await api.updateUsageAlert(orgId, { threshold_percent: threshold, enabled })
+      onSave({ threshold_percent: updated.threshold_percent, enabled: updated.enabled })
+      onClose()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      setError(err?.message || '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(0,0,0,0.6)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-surface)',
+        borderRadius: 'var(--radius-lg)',
+        padding: 'var(--space-xl)',
+        width: 400,
+        maxWidth: '90vw',
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 var(--space-lg) 0', color: 'var(--text-primary)' }}>
+          AI用量告警设置
+        </h3>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={e => setEnabled(e.target.checked)}
+          />
+          启用用量告警
+        </label>
+
+        {enabled && (
+          <div style={{ marginBottom: 'var(--space-lg)' }}>
+            <label style={{ display: 'block', marginBottom: 'var(--space-sm)', color: 'var(--text-secondary)' }}>
+              告警阈值
+            </label>
+            <select
+              value={threshold}
+              onChange={e => setThreshold(Number(e.target.value))}
+              style={{
+                width: '100%',
+                padding: 'var(--space-sm)',
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border-input)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <option value={50}>50%</option>
+              <option value={80}>80%</option>
+              <option value={90}>90%</option>
+              <option value={100}>100%</option>
+            </select>
+            <p style={{ margin: 'var(--space-xs) 0 0', fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)' }}>
+              当用量达到此百分比时发送通知
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <p style={{ color: 'var(--status-danger)', marginBottom: 'var(--space-md)', fontSize: 'var(--font-sm)' }}>
+            {error}
+          </p>
+        )}
+
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end' }}>
+          <Button variant="secondary" onClick={onClose}>
+            取消
+          </Button>
+          <Button variant="primary" onClick={handleSave} disabled={saving}>
+            {saving ? '保存中…' : '保存'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** 用量进度条：max=-1 表示不限 */
@@ -67,6 +214,8 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly')
   const [submitting, setSubmitting] = useState<string | null>(null)
+  const [alertSettings, setAlertSettings] = useState<{ threshold_percent: number; enabled: boolean } | null>(null)
+  const [showAlertConfig, setShowAlertConfig] = useState(false)
 
   // Scroll lock
   useEffect(() => {
@@ -120,6 +269,18 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // Load alert settings for org owner
+  useEffect(() => {
+    if (orgId && isOwner) {
+      api.getUsageAlert(orgId)
+        .then((settings: UsageAlert) => setAlertSettings({
+          threshold_percent: settings.threshold_percent,
+          enabled: settings.enabled,
+        }))
+        .catch(() => setAlertSettings({ threshold_percent: 80, enabled: false }))
+    }
+  }, [orgId, isOwner])
+
   const handleSelect = useCallback(async (plan: SubscriptionPlan) => {
     if (!isOwner) return
     if (current?.plan_id === plan.id && current?.billing_cycle === selectedCycle) return
@@ -139,9 +300,21 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
   const isLoading = loadingPlans || loadingSub
   const llmTrend = llmUsage?.by_day.slice(-7) ?? []
   const maxTrendCalls = llmTrend.reduce((max, item) => Math.max(max, item.calls), 0)
+  // Calculate AI usage percentage based on LLM usage data
+  // TODO: Use actual quota from Space or plan when available
+  const aiUsedPercent = llmUsage && llmUsage.total_calls > 0 ? Math.min(100, llmUsage.total_calls) : 0
 
   return (
     <div style={{ padding: 'var(--space-lg) 0' }}>
+      {/* Usage alert banner */}
+      {alertSettings?.enabled && alertSettings && (
+        <UsageAlertBanner
+          usedPercent={aiUsedPercent}
+          threshold={alertSettings.threshold_percent}
+          onConfigClick={() => setShowAlertConfig(true)}
+        />
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
         <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 'var(--font-xl)', fontWeight: 600 }}>订阅套餐</h3>
         <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
@@ -348,6 +521,16 @@ export default function SubscriptionPanel({ orgId, isOwner }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {/* Usage alert config modal */}
+      {showAlertConfig && alertSettings && (
+        <UsageAlertConfigModal
+          orgId={orgId}
+          currentSettings={alertSettings}
+          onSave={setAlertSettings}
+          onClose={() => setShowAlertConfig(false)}
+        />
       )}
     </div>
   )

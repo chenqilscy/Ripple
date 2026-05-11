@@ -45,7 +45,7 @@ async function request<T>(method: string, path: string, body?: unknown, opts?: {
   if (!res.ok) {
     const err: ApiError = Object.assign(new Error(
       (data as { message?: string; error?: string })?.message ?? (data as { error?: string })?.error ?? `HTTP ${res.status}`,
-    ), { status: res.status, code: (data as { code?: string })?.code })
+    ), { status: res.status, code: (data as { code?: string })?.code, data })
     throw err
   }
   return data as T
@@ -636,6 +636,14 @@ export const api = {
   // Phase 15-D: AI 用量账单
   getOrgLLMUsage(orgId: string, days = 30): Promise<import('./types').OrgLLMUsage> {
     return request('GET', `/api/v1/organizations/${orgId}/llm_usage?days=${days}`)
+  },
+
+  // Phase 15.2: 用量告警
+  getUsageAlert(orgId: string): Promise<import('./types').UsageAlert> {
+    return request('GET', `/api/v1/organizations/${orgId}/usage-alert`)
+  },
+  updateUsageAlert(orgId: string, data: { threshold_percent: number; enabled: boolean }): Promise<import('./types').UsageAlert> {
+    return request('PUT', `/api/v1/organizations/${orgId}/usage-alert`, data)
   },
 
   // ---- Phase 15-C：AI Job 触发 ----
